@@ -11,6 +11,7 @@
 - [x] 08 AW Agent Tutor (RAG, citation checker, issue/argument detection) — 80 tests
 - [x] 09 AW Agent Solve + style critic + Personal style Skill + disclaimer — 88 tests
 - [x] 10 Guardrails (content safety, enrichment, PII redaction, answer leak, rate limit) — 105 tests
+- [x] 11 Eval harness (quant/AW judges, regression, golden sets, human review queue) — 121 tests
 
 ### Pending
 - [ ] 06 Corpus ingestion pipeline
