@@ -5,9 +5,9 @@
 - [x] 02 Agent Registry + Session model + Orchestrator skeleton (19 tests)
 - [x] 03 QuantAgent Tutor+Solve system prompts + streaming (TDD, mocked LLM)
 - [x] 04 Math Verifier MCP server (sandbox.py, server.py, verify_math skill, Dockerfile) — 34 tests
+- [x] 05 Quant Agent Solve mode + retry/escalation + graceful degradation — 40 tests
 
 ### Pending
-- [ ] 05 Quant Agent Solve mode + retry/escalation
 - [ ] 06 Corpus ingestion pipeline
 - [ ] 07 Corpus retrieval service
 - [ ] 08 AW Agent Tutor mode
