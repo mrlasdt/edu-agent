@@ -1,0 +1,83 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: edu
+      POSTGRES_PASSWORD: edu
+      POSTGRES_DB: edu_agent
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U edu -d edu_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.9.4
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  langfuse:
+    image: langfuse/langfuse:2
+    environment:
+      DATABASE_URL: postgresql://edu:edu@postgres:5432/edu_agent
+      NEXTAUTH_SECRET: dev-secret-changeme
+      NEXTAUTH_URL: http://localhost:3000
+      SALT: dev-salt-changeme
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/public/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # BGE-M3 embedder via Hugging Face Text Embeddings Inference
+  tei-embedder:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.4
+    command: --model-id BAAI/bge-m3 --port 8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - tei_cache:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+
+  # Math verifier MCP server — SSE transport on port 8090.
+  # The Agent Service connects to http://math-verifier:8090 via the verify-math Skill.
+  # In k8s Phase 2, runs as a sidecar to the agent pod (cluster-internal, no external exposure).
+  math-verifier:
+    build:
+      context: ..
+      dockerfile: services/math_verifier/Dockerfile
+    ports:
+      - "8090:8090"
+    environment:
+      MATH_VERIFIER_PORT: "8090"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8090/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  tei_cache:

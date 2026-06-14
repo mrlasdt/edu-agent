@@ -1,0 +1,24 @@
+## GRE Tutor v1 — Implementation Progress
+
+### Done
+- [x] 01 Local dev stack (pyproject.toml, docker-compose, config, .env.example)
+- [x] 02 Agent Registry + Session model + Orchestrator skeleton (19 tests)
+- [x] 03 QuantAgent Tutor+Solve system prompts + streaming (TDD, mocked LLM)
+
+### In Progress
+- [ ] 04 Math Verifier MCP server
+
+### Pending
+- [ ] 05 Quant Agent Solve mode + retry/escalation
+- [ ] 06 Corpus ingestion pipeline
+- [ ] 07 Corpus retrieval service
+- [ ] 08 AW Agent Tutor mode
+- [ ] 09 AW Agent Solve mode + Personal style
+- [ ] 10 Guardrails
+- [ ] 11 Eval harness
+- [ ] 12 Web UI chat core
+- [ ] 13 Web UI upload + style
+- [ ] 14 Admin UI
+- [ ] 15 MCP servers
+- [ ] 16 k8s + CI/CD
+- [ ] 17 Langfuse observability

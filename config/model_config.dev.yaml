@@ -1,0 +1,57 @@
+# Model configuration for the dev environment.
+# Each role specifies provider, model, and generation params.
+# To swap a role to Anthropic: change provider to "anthropic" and model to e.g. "claude-sonnet-4-6".
+# LiteLLM resolves provider+model at runtime.
+
+roles:
+  # Orchestrator — lightweight classify/enrich step before every turn
+  orchestrator:
+    provider: openai
+    model: gpt-4o-mini
+    temperature: 0
+
+  # Main agents
+  quant_agent:
+    provider: openai
+    model: gpt-4o
+    temperature: 0.2
+
+  aw_agent:
+    provider: openai
+    model: gpt-4o
+    temperature: 0.5
+
+  # Math verifier retry — same model as quant_agent
+  math_retry:
+    provider: openai
+    model: gpt-4o
+    temperature: 0.2
+
+  # Math verifier escalation — reasoning-tier model, ~1% of Quant turns
+  math_escalation:
+    provider: openai
+    model: o1
+    temperature: 1  # o1 ignores temperature, but required by schema
+
+  # Post-generation critics
+  style_critic:
+    provider: openai
+    model: gpt-4o-mini
+    temperature: 0
+
+  # AW eval judges
+  aw_judge_nightly:
+    provider: openai
+    model: gpt-4o
+    temperature: 0
+
+  aw_judge_pr:
+    provider: openai
+    model: gpt-4o-mini
+    temperature: 0
+
+  # Background jobs
+  style_extractor:
+    provider: openai
+    model: gpt-4o-mini
+    temperature: 0
