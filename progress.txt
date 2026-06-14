@@ -12,15 +12,9 @@
 - [x] 09 AW Agent Solve + style critic + Personal style Skill + disclaimer — 88 tests
 - [x] 10 Guardrails (content safety, enrichment, PII redaction, answer leak, rate limit) — 105 tests
 - [x] 11 Eval harness (quant/AW judges, regression, golden sets, human review queue) — 121 tests
+- [x] 12 Web UI chat core (SubjectPicker, ModeSwitch, MessageBubble, SourcesPanel) — 19 frontend tests
 
 ### Pending
-- [ ] 06 Corpus ingestion pipeline
-- [ ] 07 Corpus retrieval service
-- [ ] 08 AW Agent Tutor mode
-- [ ] 09 AW Agent Solve mode + Personal style
-- [ ] 10 Guardrails
-- [ ] 11 Eval harness
-- [ ] 12 Web UI chat core
 - [ ] 13 Web UI upload + style
 - [ ] 14 Admin UI
 - [ ] 15 MCP servers
