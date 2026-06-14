@@ -1,6 +1,6 @@
 ## GRE Tutor v1 — Implementation Progress
 
-### Done
+### Done — ALL 17 SLICES COMPLETE
 - [x] 01 Local dev stack (pyproject.toml, docker-compose, config, .env.example)
 - [x] 02 Agent Registry + Session model + Orchestrator skeleton (19 tests)
 - [x] 03 QuantAgent Tutor+Solve system prompts + streaming (TDD, mocked LLM)
@@ -16,7 +16,10 @@
 - [x] 13 Web UI upload overlay + preferences panel (UploadOverlay, PreferencesPanel) — 37 frontend tests
 - [x] 14 Admin UI (AdminUploadForm, JobsTable with DLQ badge) — 55 frontend tests
 - [x] 15 MCP servers (Candidate + Admin; 6 tools) — 132 Python tests
+- [x] 16 k8s manifests, GitHub Actions CI/CD, Dockerfiles for all services — 147 tests
+- [x] 17 Langfuse observability (setup_observability, build_llm_metadata, QuantAgent wired) — 156 tests
 
-### Pending
-- [ ] 16 k8s + CI/CD
-- [ ] 17 Langfuse observability
+### Final counts
+- Python tests: 156 passing
+- Frontend (Vitest) tests: 55 passing
+- Git commits: 17
