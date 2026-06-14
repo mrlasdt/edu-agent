@@ -9,6 +9,7 @@
 - [x] 06 Corpus ingestion pipeline (chunker, parser, FastAPI, sync/async paths) — 57 tests
 - [x] 07 Corpus retrieval service (RRF, ACL filter, tier tiebreak, FastAPI) — 71 tests
 - [x] 08 AW Agent Tutor (RAG, citation checker, issue/argument detection) — 80 tests
+- [x] 09 AW Agent Solve + style critic + Personal style Skill + disclaimer — 88 tests
 
 ### Pending
 - [ ] 06 Corpus ingestion pipeline
