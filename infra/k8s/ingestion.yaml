@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingestion
+  labels:
+    app: ingestion
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ingestion
+  template:
+    metadata:
+      labels:
+        app: ingestion
+    spec:
+      containers:
+        - name: ingestion
+          image: edu-agent/ingestion:latest
+          ports:
+            - containerPort: 8003
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: edu-agent-secrets
+                  key: database-url
+            - name: QDRANT_URL
+              value: http://qdrant:6333
+            - name: TEI_EMBEDDER_URL
+              value: http://tei-embedder:8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8003
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingestion
+spec:
+  selector:
+    app: ingestion
+  ports:
+    - port: 8003
+      targetPort: 8003
+  type: ClusterIP

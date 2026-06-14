@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-type-check:
+    name: Lint + type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+      - run: uv sync --extra dev
+      - run: uv run ruff check .
+      - run: uv run mypy services/ shared/ evals/ mcp_servers/ --ignore-missing-imports
+
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+      - run: uv sync --extra dev
+      - run: uv run pytest tests/ -q
+      - name: Frontend tests
+        run: |
+          cd web
+          npm ci
+          npm test
+
+  eval-slice:
+    name: Eval slice (path-gated)
+    runs-on: ubuntu-latest
+    # Only run when files that affect agent behaviour change
+    if: |
+      github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.changed_files, 'prompts/') ||
+        contains(github.event.pull_request.changed_files, 'services/agent/') ||
+        contains(github.event.pull_request.changed_files, 'services/gateway/') ||
+        contains(github.event.pull_request.changed_files, 'evals/') ||
+        contains(github.event.pull_request.changed_files, 'config/')
+      )
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+      - run: uv sync --extra dev
+      - name: Run eval slice (10% sample, Haiku judge)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MODEL_CONFIG_PATH: config/model_config.dev.yaml
+        run: |
+          uv run python evals/run_eval.py --suite quant --suite aw --sample 0.1
+        # Eval failures are informational on PRs (non-blocking)
+        continue-on-error: true
+
+  # More precise path-gating via dorny/paths-filter
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      eval-relevant: ${{ steps.filter.outputs.eval-relevant }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            eval-relevant:
+              - 'prompts/**'
+              - 'services/agent/**'
+              - 'services/gateway/**'
+              - 'evals/**'
+              - 'config/**'

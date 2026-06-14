@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: corpus
+  labels:
+    app: corpus
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: corpus
+  template:
+    metadata:
+      labels:
+        app: corpus
+    spec:
+      containers:
+        - name: corpus
+          image: edu-agent/corpus:latest
+          ports:
+            - containerPort: 8001
+          env:
+            - name: QDRANT_URL
+              value: http://qdrant:6333
+            - name: TEI_EMBEDDER_URL
+              value: http://tei-embedder:8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8001
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: corpus
+spec:
+  selector:
+    app: corpus
+  ports:
+    - port: 8001
+      targetPort: 8001
+  type: ClusterIP

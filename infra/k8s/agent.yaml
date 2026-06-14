@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent
+  labels:
+    app: agent
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agent
+  template:
+    metadata:
+      labels:
+        app: agent
+    spec:
+      containers:
+        - name: agent
+          image: edu-agent/agent:latest
+          ports:
+            - containerPort: 8002
+          env:
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: edu-agent-secrets
+                  key: openai-api-key
+            - name: CORPUS_SERVICE_URL
+              value: http://corpus:8001
+            - name: MATH_VERIFIER_URL
+              value: http://math-verifier:8090
+            - name: ENV
+              value: prod
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8002
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8002
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent
+spec:
+  selector:
+    app: agent
+  ports:
+    - port: 8002
+      targetPort: 8002
+  type: ClusterIP

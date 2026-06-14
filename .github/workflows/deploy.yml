@@ -1,0 +1,98 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    name: Build and push images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service: [gateway, agent, corpus, ingestion, math_verifier]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:latest
+
+  deploy-staging:
+    name: Deploy to staging
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/k8s-set-context@v4
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG_STAGING }}
+      - name: Deploy to staging
+        run: |
+          for f in infra/k8s/*.yaml; do
+            sed "s/:latest/:${{ github.sha }}/g" "$f" | kubectl apply -f -
+          done
+          kubectl rollout status deployment/gateway --timeout=120s
+          kubectl rollout status deployment/agent --timeout=120s
+
+  deploy-prod-canary:
+    name: Deploy prod canary (5%)
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.event_name == 'release'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/k8s-set-context@v4
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG_PROD }}
+      - name: Deploy canary (5% traffic)
+        run: |
+          # Scale canary replica to 1 (vs 20 stable = ~5%)
+          kubectl set image deployment/gateway-canary \
+            gateway=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/gateway:${{ github.sha }}
+          kubectl rollout status deployment/gateway-canary --timeout=120s
+      - name: Monitor canary (30 min)
+        run: |
+          sleep 1800
+          ERROR_RATE=$(kubectl exec -n monitoring deploy/prometheus -- \
+            promtool query instant \
+            'rate(http_requests_total{job="gateway-canary",status=~"5.."}[5m]) /
+             rate(http_requests_total{job="gateway-canary"}[5m])' \
+            2>/dev/null | grep -oP '[\d.]+' | head -1 || echo "0")
+          echo "Canary error rate: $ERROR_RATE"
+          if (( $(echo "$ERROR_RATE > 0.02" | bc -l) )); then
+            echo "Error rate exceeded threshold — rolling back canary"
+            kubectl rollout undo deployment/gateway-canary
+            exit 1
+          fi
+      - name: Promote canary to full rollout
+        if: success()
+        run: |
+          for f in infra/k8s/*.yaml; do
+            sed "s/:latest/:${{ github.sha }}/g" "$f" | kubectl apply -f -
+          done
+          kubectl rollout status deployment/gateway --timeout=300s
+          kubectl rollout status deployment/agent --timeout=300s

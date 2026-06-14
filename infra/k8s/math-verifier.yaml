@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: math-verifier
+  labels:
+    app: math-verifier
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: math-verifier
+  template:
+    metadata:
+      labels:
+        app: math-verifier
+    spec:
+      containers:
+        - name: math-verifier
+          image: edu-agent/math-verifier:latest
+          ports:
+            - containerPort: 8090
+          env:
+            - name: MATH_VERIFIER_PORT
+              value: "8090"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: math-verifier
+spec:
+  selector:
+    app: math-verifier
+  ports:
+    - port: 8090
+      targetPort: 8090
+  type: ClusterIP
