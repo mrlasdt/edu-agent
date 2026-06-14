@@ -40,6 +40,7 @@ class Session(BaseModel):
     mode: Mode = Mode.tutor
     complexity: Complexity = Complexity.basic
     history: list[Message] = Field(default_factory=list)
+    personal_style_enabled: bool = False
 
     def switch_mode(self, new_mode: Mode) -> "Session":
         """Return a new Session with mode switched. Immutable update."""
