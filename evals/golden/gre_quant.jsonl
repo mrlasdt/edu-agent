@@ -1,0 +1,5 @@
+{"id": "q001", "question_type": "numeric_entry", "question": "Solve x^2 - 5x + 6 = 0 for all real x.", "expression": "x**2 - 5*x + 6 = 0", "ground_truth": "2,3"}
+{"id": "q002", "question_type": "multiple_choice_single", "question": "What is the value of 2 + 3*4?", "expression": "2 + 3*4", "ground_truth": "14"}
+{"id": "q003", "question_type": "multiple_choice_multiple", "question": "Which values satisfy x^2 = 4?", "expression": "x**2 - 4 = 0", "ground_truth": "2,-2"}
+{"id": "q004", "question_type": "quantitative_comparison", "question": "Qty A: 3^2, Qty B: 2^3", "expression": "3**2 - 2**3", "ground_truth": "1"}
+{"id": "q005", "question_type": "numeric_entry", "question": "What is the area of a circle with radius 2? (use pi=3.14)", "expression": "3.14 * 2**2", "ground_truth": "12.56"}
