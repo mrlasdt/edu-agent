@@ -6,6 +6,7 @@
 - [x] 03 QuantAgent Tutor+Solve system prompts + streaming (TDD, mocked LLM)
 - [x] 04 Math Verifier MCP server (sandbox.py, server.py, verify_math skill, Dockerfile) — 34 tests
 - [x] 05 Quant Agent Solve mode + retry/escalation + graceful degradation — 40 tests
+- [x] 06 Corpus ingestion pipeline (chunker, parser, FastAPI, sync/async paths) — 57 tests
 
 ### Pending
 - [ ] 06 Corpus ingestion pipeline
