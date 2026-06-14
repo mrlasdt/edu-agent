@@ -10,6 +10,7 @@ from services.agent.src.agent.base import BaseAgent
 from services.agent.src.agent.skills.verify_math import VerifyMathResult, VerifyMathSkill
 from shared.src.shared.config import load_model_config
 from shared.src.shared.models import MessageRole, Mode, Session
+from shared.src.shared.observability import build_llm_metadata
 
 _PROMPT_ROOT = Path("prompts/quant_agent")
 
@@ -67,7 +68,7 @@ class QuantAgent(BaseAgent):
     # ── public interface ──────────────────────────────────────────────────────
 
     async def run(
-        self, session: Session, message: str
+        self, session: Session, message: str, trace_id: str = ""
     ) -> AsyncGenerator[str | dict, None]:
         """
         Yield str tokens as they are generated, followed by a final dict metadata item.
@@ -75,17 +76,21 @@ class QuantAgent(BaseAgent):
         Metadata dict shape:
           {"verifier_fail": bool}   — only emitted in Solve mode
         """
+        obs_meta = build_llm_metadata(
+            trace_id=trace_id,
+            prompt_version="v1",  # loaded from prompt filename in full impl
+        )
         if session.mode == Mode.tutor:
-            async for token in self._tutor_turn(session, message):
+            async for token in self._tutor_turn(session, message, obs_meta):
                 yield token
         else:
-            async for item in self._solve_turn(session, message):
+            async for item in self._solve_turn(session, message, obs_meta):
                 yield item
 
     # ── tutor mode ────────────────────────────────────────────────────────────
 
     async def _tutor_turn(
-        self, session: Session, message: str
+        self, session: Session, message: str, obs_meta: dict | None = None
     ) -> AsyncGenerator[str, None]:
         system_prompt = _load_prompt(Mode.tutor)
         messages = _build_messages(session, message, system_prompt)
@@ -97,6 +102,7 @@ class QuantAgent(BaseAgent):
             messages=messages,
             temperature=temperature,
             stream=True,
+            **(obs_meta or {}),
         )
         async for chunk in response:
             content = chunk.choices[0].delta.content
@@ -106,7 +112,7 @@ class QuantAgent(BaseAgent):
     # ── solve mode ────────────────────────────────────────────────────────────
 
     async def _solve_turn(
-        self, session: Session, message: str
+        self, session: Session, message: str, obs_meta: dict | None = None
     ) -> AsyncGenerator[str | dict, None]:
         system_prompt = _load_prompt(Mode.solve)
         base_messages = _build_messages(session, message, system_prompt)
@@ -132,6 +138,7 @@ class QuantAgent(BaseAgent):
                 messages=messages,
                 temperature=temperature,
                 stream=True,
+                **(obs_meta or {}),
             )
             tokens, full_text = await _collect_stream(response)
             prev_answer = self._extract_final_answer(full_text)
