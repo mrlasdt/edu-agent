@@ -14,9 +14,9 @@
 - [x] 11 Eval harness (quant/AW judges, regression, golden sets, human review queue) — 121 tests
 - [x] 12 Web UI chat core (SubjectPicker, ModeSwitch, MessageBubble, SourcesPanel) — 19 frontend tests
 - [x] 13 Web UI upload overlay + preferences panel (UploadOverlay, PreferencesPanel) — 37 frontend tests
+- [x] 14 Admin UI (AdminUploadForm, JobsTable with DLQ badge) — 55 frontend tests
 
 ### Pending
-- [ ] 14 Admin UI
 - [ ] 15 MCP servers
 - [ ] 16 k8s + CI/CD
 - [ ] 17 Langfuse observability
