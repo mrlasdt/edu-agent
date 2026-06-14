@@ -108,6 +108,8 @@ async def test_tutor_includes_history_in_llm_messages():
 
 @pytest.mark.asyncio
 async def test_solve_mode_uses_different_system_prompt():
+    from services.agent.src.agent.skills.verify_math import VerifyMathResult
+
     agent = QuantAgent(model_config_path="config/model_config.dev.yaml")
 
     tutor_messages = []
@@ -119,8 +121,10 @@ async def test_solve_mode_uses_different_system_prompt():
             pass
         tutor_messages = mock_llm.call_args.kwargs["messages"]
 
-    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm, \
+         patch.object(agent, "_verify", new_callable=AsyncMock) as mock_verify:
         mock_llm.return_value = mock_litellm_stream(["answer"])
+        mock_verify.return_value = VerifyMathResult(verified=True, computed="ok")
         async for _ in agent.run(make_session(Mode.solve), "A problem"):
             pass
         solve_messages = mock_llm.call_args.kwargs["messages"]

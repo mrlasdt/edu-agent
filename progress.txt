@@ -4,9 +4,7 @@
 - [x] 01 Local dev stack (pyproject.toml, docker-compose, config, .env.example)
 - [x] 02 Agent Registry + Session model + Orchestrator skeleton (19 tests)
 - [x] 03 QuantAgent Tutor+Solve system prompts + streaming (TDD, mocked LLM)
-
-### In Progress
-- [ ] 04 Math Verifier MCP server
+- [x] 04 Math Verifier MCP server (sandbox.py, server.py, verify_math skill, Dockerfile) — 34 tests
 
 ### Pending
 - [ ] 05 Quant Agent Solve mode + retry/escalation
