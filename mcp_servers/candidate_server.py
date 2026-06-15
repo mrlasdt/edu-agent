@@ -23,7 +23,12 @@ from mcp.server.fastmcp import FastMCP
 from evals.loader import load_golden_set
 from shared.src.shared.config import get_settings
 
-mcp = FastMCP("gre-tutor-candidate", instructions="GRE corpus search and practice material")
+mcp = FastMCP(
+    "gre-tutor-candidate",
+    instructions="GRE corpus search and practice material",
+    host="0.0.0.0",
+    port=8091,
+)
 
 
 @mcp.tool()
@@ -129,4 +134,4 @@ async def _get_model_essay(prompt: str, score_tier: int) -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="sse", host="0.0.0.0", port=8091)
+    mcp.run(transport="sse")

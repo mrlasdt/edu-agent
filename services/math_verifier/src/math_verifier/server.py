@@ -19,7 +19,9 @@ from services.math_verifier.src.math_verifier.sandbox import verify_expression
 
 mcp = FastMCP(
     "math-verifier",
-    description="sympy-backed GRE Quant answer verification with 2s timeout",
+    instructions="sympy-backed GRE Quant answer verification with 2s timeout",
+    host="0.0.0.0",
+    port=int(os.getenv("MATH_VERIFIER_PORT", "8090")),
 )
 
 
@@ -46,5 +48,4 @@ async def verify_math(expression: str, expected: str) -> dict:
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("MATH_VERIFIER_PORT", "8090"))
-    mcp.run(transport="sse", host="0.0.0.0", port=port)
+    mcp.run(transport="sse")

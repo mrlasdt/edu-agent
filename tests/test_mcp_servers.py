@@ -32,6 +32,39 @@ from mcp_servers.admin_server import (
 )
 
 
+# ── 0. Server modules import cleanly (guards FastMCP instantiation kwargs) ────
+
+def test_all_mcp_server_modules_import():
+    """
+    Importing each server module instantiates its FastMCP() at module load.
+    This guards against constructor-kwarg drift (e.g. description vs instructions)
+    that unit tests of the tool functions alone would not catch.
+    """
+    import importlib
+
+    for module in (
+        "mcp_servers.candidate_server",
+        "mcp_servers.admin_server",
+        "services.math_verifier.src.math_verifier.server",
+    ):
+        importlib.import_module(module)
+
+
+def test_mcp_servers_bind_host_and_port_via_constructor():
+    """
+    host/port must be set on the FastMCP constructor (stored in .settings), not
+    passed to mcp.run() — run() rejects those kwargs in this SDK version. This
+    guards the SSE launch path that integration-only testing would otherwise miss.
+    """
+    from mcp_servers.candidate_server import mcp as candidate_mcp
+    from mcp_servers.admin_server import mcp as admin_mcp
+    from services.math_verifier.src.math_verifier.server import mcp as verifier_mcp
+
+    assert (candidate_mcp.settings.host, candidate_mcp.settings.port) == ("0.0.0.0", 8091)
+    assert (admin_mcp.settings.host, admin_mcp.settings.port) == ("0.0.0.0", 8092)
+    assert (verifier_mcp.settings.host, verifier_mcp.settings.port) == ("0.0.0.0", 8090)
+
+
 # ── 1. search_corpus ──────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

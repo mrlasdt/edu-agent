@@ -22,11 +22,10 @@ services:
       - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+    # No healthcheck: the qdrant image ships no HTTP client (curl/wget/bash/nc
+    # are all absent), so an in-container HTTP probe is impossible. Nothing in
+    # this compose file depends_on qdrant health; readiness is gated at the app
+    # layer (and via k8s readiness probes in Phase 2).
 
   langfuse:
     image: langfuse/langfuse:2
@@ -40,15 +39,27 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # The langfuse image ships wget (not curl), so the probe uses wget --spider.
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/public/health || exit 1"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/public/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
 
-  # BGE-M3 embedder via Hugging Face Text Embeddings Inference
+  # BGE-M3 embedder via Hugging Face Text Embeddings Inference.
+  #
+  # Opt-in: behind the "embeddings" profile, so the default `docker compose up -d`
+  # brings up only the arm64-native core stack. Start it explicitly with:
+  #   docker compose --profile embeddings up -d
+  #
+  # The TEI CPU image is published amd64-only (no arm64 build on any tag), so on
+  # Apple Silicon it runs under emulation via `platform: linux/amd64`. It is only
+  # needed once the corpus/ingestion services call the real embedding path — the
+  # Phase 1 stubs do not, so it can stay down during early development.
   tei-embedder:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.4
+    platform: linux/amd64
+    profiles: [embeddings]
     command: --model-id BAAI/bge-m3 --port 8080
     ports:
       - "8080:8080"
@@ -71,8 +82,10 @@ services:
       - "8090:8090"
     environment:
       MATH_VERIFIER_PORT: "8090"
+    # FastMCP serves SSE at /sse (no /health route) and the python:3.12-slim base
+    # has no curl — so probe the listening port with python, which is in the image.
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8090/health || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import socket; socket.create_connection(('localhost', 8090), timeout=2).close()\""]
       interval: 5s
       timeout: 5s
       retries: 10

@@ -23,7 +23,12 @@ from mcp.server.fastmcp import FastMCP
 
 from shared.src.shared.config import get_settings
 
-mcp = FastMCP("gre-tutor-admin", instructions="GRE corpus ingestion management")
+mcp = FastMCP(
+    "gre-tutor-admin",
+    instructions="GRE corpus ingestion management",
+    host="0.0.0.0",
+    port=8092,
+)
 
 
 @mcp.tool()
@@ -123,4 +128,4 @@ async def _get_job(job_id: str) -> dict[str, Any] | None:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="sse", host="0.0.0.0", port=8092)
+    mcp.run(transport="sse")
