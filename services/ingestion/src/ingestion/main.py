@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from services.ingestion.src.ingestion.chunker import chunk_text
 from services.ingestion.src.ingestion.parser import is_allowed, parse_bytes
+from shared.src.shared.corpus import ChunkPayload
 
 app = FastAPI(title="Ingestion Service")
 
@@ -56,15 +57,19 @@ async def upload_document(
         text = parse_bytes(content, file.filename or "upload.txt")
         chunks_raw = chunk_text(text)
         chunk_dicts = [
-            {
-                **doc_metadata,
-                "text": c.text,
-                "section_title": c.section_title,
-                "chunk_index": c.chunk_index,
-                "char_start": c.char_start,
-                "char_end": c.char_end,
-                "page_or_section": c.section_title or f"chunk-{c.chunk_index}",
-            }
+            ChunkPayload(
+                text=c.text,
+                tier=tier,
+                test_type=test_type,
+                source_uri=doc_metadata["source_uri"],
+                page_or_section=c.section_title or f"chunk-{c.chunk_index}",
+                section_title=c.section_title,
+                chunk_index=c.chunk_index,
+                char_start=c.char_start,
+                char_end=c.char_end,
+                school_id=doc_metadata["school_id"],
+                candidate_id=doc_metadata["candidate_id"],
+            ).model_dump()
             for c in chunks_raw
         ]
         result = await run_ingestion_pipeline(chunk_dicts, doc_metadata)

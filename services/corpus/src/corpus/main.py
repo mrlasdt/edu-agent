@@ -10,6 +10,7 @@ from services.corpus.src.corpus.retriever import (
     _rrf_merge,
     _tier_tiebreak,
 )
+from shared.src.shared.corpus import ChunkPayload
 
 app = FastAPI(title="Corpus Service")
 
@@ -23,11 +24,34 @@ class RetrieveRequest(BaseModel):
 
 
 class ChunkResult(BaseModel):
+    """
+    Citation-facing projection of ChunkPayload returned to the agent.
+    Deliberately omits ACL ids (school_id / candidate_id) so they never leak
+    into a retrieval response; adds the retrieval score.
+    """
+
     text: str
     tier: str
     source_uri: str
     page_or_section: str
     score: float
+
+
+def to_chunk_result(payload: dict, score: float) -> ChunkResult:
+    """
+    Parse a stored Qdrant payload through the shared ChunkPayload contract and
+    project it into the citation-facing ChunkResult. Validating here means a
+    write-side schema drift is caught at read time rather than producing a
+    malformed citation.
+    """
+    parsed = ChunkPayload.model_validate(payload)
+    return ChunkResult(
+        text=parsed.text,
+        tier=parsed.tier,
+        source_uri=parsed.source_uri,
+        page_or_section=parsed.page_or_section,
+        score=score,
+    )
 
 
 @app.get("/healthz")
@@ -75,5 +99,5 @@ async def search_corpus(
     #   merged = _rrf_merge(dense_results, sparse_results)[:20]
     #   reranked = await reranker.rerank(query, merged)
     #   final = _tier_tiebreak(reranked)[:top_k]
-    #   return [_to_chunk_result(r) for r in final]
+    #   return [to_chunk_result(hit.payload, hit.score).model_dump() for hit in final]
     return []
