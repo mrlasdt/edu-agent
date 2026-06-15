@@ -31,8 +31,8 @@ _ARGUMENT_KEYWORDS = re.compile(
 _MIN_PERSONAL_ESSAYS = 2
 
 
-def _load_prompt(mode: Mode) -> str:
-    path = _PROMPT_ROOT / mode.value / "v1.md"
+def _load_prompt(mode: Mode, version: str) -> str:
+    path = _PROMPT_ROOT / mode.value / f"{version}.md"
     raw = path.read_text()
     return re.sub(r"^---\n.*?\n---\n", "", raw, flags=re.DOTALL).strip()
 
@@ -112,20 +112,21 @@ class AWAgent(BaseAgent):
     async def run(self, session: Session, message: str) -> AsyncGenerator[str | dict, None]:
         chunks = await self._retrieve(session, message)
         chunk_context = _format_chunks_for_context(chunks)
+        version = self._model_config.prompt_version("aw_agent", session.mode.value)
 
         if session.mode == Mode.tutor:
-            async for item in self._tutor_turn(session, message, chunk_context, chunks):
+            async for item in self._tutor_turn(session, message, chunk_context, chunks, version):
                 yield item
         else:
-            async for item in self._solve_turn(session, message, chunk_context, chunks):
+            async for item in self._solve_turn(session, message, chunk_context, chunks, version):
                 yield item
 
     # ── tutor mode ────────────────────────────────────────────────────────────
 
     async def _tutor_turn(
-        self, session: Session, message: str, chunk_context: str, chunks: list
+        self, session: Session, message: str, chunk_context: str, chunks: list, version: str = "v1"
     ) -> AsyncGenerator[str | dict, None]:
-        system_prompt = _load_prompt(Mode.tutor)
+        system_prompt = _load_prompt(Mode.tutor, version)
         messages = _build_messages(session, message, system_prompt, chunk_context)
         model = self._model_config.litellm_model("aw_agent")
         temperature = self._model_config.role("aw_agent").temperature
@@ -159,9 +160,9 @@ class AWAgent(BaseAgent):
     # ── solve mode ────────────────────────────────────────────────────────────
 
     async def _solve_turn(
-        self, session: Session, message: str, chunk_context: str, chunks: list
+        self, session: Session, message: str, chunk_context: str, chunks: list, version: str = "v1"
     ) -> AsyncGenerator[str | dict, None]:
-        system_prompt = _load_prompt(Mode.solve)
+        system_prompt = _load_prompt(Mode.solve, version)
         model = self._model_config.litellm_model("aw_agent")
         temperature = self._model_config.role("aw_agent").temperature
 

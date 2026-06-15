@@ -18,9 +18,9 @@ _PROMPT_ROOT = Path("prompts/quant_agent")
 _MAX_RETRIES = 2
 
 
-def _load_prompt(mode: Mode) -> str:
-    """Load the system prompt for the given mode, stripping YAML frontmatter."""
-    path = _PROMPT_ROOT / mode.value / "v1.md"
+def _load_prompt(mode: Mode, version: str) -> str:
+    """Load the system prompt for the given mode + version, stripping YAML frontmatter."""
+    path = _PROMPT_ROOT / mode.value / f"{version}.md"
     raw = path.read_text()
     return re.sub(r"^---\n.*?\n---\n", "", raw, flags=re.DOTALL).strip()
 
@@ -76,23 +76,21 @@ class QuantAgent(BaseAgent):
         Metadata dict shape:
           {"verifier_fail": bool}   — only emitted in Solve mode
         """
-        obs_meta = build_llm_metadata(
-            trace_id=trace_id,
-            prompt_version="v1",  # loaded from prompt filename in full impl
-        )
+        version = self._model_config.prompt_version("quant_agent", session.mode.value)
+        obs_meta = build_llm_metadata(trace_id=trace_id, prompt_version=version)
         if session.mode == Mode.tutor:
-            async for token in self._tutor_turn(session, message, obs_meta):
+            async for token in self._tutor_turn(session, message, obs_meta, version):
                 yield token
         else:
-            async for item in self._solve_turn(session, message, obs_meta):
+            async for item in self._solve_turn(session, message, obs_meta, version):
                 yield item
 
     # ── tutor mode ────────────────────────────────────────────────────────────
 
     async def _tutor_turn(
-        self, session: Session, message: str, obs_meta: dict | None = None
+        self, session: Session, message: str, obs_meta: dict | None = None, version: str = "v1"
     ) -> AsyncGenerator[str, None]:
-        system_prompt = _load_prompt(Mode.tutor)
+        system_prompt = _load_prompt(Mode.tutor, version)
         messages = _build_messages(session, message, system_prompt)
         model = self._model_config.litellm_model("quant_agent")
         temperature = self._model_config.role("quant_agent").temperature
@@ -112,9 +110,9 @@ class QuantAgent(BaseAgent):
     # ── solve mode ────────────────────────────────────────────────────────────
 
     async def _solve_turn(
-        self, session: Session, message: str, obs_meta: dict | None = None
+        self, session: Session, message: str, obs_meta: dict | None = None, version: str = "v1"
     ) -> AsyncGenerator[str | dict, None]:
-        system_prompt = _load_prompt(Mode.solve)
+        system_prompt = _load_prompt(Mode.solve, version)
         base_messages = _build_messages(session, message, system_prompt)
 
         # Attempt 1 and 2: quant_agent model

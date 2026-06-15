@@ -17,6 +17,9 @@ class ModelRoleConfig(BaseModel):
 
 class ModelConfig(BaseModel):
     roles: dict[str, ModelRoleConfig]
+    # Active prompt version per agent → mode (e.g. {"quant_agent": {"tutor": "v1"}}).
+    # Absent entries default to "v1", so a config without this section stays valid.
+    prompts: dict[str, dict[str, str]] = {}
 
     def role(self, name: str) -> ModelRoleConfig:
         if name not in self.roles:
@@ -27,6 +30,10 @@ class ModelConfig(BaseModel):
         """Return the model string LiteLLM expects, e.g. 'openai/gpt-4o'."""
         cfg = self.role(role)
         return f"{cfg.provider}/{cfg.model}"
+
+    def prompt_version(self, agent: str, mode: str) -> str:
+        """Active prompt version for (agent, mode). Defaults to 'v1' when unset."""
+        return self.prompts.get(agent, {}).get(mode, "v1")
 
 
 @lru_cache

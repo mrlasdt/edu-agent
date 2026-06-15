@@ -55,3 +55,14 @@ roles:
     provider: openai
     model: gpt-4o-mini
     temperature: 0
+
+# Active prompt version per (agent, mode). Loaded by the agents at turn time and
+# reported to Langfuse so quality/cost can be attributed to a specific version.
+# To roll a prompt forward or A/B it: add prompts/<agent>/<mode>/vN.md and point here.
+prompts:
+  quant_agent:
+    tutor: v1
+    solve: v1
+  aw_agent:
+    tutor: v1
+    solve: v1
