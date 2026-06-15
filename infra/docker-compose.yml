@@ -34,17 +34,21 @@ services:
       NEXTAUTH_SECRET: dev-secret-changeme
       NEXTAUTH_URL: http://localhost:3000
       SALT: dev-salt-changeme
+      # Next.js standalone otherwise binds to the container hostname only; force
+      # all interfaces so the port mapping and the in-container probe both reach it.
+      HOSTNAME: "0.0.0.0"
     ports:
       - "3000:3000"
     depends_on:
       postgres:
         condition: service_healthy
-    # The langfuse image ships wget (not curl), so the probe uses wget --spider.
+    # The langfuse image ships wget (not curl). Probe 127.0.0.1 (not localhost,
+    # which resolves to IPv6 [::1] where nothing listens) with a GET, not --spider.
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/public/health || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api/public/health || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 15
 
   # BGE-M3 embedder via Hugging Face Text Embeddings Inference.
   #
