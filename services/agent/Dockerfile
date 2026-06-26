@@ -15,5 +15,7 @@ COPY prompts/ prompts/
 ENV PYTHONPATH=/app PATH="/app/.venv/bin:$PATH"
 USER appuser
 EXPOSE 8002
-HEALTHCHECK --interval=10s --timeout=5s CMD curl -f http://localhost:8002/healthz || exit 1
+# The slim base ships no curl; probe /healthz with python (always present).
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8002/healthz').getcode()==200 else 1)" || exit 1
 CMD ["uvicorn", "services.agent.src.agent.main:app", "--host", "0.0.0.0", "--port", "8002"]

@@ -1,0 +1,13 @@
+# Build context is the repo root; keep it lean so `docker build` doesn't ship
+# hundreds of MB of host-only artifacts to the daemon.
+.venv
+**/node_modules
+.git
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.scratch
+web/dist
+*.log

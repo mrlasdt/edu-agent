@@ -1,3 +1,23 @@
+# Reusable fragments for the four FastAPI app services (gateway/agent/corpus/
+# ingestion). They share inter-service URLs (container DNS, which override any
+# localhost values from ../.env) and bind-mount host source read-only so
+# `uvicorn --reload` picks up edits with no image rebuild.
+x-env-file: &env-file
+  - ../.env
+x-app-env: &app-env
+  CORPUS_SERVICE_URL: http://corpus:8001
+  AGENT_SERVICE_URL: http://agent:8002
+  INGESTION_SERVICE_URL: http://ingestion:8003
+  MATH_VERIFIER_URL: http://math-verifier:8090
+  QDRANT_URL: http://qdrant:6333
+  TEI_EMBEDDER_URL: http://tei-embedder:8080
+  LANGFUSE_HOST: http://langfuse:3000
+x-app-src: &app-src
+  - ../services:/app/services:ro
+  - ../shared:/app/shared:ro
+  - ../config:/app/config:ro
+  - ../prompts:/app/prompts:ro
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -93,6 +113,73 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # ── Application services ────────────────────────────────────────────────────
+  # Built from per-service Dockerfiles. Source is bind-mounted read-only and run
+  # under `uvicorn --reload`, so routine code edits need no rebuild. Rebuild only
+  # when dependencies change (pyproject.toml): `docker compose build`.
+  # depends_on health-gates the startup order: qdrant → corpus/ingestion,
+  # corpus+math-verifier → agent, agent+corpus → gateway.
+
+  corpus:
+    build:
+      context: ..
+      dockerfile: services/corpus/Dockerfile
+    env_file: *env-file
+    environment: *app-env
+    volumes: *app-src
+    ports:
+      - "8001:8001"
+    depends_on:
+      qdrant:
+        condition: service_started
+    command: ["uvicorn", "services.corpus.src.corpus.main:app", "--host", "0.0.0.0", "--port", "8001", "--reload", "--reload-dir", "/app/services", "--reload-dir", "/app/shared"]
+
+  ingestion:
+    build:
+      context: ..
+      dockerfile: services/ingestion/Dockerfile
+    env_file: *env-file
+    environment: *app-env
+    volumes: *app-src
+    ports:
+      - "8003:8003"
+    depends_on:
+      qdrant:
+        condition: service_started
+    command: ["uvicorn", "services.ingestion.src.ingestion.main:app", "--host", "0.0.0.0", "--port", "8003", "--reload", "--reload-dir", "/app/services", "--reload-dir", "/app/shared"]
+
+  agent:
+    build:
+      context: ..
+      dockerfile: services/agent/Dockerfile
+    env_file: *env-file
+    environment: *app-env
+    volumes: *app-src
+    ports:
+      - "8002:8002"
+    depends_on:
+      corpus:
+        condition: service_healthy
+      math-verifier:
+        condition: service_healthy
+    command: ["uvicorn", "services.agent.src.agent.main:app", "--host", "0.0.0.0", "--port", "8002", "--reload", "--reload-dir", "/app/services", "--reload-dir", "/app/shared"]
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: services/gateway/Dockerfile
+    env_file: *env-file
+    environment: *app-env
+    volumes: *app-src
+    ports:
+      - "8000:8000"
+    depends_on:
+      agent:
+        condition: service_healthy
+      corpus:
+        condition: service_healthy
+    command: ["uvicorn", "services.gateway.src.gateway.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/services", "--reload-dir", "/app/shared"]
 
 volumes:
   postgres_data:

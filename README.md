@@ -98,19 +98,41 @@ cp .env.example .env
 # Fill in OPENAI_API_KEY at minimum; all other values have localhost defaults
 ```
 
-### 3. Start infrastructure
+### 3. Start the stack
+
+One command builds and starts everything — infrastructure **and** the four app services:
 
 ```bash
-docker compose -f infra/docker-compose.yml up -d
-docker compose -f infra/docker-compose.yml ps   # all services should be healthy
+docker compose -f infra/docker-compose.yml up -d --build
+docker compose -f infra/docker-compose.yml ps   # services should report healthy
 ```
 
-Services started: Postgres, Qdrant, Langfuse (LLM observability at http://localhost:3000), BGE-M3 TEI embedder, Math Verifier MCP server.
+| Service | URL | Role |
+| --- | --- | --- |
+| gateway | http://localhost:8000 | External API, orchestrator, guardrails |
+| corpus | http://localhost:8001 | Qdrant retrieval (3-tier ACL) |
+| agent | http://localhost:8002 | QuantAgent + AWAgent, skills, critics |
+| ingestion | http://localhost:8003 | Document pipeline (parse → chunk → embed → index) |
+| math-verifier | http://localhost:8090 | sympy verification MCP server (SSE) |
+| langfuse | http://localhost:3000 | LLM observability |
+| postgres / qdrant | 5432 / 6333 | Datastores |
+
+The app services bind-mount the repo source and run `uvicorn --reload`, so code edits apply live with no rebuild. Rebuild only when dependencies (`pyproject.toml`) change:
+
+```bash
+docker compose -f infra/docker-compose.yml build
+```
+
+The BGE-M3 embedder is opt-in (amd64-only, emulated on Apple Silicon):
+
+```bash
+docker compose -f infra/docker-compose.yml --profile embeddings up -d
+```
 
 ### 4. Run tests
 
 ```bash
-# Python tests (156)
+# Python tests (171)
 uv run pytest tests/ -q
 
 # Frontend tests (55)
@@ -120,23 +142,20 @@ cd web && npm test
 uv run python evals/run_eval.py --suite quant --suite aw --sample 0.1
 ```
 
-### 5. Start services
+### 5. Frontend & local overrides (optional)
+
+The app services already run inside the stack (step 3). The two things you may still run on the host:
 
 ```bash
-# Gateway (terminal 1)
-uv run uvicorn services.gateway.src.gateway.main:app --port 8000 --reload
-
-# Agent service (terminal 2)
-uv run uvicorn services.agent.src.agent.main:app --port 8002 --reload
-
-# Corpus service (terminal 3)
-uv run uvicorn services.corpus.src.corpus.main:app --port 8001 --reload
-
-# Ingestion service (terminal 4)
-uv run uvicorn services.ingestion.src.ingestion.main:app --port 8003 --reload
-
-# Web UI (terminal 5)
+# Web UI dev server (not containerized)
 cd web && npm run dev
+```
+
+To debug a single service outside Docker, stop it in the stack and run it directly — the in-container instance frees the port:
+
+```bash
+docker compose -f infra/docker-compose.yml stop agent
+uv run uvicorn services.agent.src.agent.main:app --port 8002 --reload
 ```
 
 ### 6. Ingest the sample corpus

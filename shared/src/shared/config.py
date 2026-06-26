@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     corpus_service_url: str = "http://localhost:8001"
     agent_service_url: str = "http://localhost:8002"
     ingestion_service_url: str = "http://localhost:8003"
-    math_verifier_socket: str = "/tmp/math-verifier.sock"
+    math_verifier_url: str = "http://localhost:8090"
     admin_username: str = "admin"
     admin_password: str = "changeme"
     env: str = "dev"

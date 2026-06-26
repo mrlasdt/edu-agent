@@ -35,7 +35,7 @@ class VerifyMathSkill:
 
     def __init__(self, server_url: str | None = None) -> None:
         settings = get_settings()
-        self._server_url = server_url or f"http://localhost:{settings.__dict__.get('math_verifier_port', 8090)}"
+        self._server_url = server_url or settings.math_verifier_url
 
     async def verify(self, expression: str, expected: str) -> VerifyMathResult:
         """
