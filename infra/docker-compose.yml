@@ -5,6 +5,11 @@
 x-env-file: &env-file
   - ../.env
 x-app-env: &app-env
+  # cryptography's bundled OpenSSL (pulled in by litellm) uses SVE2 instructions
+  # that SIGILL inside Docker Desktop's Apple-Virtualization VM, even though the
+  # guest advertises sve2. Masking OpenSSL's ARM capability detection disables
+  # those code paths. No-op on x86; only disables crypto accel on real arm64.
+  OPENSSL_armcap: "0"
   CORPUS_SERVICE_URL: http://corpus:8001
   AGENT_SERVICE_URL: http://agent:8002
   INGESTION_SERVICE_URL: http://ingestion:8003
