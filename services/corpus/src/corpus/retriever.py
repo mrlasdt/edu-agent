@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from qdrant_client import models
+
 # Tier priority for tiebreak: higher = more specific = preferred
 TIER_PRIORITY = {"candidate": 3, "school": 2, "global": 1}
 
@@ -90,3 +92,23 @@ def _build_acl_filter(candidate_id: str, school_id: str) -> dict[str, Any]:
             },
         ]
     }
+
+
+def build_search_filter(candidate_id: str, school_id: str, test_type: str) -> models.Filter:
+    """
+    Realise the logical filter for a query as a Qdrant models.Filter:
+        test_type = :t  AND  (<three-tier ACL>)
+
+    The ACL branch reuses _build_acl_filter (the unit-tested spec), nested under
+    a top-level `must` alongside the test_type match so a candidate can never
+    retrieve another candidate's — or the wrong test's — chunks.
+    """
+    acl = _build_acl_filter(candidate_id=candidate_id, school_id=school_id)
+    return models.Filter.model_validate(
+        {
+            "must": [
+                {"key": "test_type", "match": {"value": test_type}},
+                {"should": acl["should"]},
+            ]
+        }
+    )

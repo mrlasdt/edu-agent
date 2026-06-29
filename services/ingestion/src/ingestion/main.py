@@ -5,10 +5,13 @@ from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
+from qdrant_client import models
 
 from services.ingestion.src.ingestion.chunker import chunk_text
 from services.ingestion.src.ingestion.parser import is_allowed, parse_bytes
 from shared.src.shared.corpus import ChunkPayload
+from shared.src.shared.embedder import embed_texts
+from shared.src.shared.vectorstore import COLLECTION, ensure_collection, get_qdrant_client
 
 app = FastAPI(title="Ingestion Service")
 
@@ -114,11 +117,26 @@ async def run_ingestion_pipeline(
     chunks: list[dict[str, Any]], metadata: dict[str, Any]
 ) -> dict[str, Any]:
     """
-    Embed chunks via TEI server and index into Qdrant.
-    Stub in unit tests; real implementation wired in integration tests.
+    Embed each chunk's text via TEI (BGE-M3 dense) and upsert into Qdrant with
+    the ChunkPayload as the point payload. The collection is created on first
+    write using the embedding's actual dimension, so it can never mismatch the
+    model. Raises on embedder/Qdrant failure so the upload surfaces the error.
     """
-    # Phase 1 stub: just return a count
-    return {"chunks_indexed": len(chunks)}
+    if not chunks:
+        return {"chunks_indexed": 0}
+
+    vectors = await embed_texts([c["text"] for c in chunks])
+    client = get_qdrant_client()
+    try:
+        await ensure_collection(client, dim=len(vectors[0]))
+        points = [
+            models.PointStruct(id=str(uuid.uuid4()), vector=vector, payload=chunk)
+            for chunk, vector in zip(chunks, vectors)
+        ]
+        await client.upsert(collection_name=COLLECTION, points=points)
+    finally:
+        await client.close()
+    return {"chunks_indexed": len(points)}
 
 
 async def enqueue_ingestion_job(
