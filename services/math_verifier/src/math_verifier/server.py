@@ -14,6 +14,8 @@ from __future__ import annotations
 import os
 
 from mcp.server.fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from services.math_verifier.src.math_verifier.sandbox import verify_expression
 
@@ -45,6 +47,24 @@ async def verify_math(expression: str, expected: str) -> dict:
         "computed": result.computed,
         "error": result.error,
     }
+
+
+@mcp.custom_route("/tools/verify_math", methods=["POST"])
+async def verify_math_http(request: Request) -> JSONResponse:
+    """
+    Plain-HTTP facade over the verify_math tool, called by the Agent Service's
+    verify-math Skill (POST JSON {expression, expected}). The MCP SSE transport
+    has no REST tool route, so this exposes the same sympy-backed logic for
+    cluster-internal service-to-service calls. Claude Desktop still uses the
+    MCP tool above.
+    """
+    body = await request.json()
+    result = await verify_expression(
+        str(body.get("expression", "")), str(body.get("expected", ""))
+    )
+    return JSONResponse(
+        {"verified": result.verified, "computed": result.computed, "error": result.error}
+    )
 
 
 if __name__ == "__main__":
