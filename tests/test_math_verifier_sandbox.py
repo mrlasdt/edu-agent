@@ -121,3 +121,13 @@ async def test_value_list_mismatch_and_prose_are_not_verified() -> None:
     assert (await verify_expression("2, 4", "2, 3")).verified is False
     prose = await verify_expression("The values of x are 2 and 3", "2, 3")
     assert prose.verified is False and prose.error is not None
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"), [("binomial(5, 2)", "10"), ("gcd(12, 18)", "6")]
+)
+async def test_multi_argument_function_calls_are_not_value_lists(
+    expression: str, expected: str
+) -> None:
+    result = await verify_expression(expression, expected)
+    assert result.verified is True and result.error is None

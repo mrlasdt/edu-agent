@@ -34,8 +34,20 @@ def _parse_safe(s: str) -> sp.Expr | None:
 def _value_list(s: str) -> list[str]:
     """Split a value list ("2, 3", "x=2 or x=3", "[2, 3]") into bare value strings."""
     s = s.strip().lstrip("[{").rstrip("]}]")
-    parts = re.split(r"\bor\b|\band\b|[,;]", s, flags=re.IGNORECASE)
-    return [re.sub(r"^\s*\w+\s*=\s*", "", p.strip()) for p in parts if p.strip()]
+    parts: list[str] = []
+    depth = 0
+    start = 0
+    for i, ch in enumerate(s):
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif ch in ",;" and depth == 0:
+            parts.append(s[start:i])
+            start = i + 1
+    parts.append(s[start:])
+    pieces = [q for part in parts for q in re.split(r"\bor\b|\band\b", part, flags=re.IGNORECASE)]
+    return [re.sub(r"^\s*\w+\s*=\s*", "", q.strip()) for q in pieces if q.strip()]
 
 
 def _normalize_expected(expected: str) -> set[sp.Expr]:
