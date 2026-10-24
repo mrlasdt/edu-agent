@@ -23,3 +23,7 @@ Accepted.
 - **No "human" surface in v1.** No human-grader UI, no labeling pipeline, no rubric-tool product. The Human review queue is the integration point that lets us add those things in v2 without re-architecting eval.
 - **Telemetry is structured and trace-IDed from day one.** Per-turn logs capture input, mode, agent invoked, skills invoked, retries, escalations, output, judge scores, latency, cost, and trace ID. Without trace IDs, multi-step turn debugging is impossible.
 - **Drift detection runs against three signals**: avg AW rubric score (24h window vs 7-day baseline), `verifier-fail` rate (24h window vs baseline), and per-turn cost (rolling). Alerts fire to the dashboard, sample items get added to the Human review queue.
+
+## Amendment: agent-in-the-loop eval (implemented)
+
+The first implementation graded the golden answer against itself (Quant) and scored stored essays (AW), so it never exercised the agent. `evals/agent_eval/` now runs the real agent and judges its output; see the README "Eval pipeline" section for what is and is not measured. Spend is enforced by a persisted cumulative ledger (20 USD ceiling, checked before every call) rather than a per-run kill switch. Providers are free OpenRouter models first with OpenAI as an explicit fallback; the judge interface is typed (yes/no, score) so the optional jev decision model fits behind it. The Sonnet/Haiku judge tiers and the 24-prompt/150-item golden sets described above remain targets, not current state.

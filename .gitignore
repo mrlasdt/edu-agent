@@ -23,3 +23,7 @@ build/
 
 # Ralph Loop state
 .claude/ralph-loop.local.md
+
+# Agent-in-the-loop eval: spend ledger and run reports (never commit)
+.eval-ledger/
+.eval-runs/
