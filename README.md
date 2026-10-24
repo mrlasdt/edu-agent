@@ -253,8 +253,8 @@ plan -> route -> generator expert -> verify tools -> critic -> accept
 ```
 
 - **Planner and router**: an LLM planner picks the question type and constraints (a type fixed by the request wins; an unusable reply falls back to a keyword rule); the type selects one of three experts (numeric entry, multiple choice, quantitative comparison), each with its own versioned prompt in `prompts/question_pipeline/`.
-- **Verifier tools** (deterministic): structure, leak (answer stated or marked, or every keyed value already in the stem), a sympy solver that recomputes the key through the existing verify-math skill, and a distractor check (keyed options are exactly the solution values; a comparison keyed D must really change sign). The generator never grades its own key.
-- **Critic**: an LLM wording check for ambiguity and answer leaks, run only on items that passed the tools.
+- **Verifier tools** (deterministic): structure, leak (answer stated or marked in the stem or options), a sympy solver that recomputes the key through the existing verify-math skill, and a distractor check (keyed options are exactly the solution values; a comparison keyed D must really change sign). The generator never grades its own key.
+- **Critic**: an LLM wording check for ambiguity and answer leaks, run only on items that passed the tools. It fails closed: an unparseable reply counts as a failed check, so the item is retried and then escalated.
 - **Revise loop**: failed checks become feedback to the same expert; after `max_attempts` the item is escalated instead of emitted.
 - **Trace**: every result carries a `TraceEvent` per step (plan, routing, each attempt's item, every check result, feedback, model, latency).
 - **Provider layer**: roles `question_planner`, `question_generator`, `question_critic` in `config/model_config.dev.yaml`, called through `litellm`, so the eval harness's metered transport (free OpenRouter first, OpenAI fallback, 20 USD ledger checked before every call) applies unchanged.
