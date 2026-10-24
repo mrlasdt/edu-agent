@@ -7,6 +7,7 @@ from typing import Any
 
 import litellm
 
+from services.agent.src.agent.answers import extract_final_answer, normalize_answer
 from services.agent.src.agent.base import BaseAgent
 from services.agent.src.agent.skills.verify_math import VerifyMathResult, VerifyMathSkill
 from shared.src.shared.config import load_model_config
@@ -196,15 +197,12 @@ class QuantAgent(BaseAgent):
 
     def _extract_final_answer(self, text: str) -> str | None:
         """
-        Extract the final answer from the model's output text.
-        Looks for the pattern '**Answer: <value>**' from the Solve prompt format.
-        Falls back to the last non-empty line.
+        Extract the final answer from the model's output text, reduced to a bare value list.
+        Looks for '**Answer: <value>**' from the Solve prompt format, then an 'Answer:' line,
+        then falls back to the last non-empty line (see agent.answers).
         """
-        match = re.search(r"\*\*Answer:\s*(.+?)\*\*", text, re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
-        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-        return lines[-1] if lines else None
+        raw = extract_final_answer(text)
+        return normalize_answer(raw) if raw else None
 
     async def _verify(self, full_text: str, claimed_answer: str) -> VerifyMathResult:
         """

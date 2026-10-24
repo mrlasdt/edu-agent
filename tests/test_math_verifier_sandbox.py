@@ -106,3 +106,28 @@ async def test_timeout_returns_timeout_error():
 async def test_computed_field_populated_on_success():
     result = await verify_expression("x**2 - 5*x + 6 = 0", "2, 3")
     assert result.computed != ""
+
+
+# ── value lists as the expression (answer handoff) ───────────────────────────
+
+
+@pytest.mark.parametrize("answer", ["2, 3", "2,3", "x = 2 or x = 3", "2 and 3", "[2, 3]"])
+async def test_value_list_verifies_against_itself_and_matching_list(answer: str) -> None:
+    result = await verify_expression(answer, "3, 2")
+    assert result.verified is True and result.error is None
+
+
+async def test_value_list_mismatch_and_prose_are_not_verified() -> None:
+    assert (await verify_expression("2, 4", "2, 3")).verified is False
+    prose = await verify_expression("The values of x are 2 and 3", "2, 3")
+    assert prose.verified is False and prose.error is not None
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"), [("binomial(5, 2)", "10"), ("gcd(12, 18)", "6")]
+)
+async def test_multi_argument_function_calls_are_not_value_lists(
+    expression: str, expected: str
+) -> None:
+    result = await verify_expression(expression, expected)
+    assert result.verified is True and result.error is None

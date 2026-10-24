@@ -22,6 +22,7 @@ import httpx
 import litellm
 
 from evals.agent_eval.budget import estimate_cost, estimate_tokens
+from evals.agent_eval.cache import cache_key
 from evals.agent_eval.transport import MeteredTransport, tagged
 
 JEV_MODEL = "typesafe/jev-1.14"
@@ -109,28 +110,36 @@ class JevJudge:
 
     async def _decide(self, q: JudgeQuestion, question: dict[str, Any]) -> dict[str, Any]:
         state = q.material
-        # jev bills input tokens only, so the projection is exact up to the token estimate
-        self._transport.ledger.ensure_capacity(
-            estimate_jev_cost(len(q.instructions) + len(state))
-        )
-        start = time.perf_counter()
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(
-                JEV_URL,
-                headers={"Authorization": f"Bearer {self._key}"},
-                json={"model": JEV_MODEL, "state": state, "questions": {"q": question}},
+        cache = self._transport.cache
+        key = cache_key(model=JEV_MODEL, state=state, question=question)
+        cached = cache.get(key) if cache else None
+        if cached is not None:
+            body: dict[str, Any] = cached
+        else:
+            # jev bills input tokens only, so the projection is exact up to the token estimate
+            self._transport.ledger.ensure_capacity(
+                estimate_jev_cost(len(q.instructions) + len(state))
             )
-            resp.raise_for_status()
-            body: dict[str, Any] = resp.json()
-        usage = body.get("usage", {})
-        self._transport.record_external(
-            "judge",
-            JEV_MODEL,
-            int(usage.get("input_tokens") or estimate_tokens(q.instructions + state)),
-            int(usage.get("output_tokens", 0)),
-            float(usage.get("cost", 0.0)),
-            time.perf_counter() - start,
-        )
+            start = time.perf_counter()
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(
+                    JEV_URL,
+                    headers={"Authorization": f"Bearer {self._key}"},
+                    json={"model": JEV_MODEL, "state": state, "questions": {"q": question}},
+                )
+                resp.raise_for_status()
+                body = resp.json()
+            usage = body.get("usage", {})
+            self._transport.record_external(
+                "judge",
+                JEV_MODEL,
+                int(usage.get("input_tokens") or estimate_tokens(q.instructions + state)),
+                int(usage.get("output_tokens", 0)),
+                float(usage.get("cost", 0.0)),
+                time.perf_counter() - start,
+            )
+            if cache:
+                cache.put(key, body)
         answers = body.get("answers", body)
         answer = answers.get("q") if isinstance(answers, dict) else None
         if not isinstance(answer, dict):

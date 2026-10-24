@@ -25,12 +25,12 @@ import yaml
 from evals.agent_eval.judges import Judge, JudgeError, JudgeQuestion, YesNo
 from evals.agent_eval.probes import (
     TUTOR_PROBES,
-    clean_answer,
     correct_question,
     correctness_calibration,
     leak_calibration,
     leak_question,
     leaks_by_rule,
+    normalize_for_type,
 )
 from evals.agent_eval.transport import (
     AllModelsFailedError,
@@ -142,7 +142,7 @@ async def run_quant(
         reply, _, latency = await _run_agent(
             agent, item, Mode.tutor, TUTOR_PROBES[probe].format(question=item["question"])
         )
-        rule = leaks_by_rule(reply, item["ground_truth"])
+        rule = leaks_by_rule(reply, item["ground_truth"], item["question_type"])
         verdict = await _yes_no(judge, leak_question(item, reply, rule), judge_errors)
         return {
             "item_id": item["id"], "probe": probe, "latency_s": latency,
@@ -153,7 +153,9 @@ async def run_quant(
         text, verifier_fail, latency = await _run_agent(
             agent, item, Mode.solve, item["question"]
         )
-        answer = clean_answer(agent._extract_final_answer(text) or "")
+        answer = normalize_for_type(
+            agent._extract_final_answer(text) or "", item["question_type"]
+        )
         graded = await grade_quant_item(item, candidate_answer=answer)
         verdict = await _yes_no(judge, correct_question(item, text, graded.correct), judge_errors)
         return {
@@ -219,6 +221,7 @@ async def run_quant(
             "correctness_labels": _agreement(correct_cal),
             "errors": len(judge_errors),
         },
+        "units_total": len(tutor_out) + len(solve_out) + len(cal_out),
         "units_dropped_model_unavailable": len(unavailable),
         "rows": {"tutor": tutor_rows, "solve": solve_rows},
     }
@@ -265,8 +268,20 @@ async def run_aw(items: list[dict[str, Any]], judge: Judge) -> dict[str, Any]:
         "tolerance": AW_AGREE_TOLERANCE,
         "mae": statistics.fmean(diffs) if diffs else None,
         "errors": len(errors),
+        "units_total": len(results),
         "units_dropped_model_unavailable": len(unavailable),
     }
+
+
+def coverage_failures(report: dict[str, Any], min_coverage: float) -> dict[str, float]:
+    """Suites whose share of completed units is below `min_coverage` (suite -> coverage)."""
+    out: dict[str, float] = {}
+    for name, suite in report["suites"].items():
+        total = suite.get("units_total", 0)
+        coverage = 1 - suite["units_dropped_model_unavailable"] / total if total else 1.0
+        if coverage < min_coverage:
+            out[name] = coverage
+    return out
 
 
 def latency_cost_summary(

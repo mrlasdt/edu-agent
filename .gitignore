@@ -27,3 +27,4 @@ build/
 # Agent-in-the-loop eval: spend ledger and run reports (never commit)
 .eval-ledger/
 .eval-runs/
+.eval-cache/
