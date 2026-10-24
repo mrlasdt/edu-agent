@@ -11,7 +11,8 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from evals.exam_set import ielts_reading, sat_math
+from evals.agent_eval.ielts_writing import select_items
+from evals.exam_set import ielts_reading, ielts_writing_prompts, sat_math
 from evals.exam_set.local_store import (
     band_histogram,
     load_manifest,
@@ -86,7 +87,7 @@ def test_gre_loader_is_unchanged():
 
 def test_committed_exam_families_load_and_are_committable():
     items = load_exam_items()
-    assert {i.skill for i in items} == {"sat_math", "reading"}
+    assert {i.skill for i in items} == {"sat_math", "reading", "writing_t2"}
     assert items and all(i.committable() for i in items)
     for family in EXAM_FAMILIES:
         assert (_GOLDEN_DIR / f"{family}.jsonl").exists()
@@ -99,7 +100,7 @@ def test_local_items_load_only_when_asked(tmp_path: Path):
     )
     assert not [i for i in load_exam_items(local_directory=tmp_path) if i.id == "syn1"]
     loaded = load_exam_items(include_local=True, local_directory=tmp_path, skill="writing_t2")
-    assert [i.id for i in loaded] == ["syn1"]
+    assert [i.id for i in loaded if i.source.kind == "third_party_local"] == ["syn1"]
     missing = tmp_path / "missing"
     assert load_exam_items(include_local=True, local_directory=missing, exam="gre") == []
 
@@ -235,14 +236,34 @@ def test_sat_covers_the_four_public_domains():
     }
 
 
+def test_sat_templates_never_emit_malformed_signs_and_agree_with_the_verifier():
+    for spec in sat_math.TEMPLATES:
+        for seed in range(200):
+            item = sat_math.generate(spec.id, seed)
+            assert "+ -" not in item.prompt and "- -" not in item.prompt, (spec.id, seed)
+            assert item.expression is not None and item.ground_truth is not None
+            result = asyncio.run(verify_expression(item.expression, item.ground_truth))
+            assert result.verified, (spec.id, seed, item.expression, item.ground_truth)
+
+
 # ── IELTS Reading ────────────────────────────────────────────────────────────
 
 
-def test_reading_evidence_is_in_the_passage_and_answers_in_evidence():
-    items = [i for i in load_exam_items() if i.skill == "reading"]
+def reading_items() -> list[ExamItem]:
+    return [i for i in load_exam_items() if i.skill == "reading"]
+
+
+def test_committed_reading_matches_generator_and_covers_five_passages():
+    items = reading_items()
     assert [i.model_dump() for i in items] == [i.model_dump() for i in ielts_reading.generate_all()]
-    assert len(items) == 6
-    for item in items:
+    assert len({i.extras["passage_id"] for i in items}) >= 5
+    assert {i.task_type for i in items} == {
+        "tfng", "sentence_completion", "multiple_choice_single", "matching_headings",
+    }
+
+
+def test_reading_evidence_is_in_the_passage_and_answers_in_evidence():
+    for item in reading_items():
         assert item.passage is not None and item.ground_truth is not None
         assert item.label_provenance.tier == LabelTier.author_key
         if item.task_type == "tfng":
@@ -250,8 +271,46 @@ def test_reading_evidence_is_in_the_passage_and_answers_in_evidence():
             if item.ground_truth != "NOT GIVEN":
                 assert item.evidence is not None and item.evidence in item.passage
             else:
-                assert item.evidence is None
+                assert item.evidence is None and item.extras["key_note"]
         else:
             assert item.evidence is not None and item.evidence in item.passage
-            assert item.ground_truth in item.evidence
+        if item.task_type == "sentence_completion":
+            assert item.ground_truth in item.evidence  # type: ignore[operator]
             assert len(item.ground_truth.split()) <= ielts_reading.WORD_LIMIT
+
+
+def test_reading_choice_items_have_a_key_among_the_choices():
+    for item in reading_items():
+        if item.task_type == "multiple_choice_single":
+            assert item.choices is not None and sorted(item.choices) == ["A", "B", "C", "D"]
+        if item.task_type == "matching_headings":
+            assert item.choices is not None and len(item.choices) >= 4
+            assert item.passage is not None and item.evidence is not None
+            paragraph = item.passage.split("\n\n")[item.extras["paragraph"] - 1]
+            assert item.evidence in paragraph
+        if item.choices is not None:
+            assert item.answer_choice == item.ground_truth in item.choices
+
+
+def test_writing_prompts_are_unscored_and_ignored_by_the_writing_grader():
+    prompts = [i for i in load_exam_items() if i.skill == "writing_t2"]
+    assert [i.model_dump() for i in prompts] == [
+        i.model_dump() for i in ielts_writing_prompts.generate_all()
+    ]
+    assert {i.extras["essay_type"] for i in prompts} == {
+        "opinion", "discuss_both_views", "advantages_disadvantages", "problem_solution",
+    }
+    for item in prompts:
+        assert item.response is None and item.labels is None and item.committable()
+        assert item.label_provenance.tier == LabelTier.author_key
+    _, picked, _ = select_items(prompts, "best", 100, 0)
+    assert picked == []
+
+
+def test_committed_ielts_items_outnumber_sat_items_with_unique_ids():
+    items = load_exam_items()
+    ielts = [i for i in items if i.exam == "ielts"]
+    sat = [i for i in items if i.exam == "sat"]
+    assert len(ielts) >= len(sat) and len(ielts) >= 36
+    assert len({i.id for i in items}) == len(items)
+    assert all(i.committable() for i in items)

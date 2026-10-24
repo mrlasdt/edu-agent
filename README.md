@@ -10,7 +10,7 @@ The backend services are built and covered by 231 Python tests (mocked LLM and Q
 - **RAG is dense-only.** The sparse vector, RRF hybrid and BGE reranker from ADR-0004 are designed but not wired.
 - **`/chat` applies only the content-safety guardrail.** The enrichment and complexity steps in the Orchestrator are stubs. The answer-leak, PII, rate-limit and citation guardrails are implemented and unit tested but not yet applied in `/chat`.
 - **Agent metadata is dropped.** `/generate` streams text only, so sources and verifier events never reach a UI.
-- **Evals are small and CI never scores a real model.** 5 Quant and 2 AW golden GRE items, plus 33 SAT Math and 6 IELTS Reading items (see "IELTS and SAT golden sets"); the IELTS Writing target needs third-party data downloaded locally and CI has none. The agent-in-the-loop harness (below) runs the real Quant agent, but CI only runs it offline against a fake model; real runs are manual and there is no measured baseline checked in.
+- **Evals are small and CI never scores a real model.** 5 Quant and 2 AW golden GRE items, plus 33 SAT Math, 41 IELTS Reading and 8 IELTS Writing prompt items (see "IELTS and SAT golden sets"); the IELTS Writing target needs third-party data downloaded locally and CI has none. The agent-in-the-loop harness (below) runs the real Quant agent, but CI only runs it offline against a fake model; real runs are manual and there is no measured baseline checked in.
 - **The question-generation pipeline is a library plus an eval target.** It is not exposed over HTTP, has no UI, and has only been run for real on a handful of items on free models (see "Question-generation pipeline").
 - **No corpus is checked in**, and the k8s manifests have never been applied to a cluster.
 
@@ -252,9 +252,9 @@ Known product gap the harness exposes: `QuantAgent._verify` still checks the age
 | `captain_blind` | project-owner scores under a blind protocol | single rater, not an examiner (none exist yet) |
 | `site_or_model_weak` | writing9 site/model scores (Hugging Face) | noisy (about 1.4 bands off an LLM grader per the dataset card); large-n statistics and judge calibration only, never examiner truth |
 | `solver` | sympy plus a second independent computation, which must agree | machine-verified (SAT Math) |
-| `author_key` | written by the item's author, an agent, not checked by a human | the IELTS Reading keys; the Not Given item may be arguable |
+| `author_key` | written by the item's author, an agent, not checked by a human | the IELTS Reading keys (Not Given items may be arguable) and the unscored Writing prompts |
 
-**Committed (original items only):** `evals/golden/sat_math.jsonl` (33 items from 11 original templates, 4 content domains; template id and seed are stored and `regenerate` rebuilds each item exactly; every item also passes the product's sympy verifier) and `evals/golden/ielts_reading.jsonl` (6 items on one original passage with evidence sentences). Regenerate with `uv run python -m evals.exam_set generate-sat` / `generate-reading`.
+**Committed (original items only):** `evals/golden/sat_math.jsonl` (33 items from 11 original templates, 4 content domains; template id and seed are stored and `regenerate` rebuilds each item exactly; every item also passes the product's sympy verifier) `evals/golden/ielts_reading.jsonl` (41 items on 5 original passages: True/False/Not Given, sentence completion within two words, multiple choice and matching headings, every key citing an evidence sentence) and `evals/golden/ielts_writing_prompts.jsonl` (8 original Task 2 prompts across opinion, discuss both views, advantages and disadvantages, and problem and solution; prompt only, no response or labels, so the Writing grader ignores them). The committed set has 49 IELTS items against 33 SAT items. Regenerate with `uv run python -m evals.exam_set generate-sat` / `generate-reading` / `generate-writing`.
 
 **Local only, never committed:** third-party data goes to the gitignored `evals/golden/local/` (override with `--local-dir` or `$EDU_GOLDEN_LOCAL_DIR`), with `manifest.json` listing each source, licence status, label tier, counts and hash.
 

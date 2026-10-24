@@ -39,12 +39,12 @@ Moderation API).
 - IELTS and SAT golden sets (evals/exam_set, ADR-0013): shared item schema with label tiers,
   gitignored local dir + manifest for third-party data, writing9 importer (site_or_model_weak),
   Cambridge-book importer (examiner tier; built on synthetic fixtures only, untested on a real
-  book), 33 original SAT Math items (sympy + independent second computation), 6 original IELTS
-  Reading items (author keys), and an IELTS Writing Task 2 rubric grader suite
+  book), 33 original SAT Math items (sympy + independent second computation), 41 original IELTS
+  Reading items on 5 passages and 8 prompt-only Writing Task 2 items (author keys), and an IELTS Writing Task 2 rubric grader suite
   (--suite ielts_writing: within-0.5, QWK, per-criterion, always with tier and n)
 
 ### Current counts
-- Python tests: 362 passing (uv run pytest tests/ -q)
+- Python tests: 367 passing (uv run pytest tests/ -q)
 - Frontend (Vitest) tests: 55 passing (cd web && npm test)
 - CI checks: ruff, mypy (strict), pytest, web typecheck + vitest
 

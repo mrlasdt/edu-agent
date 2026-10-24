@@ -37,7 +37,7 @@ def sample_golden_set(
 
 
 # Committed IELTS/SAT families (original or CC BY items only). The GRE files above are untouched.
-EXAM_FAMILIES = ("sat_math", "ielts_reading")
+EXAM_FAMILIES = ("sat_math", "ielts_reading", "ielts_writing_prompts")
 
 
 def load_exam_items(

@@ -3,6 +3,7 @@ Golden-set extension CLI.
 
   python -m evals.exam_set generate-sat                     # rewrite sat_math.jsonl
   python -m evals.exam_set generate-reading                 # rewrite ielts_reading.jsonl
+  python -m evals.exam_set generate-writing                 # rewrite ielts_writing_prompts.jsonl
   python -m evals.exam_set import-writing9 --limit 1200     # into evals/golden/local/
   python -m evals.exam_set import-cambridge --dir <folder>  # own book files, local OCR
   python -m evals.exam_set manifest                         # print the local manifest
@@ -21,7 +22,7 @@ from pathlib import Path
 
 import httpx
 
-from evals.exam_set import ielts_reading, sat_math
+from evals.exam_set import ielts_reading, ielts_writing_prompts, sat_math
 from evals.exam_set.importers import cambridge, writing9
 from evals.exam_set.local_store import load_manifest, local_dir, write_items
 from evals.loader import load_exam_items
@@ -35,6 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("generate-sat")
     sub.add_parser("generate-reading")
+    sub.add_parser("generate-writing")
     w9 = sub.add_parser("import-writing9")
     w9.add_argument("--limit", type=int, default=1200)
     w9.add_argument("--split", choices=list(writing9.SPLITS), default="train")
@@ -53,6 +55,11 @@ def main(argv: list[str] | None = None) -> int:
         count, digest = write_items(GOLDEN_DIR / ielts_reading.FILE_NAME,
                                     ielts_reading.generate_all())
         print(json.dumps({"file": ielts_reading.FILE_NAME, "items": count, "sha256": digest}))
+    elif args.cmd == "generate-writing":
+        count, digest = write_items(GOLDEN_DIR / ielts_writing_prompts.FILE_NAME,
+                                    ielts_writing_prompts.generate_all())
+        print(json.dumps({"file": ielts_writing_prompts.FILE_NAME, "items": count,
+                          "sha256": digest}))
     elif args.cmd == "import-writing9":
         with httpx.Client(timeout=60.0, follow_redirects=True) as client:
             record, stats = writing9.import_writing9(

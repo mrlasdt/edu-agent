@@ -221,7 +221,7 @@ def t_parabola_minimum(rng: random.Random) -> Draft:
     return Draft(
         question=(
             f"For all real x, what is the minimum value of the function "
-            f"f(x) = x^2 - {2 * h}x + {h * h + k}?"
+            f"f(x) = x^2 - {2 * h}x {_signed(h * h + k)}?"
         ),
         expression=f"{h * h + k} - {h}**2",
         primary=primary,
