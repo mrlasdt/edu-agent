@@ -10,7 +10,7 @@ The backend services are built and covered by 189 Python tests (mocked LLM and Q
 - **RAG is dense-only.** The sparse vector, RRF hybrid and BGE reranker from ADR-0004 are designed but not wired.
 - **`/chat` applies only the content-safety guardrail.** The enrichment and complexity steps in the Orchestrator are stubs. The answer-leak, PII, rate-limit and citation guardrails are implemented and unit tested but not yet applied in `/chat`.
 - **Agent metadata is dropped.** `/generate` streams text only, so sources and verifier events never reach a UI.
-- **Evals are small and not run in CI against a real model.** 5 Quant and 2 AW golden items; `evals/baseline.json` is hand-written, not measured.
+- **Evals are small and CI never scores a real model.** 5 Quant and 2 AW golden items. The agent-in-the-loop harness (below) runs the real Quant agent, but CI only runs it offline against a fake model; real runs are manual and there is no measured baseline checked in.
 - **No corpus is checked in**, and the k8s manifests have never been applied to a cluster.
 
 The sections below describe the intended design; see `progress.txt` for the current state of each piece.
@@ -151,8 +151,8 @@ uv run pytest tests/ -q
 # Frontend tests (55)
 cd web && npm test
 
-# Eval slice (Quant + AW, 10% sample — requires OPENAI_API_KEY)
-uv run python evals/run_eval.py --suite quant --suite aw --sample 0.1
+# Eval pipeline check (offline fake model, no network, no keys)
+uv run python -m evals.agent_eval --mode offline
 ```
 
 ### 5. Frontend & local overrides (optional)
@@ -209,18 +209,34 @@ Add to Claude Desktop's `claude_desktop_config.json`:
 
 ## Eval pipeline
 
-```bash
-# Full run (requires OPENAI_API_KEY)
-uv run python evals/run_eval.py --suite quant --suite aw --sample 1.0
+The eval runs the **real agent** and judges what it produced (`evals/agent_eval/`):
 
-# CI-style 10% sample
-uv run python evals/run_eval.py --suite quant --suite aw --sample 0.1
+```bash
+uv run python -m evals.agent_eval                  # dry run (default): prints the plan, no calls
+uv run python -m evals.agent_eval --mode offline   # whole pipeline on a deterministic fake model, no network
+# live: free OpenRouter models, keys only via the environment (never printed or stored)
+set -a; . path/to/keys.env; set +a
+uv run python -m evals.agent_eval --mode live --provider free --max-items 5
+uv run python -m evals.agent_eval --mode live --provider free+openai   # free first, OpenAI as fallback
+uv run python -m evals.agent_eval --mode live --judge jev              # optional paid jev judge
 ```
 
-- **Quant judge**: deterministic sympy comparison — no LLM call
-- **AW judge**: GPT-4o prompted with ETS rubric + 6 anchor essays per prompt; calibrates score drift on every run
-- **Regression check**: exits non-zero when any metric drops >5% vs `evals/baseline.json`
-- **Human review queue**: boundary AW scores (3.5/4.5) and `verifier_fail` events are flagged; `gotohuman` integration in v2
+What it measures (Quant, `QuantAgent` unmodified, run on golden-set questions):
+
+- **Answer-leak rate (tutor mode)**: two probes per question, a hint request and an adversarial "just tell me the answer". Reported two ways: a rule detector (every golden answer value appears as a token; an upper bound, since a stray step number can match) and the judge's yes/no verdict.
+- **Solve accuracy**: the agent's final answer is graded by the sympy sandbox against the golden *expression*, never against the agent's own claim. Also the product verifier's `verifier_fail` rate.
+- **Judge agreement with golden labels**: calibration probes with known labels (the golden answer vs a perturbed wrong one; a hint that states the answer vs one that does not) plus the judge's agreement with the rule/sympy labels on the agent's real outputs. For AW, the judge scores each published anchor essay with that anchor held out of its context and is compared with the anchor's score (within 1 point, and MAE).
+- **Cost and latency**: per run and per call, split into agent vs judge calls (tokens, USD, p50/p95 call latency, mean agent turn latency).
+
+What it does **not** measure: AW agent output (the AW agent needs the corpus service; AW is judge calibration only), multi-turn tutoring, retrieval quality, or anything the 5-item Quant slice is too small to support statistically. Offline numbers are plumbing checks, not quality. The free tier is heavily rate-limited: in the one smoke run (2 Quant items, free models, 0 USD) most units were dropped as unavailable and are counted in `units_dropped_model_unavailable`, so treat any free-model number as noisy and check that count. Real calls are made non-streaming and replayed to the agent as a stream, so time-to-first-token is not measured.
+
+Providers and spend: the free chain is `openrouter/free` then pinned free models; `--provider free+openai` appends `openai/gpt-4o-mini` as the fallback for final runs. A persisted ledger (`.eval-ledger/ledger.json`, gitignored; `--ledger` to relocate) caps cumulative spend at 20 USD (`--ceiling`); each call is projected at worst case and aborts the run before it could exceed the cap. Free models count as zero. The jev judge (`typesafe/jev-1.14`, OpenRouter decisions API, typed yes/no and score answers, no explanations) is paid and off by default; its request/response mapping follows OpenRouter's docs but has not been run live. Reports (with model outputs) go to `.eval-runs/` (gitignored); only aggregates are printed.
+
+Known product gap the harness exposes: `QuantAgent._verify` checks the agent's answer against itself (`expected=claimed_answer`), so its `verifier_fail` rate is high even on correct multi-value answers. Fixing it is not part of the eval work.
+
+- **Regression check**: `--baseline file.json` fails the run (exit 1) when a higher-is-better metric drops more than 5% vs that file; `--write-baseline` records measured metrics. No baseline is checked in because none has been measured yet.
+- **Human review queue** (`evals/human_review_queue.py`): exists as a module with unit tests but is not wired into the harness.
+- `evals/judges/aw_judge.py` and `quant_judge.py` remain as judge building blocks; `grade_quant_item` requires an externally supplied candidate answer and no longer defaults to the golden answer.
 
 ## Guardrails (5 layers)
 
@@ -250,7 +266,7 @@ kubectl rollout status deployment/agent
 ```
 
 **CI/CD** (`.github/workflows/`):
-- Every PR: ruff + mypy + pytest, web typecheck + unit tests, plus a path-gated eval slice (10% sample, only when prompts/agents/evals/config change; needs `OPENAI_API_KEY`, non-blocking)
+- Every PR: ruff + mypy + pytest, web typecheck + unit tests, plus a path-gated offline eval pipeline check (fake model, no secrets, non-blocking; it validates the harness, not model quality)
 - Merge to main: build images → push to GHCR → deploy to staging
 - Tagged release: 5% canary → 30-min monitor → auto-rollback on error spike → promote to 100%
 

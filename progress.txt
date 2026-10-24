@@ -47,7 +47,9 @@ Moderation API).
   and citation guardrails are implemented and unit tested but not applied in /chat.
 - /generate streams text only; verifier_fail / citation_stripped metadata is dropped,
   so SourcesPanel has nothing to show.
-- Evals are small (5 Quant and 2 AW golden items). evals/baseline.json is hand-written,
-  not measured. Real evals need OPENAI_API_KEY; CI never runs them against a real model.
+- Evals are small (5 Quant and 2 AW golden items). evals/agent_eval runs the real QuantAgent
+  (leak rate, sympy-graded accuracy, judge-vs-golden agreement, cost/latency, 20 USD ledger);
+  AW is judge calibration only. No baseline is measured/checked in; CI runs it offline only.
+- QuantAgent._verify compares the agent's answer to itself, so verifier_fail is unreliable.
 - No ETS corpus is checked in, so AW citations have nothing to cite until one is ingested.
 - k8s manifests and deploy workflow were never applied to a cluster.
