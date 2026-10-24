@@ -74,6 +74,9 @@ def test_best_label_tier_prefers_examiner_then_captain_then_weak():
     assert best_label_tier([weak]) == LabelTier.site_or_model_weak
     assert best_label_tier([weak, captain]) == LabelTier.captain_blind
     assert best_label_tier([weak, captain, examiner]) == LabelTier.examiner
+    teacher = essay_item("d", tier=LabelTier.teacher_graded)
+    assert best_label_tier([weak, captain, teacher]) == LabelTier.teacher_graded
+    assert best_label_tier([weak, teacher, examiner]) == LabelTier.examiner
     assert best_label_tier([]) is None
 
 

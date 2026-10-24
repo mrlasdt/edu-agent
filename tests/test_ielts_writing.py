@@ -161,7 +161,9 @@ def test_select_items_picks_the_best_available_tier():
     captain = [essay_item("c1", 5.0, LabelTier.captain_blind)]
     tier, picked, counts = ielts_writing.select_items(weak + captain, "best", 10, 1)
     assert tier == LabelTier.captain_blind and [i.id for i in picked] == ["c1"]
-    assert counts == {"examiner": 0, "captain_blind": 1, "site_or_model_weak": 3}
+    assert counts == {
+        "examiner": 0, "teacher_graded": 0, "captain_blind": 1, "site_or_model_weak": 3,
+    }
     forced, picked, _ = ielts_writing.select_items(weak + captain, "site_or_model_weak", 2, 1)
     assert forced == LabelTier.site_or_model_weak and len(picked) == 2
 
@@ -169,7 +171,7 @@ def test_select_items_picks_the_best_available_tier():
 def test_select_items_ignores_task1_and_unlabelled_items_and_handles_empty():
     items = [essay_item("t1", 6.0, skill="writing_t1")]
     assert ielts_writing.select_items(items, "best", 5, 1) == (
-        None, [], {"examiner": 0, "captain_blind": 0, "site_or_model_weak": 0}
+        None, [], {"examiner": 0, "teacher_graded": 0, "captain_blind": 0, "site_or_model_weak": 0}
     )
     tier, picked, _ = ielts_writing.select_items(items, "examiner", 5, 1)
     assert tier == LabelTier.examiner and picked == []

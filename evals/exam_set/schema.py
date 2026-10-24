@@ -5,6 +5,8 @@ Every item carries a *label tier* that says where its label came from, so a metr
 against it can always be reported with that caveat. Tiers, strongest first for essay scoring:
 
   examiner            published band from the exam owner's own sample material
+  teacher_graded      per-criterion bands from a named experienced instructor on a public page
+                      (not an official examiner; a single rater, so noisier than `examiner`)
   captain_blind       scored by the project owner under the blind protocol (not an examiner)
   site_or_model_weak  score from a scraped site's users or a model: noisy, never examiner truth
   solver              answer computed by sympy with a second independent computation
@@ -23,6 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 class LabelTier(StrEnum):
     examiner = "examiner"
+    teacher_graded = "teacher_graded"
     captain_blind = "captain_blind"
     site_or_model_weak = "site_or_model_weak"
     solver = "solver"
@@ -32,6 +35,7 @@ class LabelTier(StrEnum):
 # Order used to pick "the best available" label for essay scoring.
 ESSAY_TIER_ORDER: tuple[LabelTier, ...] = (
     LabelTier.examiner,
+    LabelTier.teacher_graded,
     LabelTier.captain_blind,
     LabelTier.site_or_model_weak,
 )
@@ -40,6 +44,11 @@ TIER_CAVEATS: dict[LabelTier, str] = {
     LabelTier.examiner: (
         "published band from the exam owner's sample material; not a re-rating, and the "
         "publisher warns sample scripts are not definitive examples of a band"
+    ),
+    LabelTier.teacher_graded: (
+        "criterion bands and comments from one experienced instructor on a public page; not an "
+        "official examiner, unaudited, and the overall band is the one stated in the page "
+        "heading, falling back to the mean of the four criterion bands when none is stated"
     ),
     LabelTier.captain_blind: "single-rater blind scores from the project owner, not an examiner",
     LabelTier.site_or_model_weak: (

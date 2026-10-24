@@ -6,6 +6,7 @@ Golden-set extension CLI.
   python -m evals.exam_set generate-writing                 # rewrite ielts_writing_prompts.jsonl
   python -m evals.exam_set import-writing9 --limit 1200     # into evals/golden/local/
   python -m evals.exam_set import-cambridge --dir <folder>  # own book files, local OCR
+  python -m evals.exam_set import-ieltsbuddy                # instructor-commented essays (polite)
   python -m evals.exam_set manifest                         # print the local manifest
   python -m evals.exam_set summary                          # counts by exam, skill and tier
 
@@ -23,7 +24,7 @@ from pathlib import Path
 import httpx
 
 from evals.exam_set import ielts_reading, ielts_writing_prompts, sat_math
-from evals.exam_set.importers import cambridge, writing9
+from evals.exam_set.importers import cambridge, ieltsbuddy, writing9
 from evals.exam_set.local_store import load_manifest, local_dir, write_items
 from evals.loader import load_exam_items
 
@@ -43,6 +44,7 @@ def main(argv: list[str] | None = None) -> int:
     w9.add_argument("--per-band-cap", type=int, default=None)
     cam = sub.add_parser("import-cambridge")
     cam.add_argument("--dir", required=True, help="folder of the captain's book text/PDF/scans")
+    sub.add_parser("import-ieltsbuddy")
     sub.add_parser("manifest")
     sub.add_parser("summary")
     args = p.parse_args(argv)
@@ -69,6 +71,13 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"source": record.source_id, "file": str(directory / record.file),
                           "count": record.count, "tier": record.label_tier,
                           "bands": record.counts_by_overall_band, "stats": stats.__dict__}))
+    elif args.cmd == "import-ieltsbuddy":
+        with ieltsbuddy.make_client() as client:
+            record, buddy_stats = ieltsbuddy.import_ieltsbuddy(directory, client)
+        print(json.dumps({"source": record.source_id, "file": str(directory / record.file),
+                          "count": record.count, "tier": record.label_tier,
+                          "bands": record.counts_by_overall_band,
+                          "stats": buddy_stats.__dict__}))
     elif args.cmd == "import-cambridge":
         try:
             record, totals = cambridge.import_folder(Path(args.dir), directory)
@@ -76,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
         print(json.dumps({"source": record.source_id, "count": record.count,
-                          "tier": record.label_tier, "totals": totals,
+                          "tier": record.label_tier, "totals": totals, "notes": record.notes,
                           "extracted_text": str(directory / cambridge.EXTRACT_DIR)}))
     elif args.cmd == "manifest":
         print(json.dumps(load_manifest(directory), indent=2))

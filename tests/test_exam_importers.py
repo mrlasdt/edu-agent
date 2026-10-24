@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 import pytest
 
-from evals.exam_set.importers import cambridge, writing9
+from evals.exam_set.importers import cambridge, ieltsbuddy, writing9
 from evals.exam_set.local_store import load_manifest, read_items
 from evals.exam_set.schema import LabelTier
 
@@ -242,7 +242,7 @@ def test_pdf_pages_without_a_text_layer_fall_back_to_ocr(
             return self.text
 
     class Reader:
-        def __init__(self, path: str) -> None:
+        def __init__(self, source: object) -> None:
             self.pages = [Page("A page with a perfectly good text layer, long enough."), Page("")]
 
     monkeypatch.setattr("pypdf.PdfReader", Reader)
@@ -272,3 +272,155 @@ def test_manifest_json_is_valid_after_cambridge_import(tmp_path: Path):
     (books / "x.txt").write_text(SYNTHETIC_BOOK)
     cambridge.import_folder(books, tmp_path / "l")
     json.loads((tmp_path / "l" / "manifest.json").read_text())
+
+
+# ── Cambridge importer: robustness on real-world layouts (synthetic files only) ──
+
+
+def test_import_folder_walks_nested_book_folders_without_name_collisions(tmp_path: Path):
+    books, local = tmp_path / "books", tmp_path / "local"
+    for book in ("Book 1", "Book 2"):
+        (books / book).mkdir(parents=True)
+        (books / book / "answers.txt").write_text(SYNTHETIC_BOOK)
+    (books / ".hidden").mkdir()
+    (books / ".hidden" / "x.txt").write_text(SYNTHETIC_BOOK)
+    record, totals = cambridge.import_folder(books, local)
+    assert totals["files"] == 2 and totals["failed"] == 0 and record.count == 6
+    extracted = local / cambridge.EXTRACT_DIR
+    assert (extracted / "Book 1" / "answers.txt").exists()
+    assert (extracted / "Book 2" / "answers.txt").exists()
+
+
+def test_one_unreadable_file_is_reported_and_does_not_stop_the_import(tmp_path: Path):
+    books, local = tmp_path / "books", tmp_path / "local"
+    books.mkdir()
+    (books / "good.txt").write_text(SYNTHETIC_BOOK)
+    (books / "scan.png").write_bytes(b"img")
+
+    def no_ocr(image: bytes) -> str:
+        raise cambridge.OcrUnavailableError("install tesseract")
+
+    record, totals = cambridge.import_folder(books, local, ocr=no_ocr)
+    assert totals["files"] == 1 and totals["failed"] == 1 and record.count == 3
+    assert "scan.png: install tesseract" in record.notes
+
+
+def test_a_stalled_read_times_out_instead_of_hanging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    import threading
+
+    release = threading.Event()
+    monkeypatch.setattr(Path, "read_bytes", lambda self: release.wait(5) or b"")
+    path = tmp_path / "stuck.txt"
+    path.write_text("x")
+    try:
+        with pytest.raises(cambridge.FileReadTimeoutError, match="stuck.txt"):
+            cambridge.read_bytes(path, timeout_s=0.05)
+    finally:
+        release.set()
+
+
+def test_undecodable_scan_images_become_an_actionable_ocr_error():
+    class Page:
+        @property
+        def images(self) -> list[object]:
+            raise ImportError("pillow is required to do image extraction")
+
+    with pytest.raises(cambridge.OcrUnavailableError, match="pillow"):
+        cambridge._page_images(Page())
+
+
+# ── IELTS Buddy importer: synthetic page, mock transport ──
+
+BUDDY_PAGE = """<html><head><script>var junk = "Topic: not real (Band 9)";</script></head><body>
+<nav>Menu</nav>
+<h2>Topic: Synthetic Cities (Band 6.5)</h2>
+<p>Some think cities are too big. Others disagree.</p>
+<p>Discuss both views and give your opinion.</p>
+<p>Opening paragraph of a synthetic essay about cities.</p>
+<p>Second paragraph with more synthetic words.</p>
+<h3>Comments</h3>
+<p>Task Response: 7</p><p>Clear position.</p>
+<p>Coherence &amp; Cohesion: 6</p><p>Good paragraphs.</p>
+<p>Lexical Resource: 6</p><p>Adequate range.</p>
+<p>Grammatical Range and Accuracy: 7</p><p>Mostly accurate.</p>
+<p>You might like these</p><p>Unrelated footer link text.</p>
+<h2>Topic: Incomplete Essay (Band 5)</h2>
+<p>A question? Do you agree?</p><p>Essay text.</p><h3>Comments</h3><p>Task Response: 5</p>
+</body></html>"""
+
+
+def buddy_client(pages: dict[str, str], seen: list[str], robots: str = "") -> httpx.Client:
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200 if robots else 404, text=robots)
+        body = pages.get(request.url.path.lstrip("/"))
+        return httpx.Response(200, text=body) if body else httpx.Response(404)
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_buddy_parse_page_splits_prompt_essay_and_comments_and_skips_incomplete():
+    (parsed,) = ieltsbuddy.parse_page(BUDDY_PAGE)
+    assert parsed.title == "Synthetic Cities" and parsed.stated_band == 6.5
+    assert parsed.prompt.splitlines() == [
+        "Some think cities are too big. Others disagree.",
+        "Discuss both views and give your opinion.",
+    ]
+    assert parsed.essay.startswith("Opening paragraph") and "Second paragraph" in parsed.essay
+    assert parsed.criteria == {"TR": 7.0, "CC": 6.0, "LR": 6.0, "GRA": 7.0}
+    assert parsed.comments["CC"] == "Good paragraphs."
+    assert "footer" not in parsed.comments["GRA"]
+
+
+def test_buddy_item_is_teacher_graded_and_local_only():
+    (parsed,) = ieltsbuddy.parse_page(BUDDY_PAGE)
+    item = ieltsbuddy.to_item(parsed, "p.html", 1)
+    assert item.label_provenance.tier == LabelTier.teacher_graded
+    assert item.labels is not None and item.labels.overall == 6.5
+    assert item.extras["computed_overall"] == 6.5 and not item.committable()
+    assert item.examiner_comment is not None and "Lexical Resource" not in item.examiner_comment
+    assert item.examiner_comment.startswith("TR: Clear position.")
+
+
+def test_buddy_overall_falls_back_to_the_criteria_mean_when_no_band_is_stated():
+    assert ieltsbuddy.round_overall({"TR": 7, "CC": 6, "LR": 6, "GRA": 6}) == 6.5
+    assert ieltsbuddy.round_overall({"TR": 5, "CC": 5, "LR": 5, "GRA": 6}) == 5.5
+    page = BUDDY_PAGE.replace(" (Band 6.5)", "")
+    (parsed,) = ieltsbuddy.parse_page(page)
+    assert ieltsbuddy.to_item(parsed, "p.html", 1).labels.overall == 6.5  # type: ignore[union-attr]
+
+
+def test_buddy_import_fetches_once_caches_and_registers(tmp_path: Path):
+    seen: list[str] = []
+    client = buddy_client({"a.html": BUDDY_PAGE}, seen)
+    sleeps: list[float] = []
+    record, stats = ieltsbuddy.import_ieltsbuddy(
+        tmp_path, client, pages=("a.html",), pause_s=2.0, sleep=sleeps.append
+    )
+    assert record.count == 1 and record.label_tier == "teacher_graded"
+    assert stats.pages_fetched == 1 and sleeps == [2.0]
+    assert (tmp_path / ieltsbuddy.CACHE_DIR / "a.html").exists()
+    again = buddy_client({}, seen)  # cached: no network needed at all
+    record2, stats2 = ieltsbuddy.import_ieltsbuddy(tmp_path, again, pages=("a.html",))
+    assert record2.count == 1 and stats2.pages_cached == 1 and stats2.pages_fetched == 0
+
+
+def test_buddy_import_honours_robots_txt(tmp_path: Path):
+    seen: list[str] = []
+    robots = "User-agent: *\nDisallow: /a.html\n"
+    client = buddy_client({"a.html": BUDDY_PAGE}, seen, robots=robots)
+    record, stats = ieltsbuddy.import_ieltsbuddy(
+        tmp_path, client, pages=("a.html",), sleep=lambda s: None
+    )
+    assert record.count == 0 and stats.pages_disallowed == 1 and "/a.html" not in seen
+
+
+def test_buddy_import_survives_a_failed_page(tmp_path: Path):
+    client = buddy_client({}, [])
+    record, stats = ieltsbuddy.import_ieltsbuddy(
+        tmp_path, client, pages=("missing.html",), sleep=lambda s: None
+    )
+    assert record.count == 0 and stats.pages_failed == 1
