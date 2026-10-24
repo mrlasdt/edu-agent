@@ -8,8 +8,9 @@ Behaviors under test:
   4. run() in Solve mode uses a different system prompt
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from services.agent.src.agent.agents.quant import QuantAgent
 from shared.src.shared.models import Message, MessageRole, Mode, Session

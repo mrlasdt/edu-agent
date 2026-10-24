@@ -10,9 +10,10 @@ Behaviors under test (from issue 06 acceptance criteria):
 """
 
 import io
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from services.ingestion.src.ingestion.main import app
 
@@ -28,10 +29,13 @@ def make_upload_file(content: bytes, filename: str, content_type: str):
 
 # ── 1. Small TXT upload → sync completed ─────────────────────────────────────
 
+
 def test_small_txt_upload_returns_completed(client):
     content = b"This is a test document.\n\nSecond paragraph here."
 
-    with patch("services.ingestion.src.ingestion.main.run_ingestion_pipeline", new_callable=AsyncMock) as mock_pipeline:
+    with patch(
+        "services.ingestion.src.ingestion.main.run_ingestion_pipeline", new_callable=AsyncMock
+    ) as mock_pipeline:
         mock_pipeline.return_value = {"chunks_indexed": 2}
         response = client.post(
             "/admin/documents",
@@ -47,10 +51,13 @@ def test_small_txt_upload_returns_completed(client):
 
 # ── 2. Large file → queued ────────────────────────────────────────────────────
 
+
 def test_large_file_upload_returns_queued(client):
     large_content = b"word " * 300_000  # ~1.5 MB
 
-    with patch("services.ingestion.src.ingestion.main.enqueue_ingestion_job", new_callable=AsyncMock) as mock_enqueue:
+    with patch(
+        "services.ingestion.src.ingestion.main.enqueue_ingestion_job", new_callable=AsyncMock
+    ) as mock_enqueue:
         mock_enqueue.return_value = "job-abc-123"
         response = client.post(
             "/admin/documents",
@@ -65,6 +72,7 @@ def test_large_file_upload_returns_queued(client):
 
 
 # ── 3. Unsupported file type → 415 ───────────────────────────────────────────
+
 
 def test_unsupported_file_type_returns_415(client):
     response = client.post(
@@ -85,6 +93,7 @@ def test_exe_file_returns_415(client):
 
 
 # ── 4. Job status endpoint ────────────────────────────────────────────────────
+
 
 def test_get_job_status_returns_job(client):
     with patch("services.ingestion.src.ingestion.main.get_job", new_callable=AsyncMock) as mock_get:
@@ -113,8 +122,11 @@ def test_get_job_status_404_for_unknown_job(client):
 
 # ── 5. Chunk metadata has required fields ─────────────────────────────────────
 
+
 def test_uploaded_chunks_have_correct_metadata(client):
-    content = b"# Introduction\n\nThis is a GRE practice passage.\n\nIt tests reading comprehension."
+    content = (
+        b"# Introduction\n\nThis is a GRE practice passage.\n\nIt tests reading comprehension."
+    )
 
     captured_chunks = []
 
@@ -122,7 +134,9 @@ def test_uploaded_chunks_have_correct_metadata(client):
         captured_chunks.extend(chunks)
         return {"chunks_indexed": len(chunks)}
 
-    with patch("services.ingestion.src.ingestion.main.run_ingestion_pipeline", side_effect=capture_pipeline):
+    with patch(
+        "services.ingestion.src.ingestion.main.run_ingestion_pipeline", side_effect=capture_pipeline
+    ):
         client.post(
             "/admin/documents",
             files={"file": ("passage.txt", io.BytesIO(content), "text/plain")},

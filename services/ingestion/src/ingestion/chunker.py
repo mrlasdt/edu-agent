@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -73,7 +73,6 @@ def _split_section_into_chunks(
     chunks: list[Chunk] = []
     current_paras: list[str] = []
     current_tokens = 0
-    overlap_tokens = int(target_tokens * overlap_ratio)
     chunk_idx = start_index
 
     # Track char positions within the section

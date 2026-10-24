@@ -20,7 +20,7 @@ class RateLimiter:
         self._max_per_minute = max_per_minute
         self._max_per_day = max_per_day
         # candidate_id → deque of timestamps (floats, last 60s)
-        self._minute_window: dict[str, deque] = defaultdict(deque)
+        self._minute_window: dict[str, deque[float]] = defaultdict(deque)
         # candidate_id → (day_str, count)
         self._day_counts: dict[str, tuple[str, int]] = {}
 

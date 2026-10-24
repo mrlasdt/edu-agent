@@ -38,7 +38,7 @@ class ChunkResult(BaseModel):
     score: float
 
 
-def to_chunk_result(payload: dict, score: float) -> ChunkResult:
+def to_chunk_result(payload: dict[str, Any], score: float) -> ChunkResult:
     """
     Parse a stored Qdrant payload through the shared ChunkPayload contract and
     project it into the citation-facing ChunkResult. Validating here means a
@@ -56,12 +56,12 @@ def to_chunk_result(payload: dict, score: float) -> ChunkResult:
 
 
 @app.get("/healthz")
-async def health():
+async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
 @app.post("/corpus/retrieve", response_model=list[ChunkResult])
-async def retrieve(request: RetrieveRequest) -> list[dict]:
+async def retrieve(request: RetrieveRequest) -> list[dict[str, Any]]:
     results = await search_corpus(
         query=request.query,
         candidate_id=request.candidate_id,

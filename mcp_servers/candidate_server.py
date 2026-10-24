@@ -15,7 +15,7 @@ Run with:
 from __future__ import annotations
 
 import random
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -37,7 +37,7 @@ async def search_corpus_tool(
     test_type: str,
     candidate_id: str,
     school_id: str = "",
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Search the GRE corpus for relevant passages.
 
@@ -61,7 +61,7 @@ async def get_question_tool(
     test_type: str,
     section: str,
     question_type: str = "",
-) -> dict:
+) -> dict[str, Any]:
     """
     Get a random practice question from the Global corpus.
 
@@ -79,7 +79,7 @@ async def get_question_tool(
 
 
 @mcp.tool()
-async def get_model_essay_tool(prompt: str, score_tier: int) -> dict:
+async def get_model_essay_tool(prompt: str, score_tier: int) -> dict[str, Any]:
     """
     Get a sample ETS-style essay at the given scoring tier (1-6).
 
@@ -107,7 +107,7 @@ async def _search_corpus(
                   "candidate_id": candidate_id, "school_id": school_id, "top_k": 5},
         )
         r.raise_for_status()
-        return r.json()
+        return cast(list[dict[str, Any]], r.json())
 
 
 async def _get_random_question(

@@ -10,8 +10,9 @@ Behaviors under test (from issue 05 acceptance criteria):
   6. Tutor mode does NOT call verifier
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
 
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.skills.verify_math import VerifyMathResult

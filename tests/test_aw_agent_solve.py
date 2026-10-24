@@ -11,17 +11,21 @@ Behaviors under test:
   7. Citation checker runs on Solve output same as Tutor
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from services.agent.src.agent.agents.aw import AWAgent, ESSAY_DISCLAIMER
+import pytest
+
+from services.agent.src.agent.agents.aw import ESSAY_DISCLAIMER, AWAgent
 from shared.src.shared.models import Mode, Session
 
 
 def make_session(mode: Mode = Mode.solve, personal_style: bool = False) -> Session:
     return Session(
-        candidate_id="c1", test_type="gre", section="aw",
-        mode=mode, personal_style_enabled=personal_style,
+        candidate_id="c1",
+        test_type="gre",
+        section="aw",
+        mode=mode,
+        personal_style_enabled=personal_style,
     )
 
 
@@ -32,28 +36,33 @@ def mock_stream(tokens: list[str]):
             chunk.choices = [MagicMock()]
             chunk.choices[0].delta.content = token
             yield chunk
+
     return _stream()
 
 
-SAMPLE_ESSAY_TOKENS = [
-    "Technology", " has", " transformed", " society.", " This essay", " argues…"
-]
+SAMPLE_ESSAY_TOKENS = ["Technology", " has", " transformed", " society.", " This essay", " argues…"]
 
 
 # ── 1. Solve yields essay tokens ──────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_solve_yields_tokens():
     agent = AWAgent(model_config_path="config/model_config.dev.yaml")
 
-    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm, \
-         patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]), \
-         patch.object(agent, "_check_citations", return_value=(True, [])), \
-         patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")), \
-         patch.object(agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=[]):
+    with (
+        patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm,
+        patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]),
+        patch.object(agent, "_check_citations", return_value=(True, [])),
+        patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")),
+        patch.object(
+            agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=[]
+        ),
+    ):
         mock_llm.return_value = mock_stream(SAMPLE_ESSAY_TOKENS)
         tokens = [
-            item async for item in agent.run(make_session(Mode.solve), "Discuss technology")
+            item
+            async for item in agent.run(make_session(Mode.solve), "Discuss technology")
             if isinstance(item, str)
         ]
 
@@ -62,27 +71,36 @@ async def test_solve_yields_tokens():
 
 # ── 2. Solve uses solve system prompt ─────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_solve_uses_different_prompt_from_tutor():
     agent = AWAgent(model_config_path="config/model_config.dev.yaml")
 
     tutor_system = solve_system = None
 
-    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm, \
-         patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]), \
-         patch.object(agent, "_check_citations", return_value=(True, [])), \
-         patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")), \
-         patch.object(agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=[]):
+    with (
+        patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm,
+        patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]),
+        patch.object(agent, "_check_citations", return_value=(True, [])),
+        patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")),
+        patch.object(
+            agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=[]
+        ),
+    ):
         mock_llm.return_value = mock_stream(["plan"])
         async for _ in agent.run(make_session(Mode.tutor), "Discuss tech"):
             pass
         tutor_system = mock_llm.call_args.kwargs["messages"][0]["content"]
 
-    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm, \
-         patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]), \
-         patch.object(agent, "_check_citations", return_value=(True, [])), \
-         patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")), \
-         patch.object(agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=[]):
+    with (
+        patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm,
+        patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]),
+        patch.object(agent, "_check_citations", return_value=(True, [])),
+        patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")),
+        patch.object(
+            agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=[]
+        ),
+    ):
         mock_llm.return_value = mock_stream(["essay"])
         async for _ in agent.run(make_session(Mode.solve), "Discuss tech"):
             pass
@@ -92,6 +110,7 @@ async def test_solve_uses_different_prompt_from_tutor():
 
 
 # ── 3. Style critic triggers rewrite on violation ─────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_style_critic_triggers_rewrite_on_violation():
@@ -103,11 +122,15 @@ async def test_style_critic_triggers_rewrite_on_violation():
         call_count += 1
         return mock_stream(["essay content"])
 
-    with patch("litellm.acompletion", side_effect=count_llm), \
-         patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]), \
-         patch.object(agent, "_check_citations", return_value=(True, [])), \
-         patch.object(agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=[]), \
-         patch.object(agent, "_run_style_critic", new_callable=AsyncMock) as mock_critic:
+    with (
+        patch("litellm.acompletion", side_effect=count_llm),
+        patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]),
+        patch.object(agent, "_check_citations", return_value=(True, [])),
+        patch.object(
+            agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=[]
+        ),
+        patch.object(agent, "_run_style_critic", new_callable=AsyncMock) as mock_critic,
+    ):
         # First call: violation found; second call: passes
         mock_critic.side_effect = [(False, "Missing PEEL structure"), (True, "")]
         async for _ in agent.run(make_session(Mode.solve), "Discuss tech"):
@@ -126,11 +149,15 @@ async def test_style_critic_no_rewrite_when_structure_ok():
         call_count += 1
         return mock_stream(["perfect essay"])
 
-    with patch("litellm.acompletion", side_effect=count_llm), \
-         patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]), \
-         patch.object(agent, "_check_citations", return_value=(True, [])), \
-         patch.object(agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=[]), \
-         patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")):
+    with (
+        patch("litellm.acompletion", side_effect=count_llm),
+        patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]),
+        patch.object(agent, "_check_citations", return_value=(True, [])),
+        patch.object(
+            agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=[]
+        ),
+        patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")),
+    ):
         async for _ in agent.run(make_session(Mode.solve), "Discuss tech"):
             pass
 
@@ -139,16 +166,21 @@ async def test_style_critic_no_rewrite_when_structure_ok():
 
 # ── 4. Personal style injected when active + >= 2 essays ─────────────────────
 
+
 @pytest.mark.asyncio
 async def test_personal_style_exemplars_injected_in_messages():
     agent = AWAgent(model_config_path="config/model_config.dev.yaml")
     exemplars = ["Essay one by candidate.", "Essay two by candidate."]
 
-    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm, \
-         patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]), \
-         patch.object(agent, "_check_citations", return_value=(True, [])), \
-         patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")), \
-         patch.object(agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=exemplars):
+    with (
+        patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm,
+        patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]),
+        patch.object(agent, "_check_citations", return_value=(True, [])),
+        patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")),
+        patch.object(
+            agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=exemplars
+        ),
+    ):
         mock_llm.return_value = mock_stream(["essay"])
         async for _ in agent.run(make_session(Mode.solve, personal_style=True), "Discuss tech"):
             pass
@@ -160,15 +192,23 @@ async def test_personal_style_exemplars_injected_in_messages():
 
 # ── 5. Personal style no-ops with < 2 essays ─────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_personal_style_noop_with_fewer_than_2_essays():
     agent = AWAgent(model_config_path="config/model_config.dev.yaml")
 
-    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm, \
-         patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]), \
-         patch.object(agent, "_check_citations", return_value=(True, [])), \
-         patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")), \
-         patch.object(agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=["only one essay"]):
+    with (
+        patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm,
+        patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]),
+        patch.object(agent, "_check_citations", return_value=(True, [])),
+        patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")),
+        patch.object(
+            agent,
+            "_get_personal_style_exemplars",
+            new_callable=AsyncMock,
+            return_value=["only one essay"],
+        ),
+    ):
         mock_llm.return_value = mock_stream(["canonical essay"])
         async for _ in agent.run(make_session(Mode.solve, personal_style=True), "Discuss tech"):
             pass
@@ -180,15 +220,20 @@ async def test_personal_style_noop_with_fewer_than_2_essays():
 
 # ── 6. Disclaimer appended ────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_disclaimer_always_appended_to_solve_output():
     agent = AWAgent(model_config_path="config/model_config.dev.yaml")
 
-    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm, \
-         patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]), \
-         patch.object(agent, "_check_citations", return_value=(True, [])), \
-         patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")), \
-         patch.object(agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=[]):
+    with (
+        patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm,
+        patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]),
+        patch.object(agent, "_check_citations", return_value=(True, [])),
+        patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")),
+        patch.object(
+            agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=[]
+        ),
+    ):
         mock_llm.return_value = mock_stream(["essay content here"])
         items = [item async for item in agent.run(make_session(Mode.solve), "Discuss tech")]
 
@@ -199,15 +244,20 @@ async def test_disclaimer_always_appended_to_solve_output():
 
 # ── 7. Citation checker runs on Solve output ─────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_citation_checker_runs_on_solve():
     agent = AWAgent(model_config_path="config/model_config.dev.yaml")
 
-    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm, \
-         patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]), \
-         patch.object(agent, "_check_citations", return_value=(True, [])) as mock_check, \
-         patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")), \
-         patch.object(agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=[]):
+    with (
+        patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm,
+        patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]),
+        patch.object(agent, "_check_citations", return_value=(True, [])) as mock_check,
+        patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")),
+        patch.object(
+            agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=[]
+        ),
+    ):
         mock_llm.return_value = mock_stream(["essay"])
         async for _ in agent.run(make_session(Mode.solve), "Discuss tech"):
             pass

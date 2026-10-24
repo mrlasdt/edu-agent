@@ -23,7 +23,9 @@ class ModelConfig(BaseModel):
 
     def role(self, name: str) -> ModelRoleConfig:
         if name not in self.roles:
-            raise KeyError(f"Model role '{name}' not found in model_config. Known roles: {list(self.roles)}")
+            raise KeyError(
+                f"Model role '{name}' not found in model_config. Known roles: {list(self.roles)}"
+            )
         return self.roles[name]
 
     def litellm_model(self, role: str) -> str:

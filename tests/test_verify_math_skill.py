@@ -11,12 +11,12 @@ Behaviors under test:
   4. Propagates timeout from the server response
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from services.agent.src.agent.skills.verify_math import (
     VerifyMathSkill,
-    VerifyMathResult,
 )
 
 

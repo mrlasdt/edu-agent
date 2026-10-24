@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import uuid
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
 
 import httpx
 from fastapi import FastAPI
@@ -41,11 +42,11 @@ class ChatRequest(BaseModel):
 
 
 @app.get("/healthz")
-async def health():
+async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-async def _stream_from_agent(payload: dict) -> AsyncGenerator[bytes, None]:
+async def _stream_from_agent(payload: dict[str, Any]) -> AsyncGenerator[bytes, None]:
     """
     Proxy a streaming generation from the Agent Service. Isolated as a seam so
     tests can substitute a fake stream without a running agent service.
@@ -60,7 +61,7 @@ async def _stream_from_agent(payload: dict) -> AsyncGenerator[bytes, None]:
 
 
 @app.post("/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest) -> StreamingResponse:
     """
     Single turn: content-safety guardrail → orchestrator route → stream the
     agent's answer. Clarifications and refusals are streamed as plain text so
@@ -79,7 +80,7 @@ async def chat(req: ChatRequest):
     async def response_stream() -> AsyncGenerator[bytes, None]:
         safe, reason = await check_content_safety(req.message, trace_id)
         if not safe:
-            yield f"I can't help with that request ({reason}).".encode("utf-8")
+            yield f"I can't help with that request ({reason}).".encode()
             return
 
         result = await _orchestrator.process(session, req.message)

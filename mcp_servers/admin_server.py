@@ -16,7 +16,7 @@ Run with:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -36,7 +36,7 @@ async def ingest_document_tool(
     file_path: str,
     test_type: str,
     tier: str = "global",
-) -> dict:
+) -> dict[str, Any]:
     """
     Ingest a document into the corpus.
 
@@ -55,7 +55,7 @@ async def ingest_document_tool(
 
 
 @mcp.tool()
-async def list_ingestion_jobs_tool(limit: int = 20) -> list[dict]:
+async def list_ingestion_jobs_tool(limit: int = 20) -> list[dict[str, Any]]:
     """
     List recent ingestion jobs.
 
@@ -69,7 +69,7 @@ async def list_ingestion_jobs_tool(limit: int = 20) -> list[dict]:
 
 
 @mcp.tool()
-async def get_job_status_tool(job_id: str) -> dict:
+async def get_job_status_tool(job_id: str) -> dict[str, Any]:
     """
     Get the current status of an ingestion job.
 
@@ -101,7 +101,7 @@ async def _ingest_document(
             data={"test_type": test_type, "tier": tier},
         )
         r.raise_for_status()
-        return r.json()["job_id"]
+        return str(r.json()["job_id"])
 
 
 async def _list_jobs(limit: int) -> list[dict[str, Any]]:
@@ -112,7 +112,7 @@ async def _list_jobs(limit: int) -> list[dict[str, Any]]:
             params={"limit": limit},
         )
         r.raise_for_status()
-        return r.json()
+        return cast(list[dict[str, Any]], r.json())
 
 
 async def _get_job(job_id: str) -> dict[str, Any] | None:
@@ -124,7 +124,7 @@ async def _get_job(job_id: str) -> dict[str, Any] | None:
         if r.status_code == 404:
             return None
         r.raise_for_status()
-        return r.json()
+        return cast(dict[str, Any], r.json())
 
 
 if __name__ == "__main__":

@@ -1,12 +1,15 @@
 """Input guardrails: content safety check and completeness enrichment."""
+
 from __future__ import annotations
 
-import litellm
-from shared.src.shared.config import get_settings, load_model_config
-from shared.src.shared.models import Session
-from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
+from typing import Any, cast
 
 import httpx
+import litellm
+
+from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
+from shared.src.shared.config import get_settings, load_model_config
+from shared.src.shared.models import Session
 
 
 async def check_content_safety(text: str, trace_id: str) -> tuple[bool, str]:
@@ -24,9 +27,7 @@ async def check_content_safety(text: str, trace_id: str) -> tuple[bool, str]:
     return True, ""
 
 
-async def check_completeness(
-    text: str, session: Session, trace_id: str
-) -> tuple[bool, str]:
+async def check_completeness(text: str, session: Session, trace_id: str) -> tuple[bool, str]:
     """
     Haiku-tier LLM check: is the question complete enough to answer?
     Returns (complete, clarification_prompt).
@@ -39,7 +40,7 @@ async def check_completeness(
     return complete, clarification
 
 
-async def _call_moderation_api(text: str) -> dict:
+async def _call_moderation_api(text: str) -> dict[str, Any]:
     """Call OpenAI Moderation API. Seam for unit test patching."""
     settings = get_settings()
     async with httpx.AsyncClient(timeout=5.0) as client:
@@ -54,7 +55,7 @@ async def _call_moderation_api(text: str) -> dict:
         return {"flagged": result["flagged"], "categories": result["categories"]}
 
 
-async def _call_enrichment_llm(text: str, session: Session) -> dict:
+async def _call_enrichment_llm(text: str, session: Session) -> dict[str, Any]:
     """
     Haiku-tier LLM call to detect incomplete questions.
     Returns {"complete": bool, "clarification": str}.
@@ -64,7 +65,8 @@ async def _call_enrichment_llm(text: str, session: Session) -> dict:
     model = cfg.litellm_model("orchestrator")
     system = (
         f"You are checking if a GRE {session.section.upper()} question is complete and answerable. "
-        "Reply with JSON: {\"complete\": true/false, \"clarification\": \"<question to ask if incomplete>\"}"
+        'Reply with JSON: {"complete": true/false, '
+        '"clarification": "<question to ask if incomplete>"}'
     )
     response = await litellm.acompletion(
         model=model,
@@ -77,8 +79,9 @@ async def _call_enrichment_llm(text: str, session: Session) -> dict:
         stream=False,
     )
     import json
+
     content = response.choices[0].message.content
     try:
-        return json.loads(content)
+        return cast(dict[str, Any], json.loads(content))
     except Exception:
         return {"complete": True, "clarification": ""}

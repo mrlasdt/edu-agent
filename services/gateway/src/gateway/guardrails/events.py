@@ -7,7 +7,7 @@ _log = logging.getLogger("guardrails")
 
 
 def emit_guardrail_event(
-    layer: str, name: str, result: str, trace_id: str, **extra
+    layer: str, name: str, result: str, trace_id: str, **extra: object
 ) -> None:
     """
     Emit a structured guardrail event.

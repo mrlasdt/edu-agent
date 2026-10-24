@@ -11,19 +11,18 @@ Behaviors under test:
   7. Human review queue: verifier_fail events flagged
 """
 
-import json
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
 
-from evals.judges.quant_judge import grade_quant_item, QuantResult
-from evals.judges.aw_judge import grade_aw_item, AWResult
 from evals.human_review_queue import HumanReviewQueue
-from evals.regression import check_regression, RegressionResult
+from evals.judges.aw_judge import AWResult, grade_aw_item
+from evals.judges.quant_judge import grade_quant_item
 from evals.loader import load_golden_set, sample_golden_set
-
+from evals.regression import check_regression
 
 # ── 1. Quant judge ────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_quant_judge_correct():
@@ -76,6 +75,7 @@ async def test_quant_judge_no_llm_call():
 
 # ── 2. AW judge ───────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_aw_judge_returns_score_and_rationale():
     item = {
@@ -109,10 +109,13 @@ async def test_aw_judge_calls_llm_with_rubric_and_anchors():
     call_args = mock_llm.call_args
     prompt_text = str(call_args)
     # Anchor essays should be passed to the judge
-    assert "Score 3 essay" in prompt_text or "anchor" in prompt_text.lower() or call_args is not None
+    assert (
+        "Score 3 essay" in prompt_text or "anchor" in prompt_text.lower() or call_args is not None
+    )
 
 
 # ── 3. Regression check ───────────────────────────────────────────────────────
+
 
 def test_regression_detected_when_quant_drops():
     baseline = {"quant_accuracy": 0.90, "aw_avg_score": 5.0}
@@ -139,6 +142,7 @@ def test_regression_detected_when_aw_drops():
 
 # ── 4. Golden set loading ─────────────────────────────────────────────────────
 
+
 def test_load_quant_golden_set():
     items = load_golden_set("quant")
     assert len(items) > 0
@@ -153,6 +157,7 @@ def test_load_aw_golden_set():
 
 
 # ── 5. Sample rate ────────────────────────────────────────────────────────────
+
 
 def test_sample_returns_approximately_correct_fraction():
     items = [{"id": str(i)} for i in range(100)]
@@ -175,6 +180,7 @@ def test_sample_deterministic_with_seed():
 
 # ── 6. Human review queue — boundary AW scores ───────────────────────────────
 
+
 def test_boundary_aw_scores_flagged():
     queue = HumanReviewQueue()
     queue.maybe_add_aw(AWResult(item_id="aw001", score=3.5, rationale="..."))
@@ -188,6 +194,7 @@ def test_boundary_aw_scores_flagged():
 
 
 # ── 7. Human review queue — verifier_fail events ─────────────────────────────
+
 
 def test_verifier_fail_flagged():
     queue = HumanReviewQueue()

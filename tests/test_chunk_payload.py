@@ -19,7 +19,6 @@ from pydantic import ValidationError
 
 from shared.src.shared.corpus import ChunkPayload
 
-
 # ── 1. Round-trip ─────────────────────────────────────────────────────────────
 
 def test_chunk_payload_round_trips():
@@ -84,7 +83,7 @@ def test_to_chunk_result_includes_citation_fields_and_score():
 
 
 def test_to_chunk_result_excludes_acl_ids():
-    from services.corpus.src.corpus.main import to_chunk_result, ChunkResult
+    from services.corpus.src.corpus.main import to_chunk_result
 
     payload = {
         "text": "x", "tier": "candidate", "test_type": "gre",

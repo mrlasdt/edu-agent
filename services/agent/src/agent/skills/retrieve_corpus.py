@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -73,4 +73,4 @@ class RetrieveCorpusSkill:
                 },
             )
             response.raise_for_status()
-            return response.json()
+            return cast(list[dict[str, Any]], response.json())

@@ -12,6 +12,7 @@ Run with:
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 from starlette.requests import Request
@@ -28,7 +29,7 @@ mcp = FastMCP(
 
 
 @mcp.tool()
-async def verify_math(expression: str, expected: str) -> dict:
+async def verify_math(expression: str, expected: str) -> dict[str, Any]:
     """
     Verify a mathematical expression or equation against an expected answer.
 
@@ -49,7 +50,8 @@ async def verify_math(expression: str, expected: str) -> dict:
     }
 
 
-@mcp.custom_route("/tools/verify_math", methods=["POST"])
+# FastMCP.custom_route ships without type annotations
+@mcp.custom_route("/tools/verify_math", methods=["POST"])  # type: ignore[untyped-decorator]
 async def verify_math_http(request: Request) -> JSONResponse:
     """
     Plain-HTTP facade over the verify_math tool, called by the Agent Service's

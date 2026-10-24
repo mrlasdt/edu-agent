@@ -7,8 +7,8 @@ verify_math tool. In unit tests, _call_mcp_tool is patched.
 """
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
+from typing import Any, cast
 
 import httpx
 
@@ -53,8 +53,8 @@ class VerifyMathSkill:
         )
 
     async def _call_mcp_tool(
-        self, tool_name: str, arguments: dict
-    ) -> dict:
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Call a tool on the MCP server via its HTTP/SSE endpoint.
         This thin wrapper is the seam for unit test mocking.
@@ -69,4 +69,4 @@ class VerifyMathSkill:
                 json=arguments,
             )
             response.raise_for_status()
-            return response.json()
+            return cast(dict[str, Any], response.json())

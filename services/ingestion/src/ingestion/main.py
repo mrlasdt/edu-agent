@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
@@ -9,14 +9,14 @@ from qdrant_client import models
 
 from services.ingestion.src.ingestion.chunker import chunk_text
 from services.ingestion.src.ingestion.parser import is_allowed, parse_bytes
-from shared.src.shared.corpus import ChunkPayload
+from shared.src.shared.corpus import ChunkPayload, Tier
 from shared.src.shared.embedder import embed_texts
 from shared.src.shared.vectorstore import COLLECTION, ensure_collection, get_qdrant_client
 
 app = FastAPI(title="Ingestion Service")
 
 # In-memory job store for Phase 1 (replaced by Postgres in Phase 2)
-_jobs: dict[str, dict] = {}
+_jobs: dict[str, dict[str, Any]] = {}
 
 # Files under this threshold are processed synchronously
 _SYNC_SIZE_LIMIT = 1 * 1024 * 1024  # 1 MB
@@ -26,7 +26,7 @@ _SYNC_SIZE_LIMIT = 1 * 1024 * 1024  # 1 MB
 
 
 @app.get("/healthz")
-async def health():
+async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
@@ -35,7 +35,7 @@ async def upload_document(
     file: UploadFile = File(...),
     test_type: str = Form(...),
     tier: str = Form("global"),
-):
+) -> JSONResponse:
     """
     Upload a document for ingestion into the corpus.
     Files under 1 MB are processed synchronously (200 + completed).
@@ -47,7 +47,7 @@ async def upload_document(
 
     content = await file.read()
     job_id = str(uuid.uuid4())
-    doc_metadata = {
+    doc_metadata: dict[str, Any] = {
         "tier": tier,
         "test_type": test_type,
         "source_uri": file.filename or job_id,
@@ -62,7 +62,7 @@ async def upload_document(
         chunk_dicts = [
             ChunkPayload(
                 text=c.text,
-                tier=tier,
+                tier=cast(Tier, tier),
                 test_type=test_type,
                 source_uri=doc_metadata["source_uri"],
                 page_or_section=c.section_title or f"chunk-{c.chunk_index}",
@@ -103,7 +103,7 @@ async def upload_document(
 
 
 @app.get("/admin/documents/{job_id}")
-async def get_job_status(job_id: str):
+async def get_job_status(job_id: str) -> dict[str, Any]:
     job = await get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
@@ -157,6 +157,6 @@ async def enqueue_ingestion_job(
     return job_id
 
 
-async def get_job(job_id: str) -> dict | None:
+async def get_job(job_id: str) -> dict[str, Any] | None:
     """Retrieve a job by ID. Stub backed by in-memory store."""
     return _jobs.get(job_id)

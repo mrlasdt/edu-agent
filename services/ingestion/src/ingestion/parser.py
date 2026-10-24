@@ -29,6 +29,7 @@ def parse_bytes(content: bytes, filename: str) -> str:
 
 def _parse_pdf(content: bytes) -> str:
     import io
+
     from pypdf import PdfReader
     reader = PdfReader(io.BytesIO(content))
     return "\n\n".join(
@@ -38,6 +39,7 @@ def _parse_pdf(content: bytes) -> str:
 
 def _parse_docx(content: bytes) -> str:
     import io
+
     from docx import Document
     doc = Document(io.BytesIO(content))
     return "\n\n".join(para.text for para in doc.paragraphs if para.text.strip())

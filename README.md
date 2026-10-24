@@ -1,6 +1,19 @@
 # GRE Tutor — Agentic AI Engineering Reference Implementation
 
-A production-grade GRE test-prep tutor that demonstrates advanced agentic AI engineering techniques: RAG pipelines, MCP servers, multi-model cost tiering, five-layer guardrails, eval-as-CI, and k8s deployment — all TDD'd from scratch.
+A GRE test-prep tutor built as a reference implementation of agentic AI engineering techniques: RAG pipelines, MCP servers, multi-model cost tiering, layered guardrails, eval-as-CI, and k8s deployment.
+
+## Status
+
+The backend services are built and covered by 189 Python tests (mocked LLM and Qdrant) plus 55 frontend unit tests. It is **not usable end to end yet**:
+
+- **No web app shell.** `web/` holds React components and tests but no `index.html` or entry point, so `npm run build` fails and nothing renders in a browser. The only way in today is `POST /chat` on the gateway, which needs `OPENAI_API_KEY`.
+- **RAG is dense-only.** The sparse vector, RRF hybrid and BGE reranker from ADR-0004 are designed but not wired.
+- **`/chat` applies only the content-safety guardrail.** The enrichment and complexity steps in the Orchestrator are stubs. The answer-leak, PII, rate-limit and citation guardrails are implemented and unit tested but not yet applied in `/chat`.
+- **Agent metadata is dropped.** `/generate` streams text only, so sources and verifier events never reach a UI.
+- **Evals are small and not run in CI against a real model.** 5 Quant and 2 AW golden items; `evals/baseline.json` is hand-written, not measured.
+- **No corpus is checked in**, and the k8s manifests have never been applied to a cluster.
+
+The sections below describe the intended design; see `progress.txt` for the current state of each piece.
 
 ## What it does
 
@@ -9,7 +22,7 @@ A Candidate submits a GRE Quant or Analytical Writing question. The system:
 - **Tutors by default** — scaffolds toward the answer via Socratic hints, never revealing it
 - **Solves on request** — returns a fully worked solution (Quant) or a scored sample essay (AW)
 - **Verifies math** — every Quant answer is checked by a sympy sandbox before emission; wrong answers retry → escalate → degrade gracefully
-- **Cites sources** — AW responses reference numbered passages from a curated ETS corpus; uncited claims are blocked or stripped
+- **Cites sources** — AW responses reference numbered passages from a curated ETS corpus; uncited claims are blocked or stripped (the corpus must be ingested first; none is checked in)
 - **Matches your style** — opt-in personal style feature biases essay voice toward the Candidate's own writing while preserving ETS structural rubric
 
 ## Architecture
@@ -46,7 +59,7 @@ A Candidate submits a GRE Quant or Analytical Writing question. The system:
 |---|---|---|
 | `gateway` | 8000 | External API, Orchestrator, guardrails, rate limiting |
 | `agent` | 8002 | QuantAgent + AWAgent, Skills, post-gen critics |
-| `corpus` | 8001 | Qdrant retrieval (hybrid RRF + rerank), 3-tier ACL |
+| `corpus` | 8001 | Qdrant dense retrieval with 3-tier ACL (hybrid RRF + rerank designed, not wired) |
 | `ingestion` | 8003 | Async document pipeline (parse → chunk → embed → index) |
 | `math-verifier` | 8090 | FastMCP server wrapping sympy sandbox |
 | `tei-embedder` | 8080 | BGE-M3 text embeddings (Hugging Face TEI) |
@@ -76,7 +89,7 @@ Every role is one config-line change. LiteLLM routes to the correct provider.
 
 ### Prerequisites
 
-- Python 3.12+, `uv`, Node 18+, Docker Desktop
+- Python 3.12+, `uv`, Node 20.19+ (CI uses 22), Docker Desktop
 
 ### 1. Clone and install
 
@@ -132,7 +145,7 @@ docker compose -f infra/docker-compose.yml --profile embeddings up -d
 ### 4. Run tests
 
 ```bash
-# Python tests (171)
+# Python tests (189)
 uv run pytest tests/ -q
 
 # Frontend tests (55)
@@ -147,7 +160,8 @@ uv run python evals/run_eval.py --suite quant --suite aw --sample 0.1
 The app services already run inside the stack (step 3). The two things you may still run on the host:
 
 ```bash
-# Web UI dev server (not containerized)
+# Web UI dev server (not containerized). There is no app shell yet, so this
+# serves nothing useful until index.html / main.tsx exist.
 cd web && npm run dev
 ```
 
@@ -210,6 +224,8 @@ uv run python evals/run_eval.py --suite quant --suite aw --sample 0.1
 
 ## Guardrails (5 layers)
 
+All five layers are implemented and unit tested, but `/chat` currently applies only the input content-safety check (see Status).
+
 | Layer | What it checks |
 |---|---|
 | Input validation | Schema, size, content safety (OpenAI Moderation API) |
@@ -222,7 +238,7 @@ Every check emits a `guardrail.{layer}.{name}.{pass|fail}` structured log event 
 
 ## Deployment (Phase 2 — k8s)
 
-k8s manifests are in `infra/k8s/` and were validated in CI. To apply to a cluster:
+k8s manifests are in `infra/k8s/` (their structure is checked by unit tests; they have not been applied to a cluster). To apply to a cluster:
 
 ```bash
 # Staging (auto-deploys on merge to main via GitHub Actions)
@@ -234,7 +250,7 @@ kubectl rollout status deployment/agent
 ```
 
 **CI/CD** (`.github/workflows/`):
-- Every PR: lint + type check + unit tests + path-gated eval slice (10% sample, only when prompts/agents/evals/config change)
+- Every PR: ruff + mypy + pytest, web typecheck + unit tests, plus a path-gated eval slice (10% sample, only when prompts/agents/evals/config change; needs `OPENAI_API_KEY`, non-blocking)
 - Merge to main: build images → push to GHCR → deploy to staging
 - Tagged release: 5% canary → 30-min monitor → auto-rollback on error spike → promote to 100%
 
@@ -262,7 +278,7 @@ edu-agent/
 │   └── math_verifier/    # FastMCP — sympy sandbox MCP server
 ├── shared/               # Pydantic models, config loader, observability
 ├── mcp_servers/          # Candidate + Admin MCP servers
-├── web/                  # Vite + React — Candidate UI + Admin UI
+├── web/                  # Vite + React components and tests (no app shell yet)
 ├── evals/                # Eval harness, golden sets, judges, regression check
 ├── prompts/              # Versioned system prompts (quant_agent, aw_agent)
 ├── config/               # model_config.{dev,staging,prod}.yaml

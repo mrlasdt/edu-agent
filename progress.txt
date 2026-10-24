@@ -1,25 +1,53 @@
-## GRE Tutor v1 — Implementation Progress
+## GRE Tutor v1 - Implementation Progress
 
-### Done — ALL 17 SLICES COMPLETE
+Status: the backend is built and well tested with mocked LLM and Qdrant. The product
+is NOT usable end to end yet: the web UI has components but no app shell, so nothing
+renders in a browser and nothing in the UI calls the gateway. The only way in today
+is POST /chat on the gateway (needs OPENAI_API_KEY; content safety calls the OpenAI
+Moderation API).
+
+### Slices 01-17 (components, services and tests written)
 - [x] 01 Local dev stack (pyproject.toml, docker-compose, config, .env.example)
-- [x] 02 Agent Registry + Session model + Orchestrator skeleton (19 tests)
-- [x] 03 QuantAgent Tutor+Solve system prompts + streaming (TDD, mocked LLM)
-- [x] 04 Math Verifier MCP server (sandbox.py, server.py, verify_math skill, Dockerfile) — 34 tests
-- [x] 05 Quant Agent Solve mode + retry/escalation + graceful degradation — 40 tests
-- [x] 06 Corpus ingestion pipeline (chunker, parser, FastAPI, sync/async paths) — 57 tests
-- [x] 07 Corpus retrieval service (RRF, ACL filter, tier tiebreak, FastAPI) — 71 tests
-- [x] 08 AW Agent Tutor (RAG, citation checker, issue/argument detection) — 80 tests
-- [x] 09 AW Agent Solve + style critic + Personal style Skill + disclaimer — 88 tests
-- [x] 10 Guardrails (content safety, enrichment, PII redaction, answer leak, rate limit) — 105 tests
-- [x] 11 Eval harness (quant/AW judges, regression, golden sets, human review queue) — 121 tests
-- [x] 12 Web UI chat core (SubjectPicker, ModeSwitch, MessageBubble, SourcesPanel) — 19 frontend tests
-- [x] 13 Web UI upload overlay + preferences panel (UploadOverlay, PreferencesPanel) — 37 frontend tests
-- [x] 14 Admin UI (AdminUploadForm, JobsTable with DLQ badge) — 55 frontend tests
-- [x] 15 MCP servers (Candidate + Admin; 6 tools) — 132 Python tests
-- [x] 16 k8s manifests, GitHub Actions CI/CD, Dockerfiles for all services — 147 tests
-- [x] 17 Langfuse observability (setup_observability, build_llm_metadata, QuantAgent wired) — 156 tests
+- [x] 02 Agent Registry + Session model + Orchestrator skeleton
+- [x] 03 QuantAgent Tutor + Solve system prompts + streaming (mocked LLM)
+- [x] 04 Math Verifier MCP server (sandbox, server, verify_math skill, Dockerfile)
+- [x] 05 Quant Agent Solve mode + retry/escalation + graceful degradation
+- [x] 06 Corpus ingestion pipeline (chunker, parser, FastAPI, sync/async paths)
+- [x] 07 Corpus retrieval service (ACL filter, tier tiebreak, FastAPI)
+- [x] 08 AW Agent Tutor (RAG, citation checker, issue/argument detection)
+- [x] 09 AW Agent Solve + style critic + Personal style Skill + disclaimer
+- [x] 10 Guardrails modules (content safety, enrichment, PII redaction, answer leak, rate limit)
+- [x] 11 Eval harness (quant/AW judges, regression, golden sets, human review queue)
+- [x] 12 Web UI chat components (SubjectPicker, ModeSwitch, MessageBubble, SourcesPanel)
+- [x] 13 Web UI upload overlay + preferences panel components
+- [x] 14 Admin UI components (AdminUploadForm, JobsTable)
+- [x] 15 MCP servers (Candidate + Admin; 6 tools)
+- [x] 16 k8s manifests, GitHub Actions CI/CD, Dockerfiles for all services
+- [x] 17 Langfuse observability (setup_observability, build_llm_metadata, QuantAgent wired)
 
-### Final counts
-- Python tests: 156 passing
-- Frontend (Vitest) tests: 55 passing
-- Git commits: 17
+### Work after the 17 slices
+- embed entrypoints in docker
+- streaming chat MVP: gateway POST /chat + agent POST /generate (text only)
+- verify_math exposed over HTTP so Quant solve mode works
+- real dense RAG: ingest -> Qdrant -> retrieve (Qdrant v1.18)
+- CI made green: web peer-dependency fix (@vitejs/plugin-react 6), ruff clean, mypy strict clean
+
+### Current counts
+- Python tests: 189 passing (uv run pytest tests/ -q)
+- Frontend (Vitest) tests: 55 passing (cd web && npm test)
+- CI checks: ruff, mypy (strict), pytest, web typecheck + vitest
+
+### Known gaps (not done)
+- Web UI has no app shell (no index.html / main.tsx / App.tsx); `vite build` fails and
+  CI does not run it. Nothing in the UI calls /chat.
+- RAG is dense-only. ADR-0004's sparse vectors, RRF hybrid and BGE reranker are not
+  wired (_rrf_merge exists in the retriever but is unused).
+- Gateway /chat only applies the content-safety check. Enrichment and complexity
+  classification in the Orchestrator are stubs. Answer-leak, PII redaction, rate limit
+  and citation guardrails are implemented and unit tested but not applied in /chat.
+- /generate streams text only; verifier_fail / citation_stripped metadata is dropped,
+  so SourcesPanel has nothing to show.
+- Evals are small (5 Quant and 2 AW golden items). evals/baseline.json is hand-written,
+  not measured. Real evals need OPENAI_API_KEY; CI never runs them against a real model.
+- No ETS corpus is checked in, so AW citations have nothing to cite until one is ingested.
+- k8s manifests and deploy workflow were never applied to a cluster.

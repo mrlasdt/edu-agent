@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Any, cast
 
 import litellm
 
@@ -31,12 +32,12 @@ class AWResult:
     rationale: str
 
 
-async def grade_aw_item(item: dict, model_config_path: str | None = None) -> AWResult:
+async def grade_aw_item(item: dict[str, Any], model_config_path: str | None = None) -> AWResult:
     """Grade an AW golden-set item using an LLM judge with anchor essays."""
     item_id = item.get("id", "unknown")
     prompt = item.get("prompt", "")
     essay = item.get("candidate_essay", "")
-    anchor_essays: dict = item.get("anchor_essays", {})
+    anchor_essays: dict[str, Any] = item.get("anchor_essays", {})
 
     raw = await _call_aw_judge_llm(
         prompt=prompt,
@@ -54,9 +55,9 @@ async def grade_aw_item(item: dict, model_config_path: str | None = None) -> AWR
 async def _call_aw_judge_llm(
     prompt: str,
     essay: str,
-    anchor_essays: dict,
+    anchor_essays: dict[str, Any],
     model_config_path: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """LLM judge call with rubric + anchor essays in context. Seam for test patching."""
     cfg = load_model_config(model_config_path)
     model = cfg.litellm_model("aw_judge_nightly")
@@ -84,6 +85,6 @@ async def _call_aw_judge_llm(
     )
     content = response.choices[0].message.content
     try:
-        return json.loads(content)
+        return cast(dict[str, Any], json.loads(content))
     except Exception:
         return {"score": 0.0, "rationale": "parse error"}

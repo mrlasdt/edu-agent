@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
@@ -33,12 +33,12 @@ class GenerateRequest(BaseModel):
 
 
 @app.get("/healthz")
-async def health():
+async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
 @app.post("/generate")
-async def generate(req: GenerateRequest):
+async def generate(req: GenerateRequest) -> StreamingResponse:
     """
     Resolve the agent for (test_type, section) and stream its response tokens
     as plain text. The agents yield `str` tokens interleaved with a final `dict`

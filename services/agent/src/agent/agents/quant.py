@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import AsyncGenerator, AsyncIterator
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import Any
 
 import litellm
 
@@ -25,8 +26,10 @@ def _load_prompt(mode: Mode, version: str) -> str:
     return re.sub(r"^---\n.*?\n---\n", "", raw, flags=re.DOTALL).strip()
 
 
-def _build_messages(session: Session, user_message: str, system_prompt: str) -> list[dict]:
-    messages: list[dict] = [{"role": "system", "content": system_prompt}]
+def _build_messages(
+    session: Session, user_message: str, system_prompt: str
+) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     for msg in session.history:
         role = "user" if msg.role == MessageRole.candidate else "assistant"
         messages.append({"role": role, "content": msg.content})
@@ -34,7 +37,7 @@ def _build_messages(session: Session, user_message: str, system_prompt: str) -> 
     return messages
 
 
-async def _collect_stream(stream) -> tuple[list[str], str]:
+async def _collect_stream(stream: AsyncIterator[Any]) -> tuple[list[str], str]:
     """Drain a litellm stream, collecting tokens and the full text."""
     tokens: list[str] = []
     async for chunk in stream:
@@ -69,7 +72,7 @@ class QuantAgent(BaseAgent):
 
     async def run(
         self, session: Session, message: str, trace_id: str = ""
-    ) -> AsyncGenerator[str | dict, None]:
+    ) -> AsyncGenerator[str | dict[str, Any], None]:
         """
         Yield str tokens as they are generated, followed by a final dict metadata item.
 
@@ -88,7 +91,11 @@ class QuantAgent(BaseAgent):
     # ── tutor mode ────────────────────────────────────────────────────────────
 
     async def _tutor_turn(
-        self, session: Session, message: str, obs_meta: dict | None = None, version: str = "v1"
+        self,
+        session: Session,
+        message: str,
+        obs_meta: dict[str, Any] | None = None,
+        version: str = "v1",
     ) -> AsyncGenerator[str, None]:
         system_prompt = _load_prompt(Mode.tutor, version)
         messages = _build_messages(session, message, system_prompt)
@@ -110,8 +117,12 @@ class QuantAgent(BaseAgent):
     # ── solve mode ────────────────────────────────────────────────────────────
 
     async def _solve_turn(
-        self, session: Session, message: str, obs_meta: dict | None = None, version: str = "v1"
-    ) -> AsyncGenerator[str | dict, None]:
+        self,
+        session: Session,
+        message: str,
+        obs_meta: dict[str, Any] | None = None,
+        version: str = "v1",
+    ) -> AsyncGenerator[str | dict[str, Any], None]:
         system_prompt = _load_prompt(Mode.solve, version)
         base_messages = _build_messages(session, message, system_prompt)
 
@@ -127,7 +138,10 @@ class QuantAgent(BaseAgent):
                 messages = base_messages + [
                     {
                         "role": "assistant",
-                        "content": f"[My previous answer {prev_answer!r} could not be verified. Let me try again.]",
+                        "content": (
+                            f"[My previous answer {prev_answer!r} could not be verified. "
+                            "Let me try again.]"
+                        ),
                     }
                 ]
 
@@ -154,8 +168,7 @@ class QuantAgent(BaseAgent):
             {
                 "role": "assistant",
                 "content": (
-                    f"[Previous attempts could not be verified. "
-                    "Applying deeper reasoning.]"
+                    "[Previous attempts could not be verified. Applying deeper reasoning.]"
                 ),
             }
         ]
@@ -190,7 +203,7 @@ class QuantAgent(BaseAgent):
         match = re.search(r"\*\*Answer:\s*(.+?)\*\*", text, re.IGNORECASE)
         if match:
             return match.group(1).strip()
-        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
         return lines[-1] if lines else None
 
     async def _verify(self, full_text: str, claimed_answer: str) -> VerifyMathResult:

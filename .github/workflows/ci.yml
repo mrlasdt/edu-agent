@@ -29,11 +29,25 @@ jobs:
           version: latest
       - run: uv sync --extra dev
       - run: uv run pytest tests/ -q
-      - name: Frontend tests
-        run: |
-          cd web
-          npm ci
-          npm test
+
+  web:
+    name: Web typecheck + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      # No `npm run build` yet: the web UI has components but no app shell
+      # (no index.html / entry point), so `vite build` cannot succeed today.
+      - run: npm test
 
   eval-slice:
     name: Eval slice (path-gated)

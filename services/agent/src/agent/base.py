@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
 
 from shared.src.shared.models import Session
 
@@ -15,9 +16,10 @@ class BaseAgent(ABC):
     """
 
     @abstractmethod
-    async def run(self, session: Session, message: str) -> AsyncGenerator[str, None]:
+    def run(self, session: Session, message: str) -> AsyncGenerator[str | dict[str, Any], None]:
         """
-        Process a turn and yield response tokens as an async generator.
+        Process a turn and yield response tokens as an async generator,
+        optionally followed by a final dict of turn metadata.
         Session carries mode (tutor/solve) and history.
         """
         ...  # pragma: no cover
