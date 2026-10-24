@@ -155,6 +155,8 @@ class MeteredTransport:
         self, tag: str, model: str, p_tok: int, c_tok: int, cost: float, latency: float
     ) -> None:
         """Record a call made outside litellm (the jev decisions endpoint)."""
+        if cost <= 0:
+            cost = estimate_cost(model, p_tok, c_tok)
         self.spent_this_run += cost
         self.ledger.record(self.run_id, model, cost)
         self.records.append(CallRecord(tag, model, p_tok, c_tok, cost, latency))

@@ -21,6 +21,7 @@ from typing import Any, Protocol
 import httpx
 import litellm
 
+from evals.agent_eval.budget import estimate_cost, estimate_tokens
 from evals.agent_eval.transport import MeteredTransport, tagged
 
 JEV_MODEL = "typesafe/jev-1.14"
@@ -125,7 +126,7 @@ class JevJudge:
         self._transport.record_external(
             "judge",
             JEV_MODEL,
-            int(usage.get("input_tokens", 0)),
+            int(usage.get("input_tokens") or estimate_tokens(q.instructions + state)),
             int(usage.get("output_tokens", 0)),
             float(usage.get("cost", 0.0)),
             time.perf_counter() - start,
@@ -160,8 +161,6 @@ class JevJudge:
 
 
 def estimate_jev_cost(chars: int) -> float:
-    from evals.agent_eval.budget import estimate_cost, estimate_tokens
-
     return estimate_cost(JEV_MODEL, estimate_tokens("x" * chars), 0)
 
 
