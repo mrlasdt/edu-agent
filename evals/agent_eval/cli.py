@@ -5,6 +5,7 @@ Agent-in-the-loop eval CLI.
   python -m evals.agent_eval --mode offline        # full pipeline on a fake model, no network
   python -m evals.agent_eval --mode live --suite generation   # LangGraph pipeline vs baseline
   python -m evals.agent_eval --mode live --provider free
+  python -m evals.agent_eval --mode live --suite ielts_writing --max-items 6   # needs local data
 
 Live runs need keys in the environment (OPENROUTER_API_KEY and/or OPENAI_API_KEY); the CLI
 only checks that they are set and never prints or stores them. Cumulative spend across runs is
@@ -23,10 +24,11 @@ import re
 import sys
 import time
 import uuid
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from evals.agent_eval import generation, offline_generation, runner
+from evals.agent_eval import generation, ielts_writing, offline_generation, runner
 from evals.agent_eval.budget import (
     DEFAULT_CEILING_USD,
     DEFAULT_LEDGER_PATH,
@@ -37,7 +39,8 @@ from evals.agent_eval.budget import (
 from evals.agent_eval.cache import DEFAULT_CACHE_DIR, ResponseCache
 from evals.agent_eval.judges import HeuristicJudge, JevJudge, Judge, JudgeQuestion, LLMJudge
 from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport
-from evals.loader import load_golden_set
+from evals.exam_set.schema import ExamItem
+from evals.loader import load_exam_items, load_golden_set
 from evals.regression import check_regression
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.pipeline.factory import build_baseline, build_pipeline
@@ -99,6 +102,10 @@ def _offline_judge() -> Judge:
     return HeuristicJudge(yes_no, score)
 
 
+def _ielts_items(args: argparse.Namespace) -> list[ExamItem]:
+    return load_exam_items(exam="ielts", include_local=True, local_directory=args.local_dir)
+
+
 def plan(args: argparse.Namespace, chain: list[str], ledger: Ledger) -> dict[str, Any]:
     n_quant = min(args.max_items, len(load_golden_set("quant"))) if "quant" in args.suite else 0
     n_aw = min(args.max_items, len(load_golden_set("aw"))) if "aw" in args.suite else 0
@@ -109,13 +116,19 @@ def plan(args: argparse.Namespace, chain: list[str], ledger: Ledger) -> dict[str
     )
     agent_calls = n_quant * 5  # 2 tutor probes + up to 3 solve attempts
     agent_calls += n_gen * (1 + 7)  # baseline 1; pipeline planner + 3 x (generate + critic)
-    judge_calls = n_quant * 7 + n_aw * 3 + n_gen * 2  # one verdict per emitted item
+    n_ielts = 0
+    if "ielts_writing" in args.suite:
+        _, picked, _ = ielts_writing.select_items(
+            _ielts_items(args), args.ielts_tier, args.max_items, SEED
+        )
+        n_ielts = len(picked)
+    judge_calls = n_quant * 7 + n_aw * 3 + n_gen * 2 + n_ielts  # one verdict per emitted item
     per_call = estimate_cost(chain[0], 2000, 800)
     return {
         "mode": "dry-run",
         "model_chain": chain,
         "judge": args.judge,
-        "items": {"quant": n_quant, "aw": n_aw, "generation": n_gen},
+        "items": {"quant": n_quant, "aw": n_aw, "generation": n_gen, "ielts_writing": n_ielts},
         "max_agent_calls": agent_calls,
         "max_judge_calls": judge_calls,
         "worst_case_usd_first_model": per_call * (agent_calls + judge_calls),
@@ -174,6 +187,16 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 report["suites"]["generation"] = await _run_generation(
                     args.max_items, model, judge, transport
                 )
+            if "ielts_writing" in args.suite:
+                grader: ielts_writing.IeltsGrader = (
+                    ielts_writing.offline_grader()
+                    if offline
+                    else ielts_writing.LLMIeltsGrader(args.judge_model or chain[0])
+                )
+                report["suites"]["ielts_writing"] = await ielts_writing.run_ielts_writing(
+                    _ielts_items(args), grader, tier=args.ielts_tier,
+                    max_items=args.max_items, seed=SEED,
+                )
         except (BudgetExceededError, AllModelsFailedError) as exc:
             report["aborted"] = f"{type(exc).__name__}: {exc}"
             exit_code = 2
@@ -182,6 +205,7 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     report["cost_latency"] = runner.latency_cost_summary(
         transport, [r["latency_s"] for r in rows]
     )
+    report["models_used"] = dict(Counter(r.model for r in transport.records))
     report["ledger_spent_usd"] = ledger.spent()
     report["call_failures"] = transport.failure_summary()
     if cache:
@@ -232,6 +256,12 @@ def regression_metrics(report: dict[str, Any]) -> dict[str, float]:
     aw = report["suites"].get("aw")
     if aw and aw["within_tolerance"] is not None:
         out["judge_aw_within_tolerance"] = aw["within_tolerance"]
+    ielts = report["suites"].get("ielts_writing")
+    if ielts and ielts["n_items"] and ielts["overall"]["within_tolerance"] is not None:
+        # keyed by tier so a weak-label baseline is never compared with an examiner one
+        out[f"ielts_overall_within_half_band__{ielts['label_tier']}"] = ielts["overall"][
+            "within_tolerance"
+        ]
     gen = report["suites"].get("generation")
     if gen:
         pipe = gen["targets"].get("pipeline", {})
@@ -258,10 +288,16 @@ def _strip_rows(obj: Any) -> Any:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Agent-in-the-loop eval")
     p.add_argument("--mode", choices=["dry-run", "offline", "live"], default="dry-run")
-    p.add_argument("--suite", action="append", choices=["quant", "aw", "generation"], default=[])
+    p.add_argument("--suite", action="append", default=[],
+                   choices=["quant", "aw", "generation", "ielts_writing"])
     p.add_argument("--provider", choices=["free", "free+openai", "openai"], default="free")
     p.add_argument("--judge", choices=["llm", "jev"], default="llm")
     p.add_argument("--judge-model", default=None, help="litellm model string for the llm judge")
+    p.add_argument("--ielts-tier", default="best",
+                   choices=["best", "examiner", "captain_blind", "site_or_model_weak"],
+                   help="label tier the IELTS Writing grader is scored against")
+    p.add_argument("--local-dir", default=None,
+                   help="third-party golden data directory (default evals/golden/local)")
     p.add_argument("--min-coverage", type=float, default=DEFAULT_MIN_COVERAGE,
                    help="fail (exit 2) if a suite completes fewer than this share of its units")
     p.add_argument("--cache-dir", default=str(DEFAULT_CACHE_DIR))

@@ -10,7 +10,7 @@ The backend services are built and covered by 231 Python tests (mocked LLM and Q
 - **RAG is dense-only.** The sparse vector, RRF hybrid and BGE reranker from ADR-0004 are designed but not wired.
 - **`/chat` applies only the content-safety guardrail.** The enrichment and complexity steps in the Orchestrator are stubs. The answer-leak, PII, rate-limit and citation guardrails are implemented and unit tested but not yet applied in `/chat`.
 - **Agent metadata is dropped.** `/generate` streams text only, so sources and verifier events never reach a UI.
-- **Evals are small and CI never scores a real model.** 5 Quant and 2 AW golden items. The agent-in-the-loop harness (below) runs the real Quant agent, but CI only runs it offline against a fake model; real runs are manual and there is no measured baseline checked in.
+- **Evals are small and CI never scores a real model.** 5 Quant and 2 AW golden GRE items, plus 33 SAT Math and 6 IELTS Reading items (see "IELTS and SAT golden sets"); the IELTS Writing target needs third-party data downloaded locally and CI has none. The agent-in-the-loop harness (below) runs the real Quant agent, but CI only runs it offline against a fake model; real runs are manual and there is no measured baseline checked in.
 - **The question-generation pipeline is a library plus an eval target.** It is not exposed over HTTP, has no UI, and has only been run for real on a handful of items on free models (see "Question-generation pipeline").
 - **No corpus is checked in**, and the k8s manifests have never been applied to a cluster.
 
@@ -241,6 +241,43 @@ Known product gap the harness exposes: `QuantAgent._verify` still checks the age
 - **Regression check**: `--baseline file.json` fails the run (exit 1) when a higher-is-better metric drops more than 5% vs that file; `--write-baseline` records measured metrics. No baseline is checked in because none has been measured yet.
 - **Human review queue** (`evals/human_review_queue.py`): in-memory; the `generation` suite sends unrepairable items to it and reports the count. Nothing else in the harness uses it and it has no store behind it.
 - `evals/judges/aw_judge.py` and `quant_judge.py` remain as judge building blocks; `grade_quant_item` requires an externally supplied candidate answer and no longer defaults to the golden answer.
+
+## IELTS and SAT golden sets
+
+`evals/exam_set/` adds IELTS and SAT items next to the GRE files (the GRE files and `load_golden_set` are unchanged; `evals.loader.load_exam_items` loads the new ones). Decisions and trade-offs are in ADR-0013. The rule that matters: **every item has a label tier, and every metric is reported against a tier and a sample size.**
+
+| Tier | Where it comes from | How far to trust it |
+|---|---|---|
+| `examiner` | band and comments published in the owner's own Cambridge IELTS books | highest; not a re-rating, and the publisher says sample scripts are not definitive examples of a band |
+| `captain_blind` | project-owner scores under a blind protocol | single rater, not an examiner (none exist yet) |
+| `site_or_model_weak` | writing9 site/model scores (Hugging Face) | noisy (about 1.4 bands off an LLM grader per the dataset card); large-n statistics and judge calibration only, never examiner truth |
+| `solver` | sympy plus a second independent computation, which must agree | machine-verified (SAT Math) |
+| `author_key` | written by the item's author, an agent, not checked by a human | the IELTS Reading keys; the Not Given item may be arguable |
+
+**Committed (original items only):** `evals/golden/sat_math.jsonl` (33 items from 11 original templates, 4 content domains; template id and seed are stored and `regenerate` rebuilds each item exactly; every item also passes the product's sympy verifier) and `evals/golden/ielts_reading.jsonl` (6 items on one original passage with evidence sentences). Regenerate with `uv run python -m evals.exam_set generate-sat` / `generate-reading`.
+
+**Local only, never committed:** third-party data goes to the gitignored `evals/golden/local/` (override with `--local-dir` or `$EDU_GOLDEN_LOCAL_DIR`), with `manifest.json` listing each source, licence status, label tier, counts and hash.
+
+```bash
+uv run python -m evals.exam_set import-writing9 --limit 1200   # HF datasets-server, no key; slow because the API rate-limits
+uv run python -m evals.exam_set import-cambridge --dir ~/ielts-books   # text, text PDF or scans; scans need `brew install tesseract`
+uv run python -m evals.exam_set manifest   # sources, licence status, tier, counts
+uv run python -m evals.exam_set summary    # counts by exam, skill, tier
+```
+
+The Cambridge importer extracts Writing tasks with their sample answers, published bands and examiner comments, and writes the extracted text to `evals/golden/local/cambridge_extracted/` so OCR slips can be fixed by hand. **It has only been tested on synthetic text** (no book files were available), and real book layouts vary, so run it on one book and read the extracted text and printed counts before trusting it. Samples with no recoverable band are skipped and counted.
+
+**IELTS Writing Task 2 grader target** (`--suite ielts_writing`, opt-in because it needs local data): a model scores each essay on Task Response, Coherence and Cohesion, Lexical Resource and Grammatical Range and Accuracy using an original rubric (official descriptors are not reproduced); the overall band is computed in code from the four. It reports within-0.5 rate, quadratic weighted kappa, exact match, MAE, bias and the same per criterion, against the best tier present (`--ielts-tier` forces one), always with `label_tier`, `label_tier_caveat` and `n_items`.
+
+```bash
+uv run python -m evals.agent_eval --suite ielts_writing                         # dry run: item count and plan
+uv run python -m evals.agent_eval --mode offline --suite ielts_writing           # plumbing only: the fake grader echoes the labels
+uv run python -m evals.agent_eval --mode live --suite ielts_writing --max-items 6 --provider free+openai
+```
+
+One live smoke run has been made (6 writing9 essays, `--provider free+openai`): the free daily cap was exhausted, all 6 calls fell back to `gpt-4o-mini` (about 0.0012 USD), and against `site_or_model_weak` labels it scored within-0.5 on 4/6 with QWK about -0.12 and a +0.75 band bias. That is n=6 against noisy labels: a plumbing check, not a measurement of the grader. No baseline is checked in.
+
+Not done: SAT Reading and Writing, IELTS Speaking, Listening and Task 1 (charts), TOEIC, a captain-scored original essay set, and the EWCCE scripts (CC BY 4.0, checked: 200 scanned handwritten PDFs that need transcription, task type and band spread unknown without downloading them). `chillies/IELTS-writing-task-2-evaluation` was checked and not imported (one free-text band string per row, no per-criterion labels, no stated source or scorer, duplicates).
 
 ## Question-generation pipeline
 
