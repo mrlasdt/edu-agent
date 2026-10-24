@@ -279,8 +279,9 @@ def latency_cost_summary(
         return s[min(len(s) - 1, int(q * len(s)))]
 
     out: dict[str, Any] = {"total_usd": transport.spent_this_run, "calls": len(transport.records)}
-    for tag in ("agent", "judge"):
-        recs = [r for r in transport.records if r.tag == tag]
+    groups = {"agent": {"agent", "baseline", "pipeline"}, "judge": {"judge"}}
+    for tag, tags in groups.items():
+        recs = [r for r in transport.records if r.tag in tags]
         lat = [r.latency_s for r in recs]
         out[tag] = {
             "calls": len(recs),

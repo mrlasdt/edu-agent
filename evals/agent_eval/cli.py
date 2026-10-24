@@ -3,6 +3,7 @@ Agent-in-the-loop eval CLI.
 
   python -m evals.agent_eval                       # dry-run: print the plan, no calls
   python -m evals.agent_eval --mode offline        # full pipeline on a fake model, no network
+  python -m evals.agent_eval --mode live --suite generation   # LangGraph pipeline vs baseline
   python -m evals.agent_eval --mode live --provider free
 
 Live runs need keys in the environment (OPENROUTER_API_KEY and/or OPENAI_API_KEY); the CLI
@@ -23,7 +24,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from evals.agent_eval import runner
+from evals.agent_eval import generation, offline_generation, runner
 from evals.agent_eval.budget import (
     DEFAULT_CEILING_USD,
     DEFAULT_LEDGER_PATH,
@@ -36,6 +37,8 @@ from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport
 from evals.loader import load_golden_set
 from evals.regression import check_regression
 from services.agent.src.agent.agents.quant import QuantAgent
+from services.agent.src.agent.pipeline.factory import build_baseline, build_pipeline
+from services.agent.src.agent.pipeline.schema import GenerationRequest
 
 # Order matters: openrouter/free is OpenRouter's router over whichever free model is up, so it
 # is the most reliable first choice; the pinned models are fallbacks for when it errors.
@@ -67,7 +70,13 @@ def required_keys(provider: str, judge: str) -> list[str]:
 
 
 def _offline_model(model: str, messages: list[dict[str, Any]]) -> str:
-    """Deterministic fake agent: tutor replies with a hint, solver with the golden answer."""
+    """
+    Deterministic fake agent: tutor replies with a hint, solver with the golden answer, and
+    the question-generation roles with seeded flaws (see offline_generation).
+    """
+    generated = offline_generation.respond(model, messages)
+    if generated is not None:
+        return generated
     system = str(messages[0]["content"]).lower()
     convo = "\n".join(str(m["content"]) for m in messages[1:])
     item = next((i for i in load_golden_set("quant") if i["question"] in convo), None)
@@ -89,14 +98,20 @@ def _offline_judge() -> Judge:
 def plan(args: argparse.Namespace, chain: list[str], ledger: Ledger) -> dict[str, Any]:
     n_quant = min(args.max_items, len(load_golden_set("quant"))) if "quant" in args.suite else 0
     n_aw = min(args.max_items, len(load_golden_set("aw"))) if "aw" in args.suite else 0
+    n_gen = (
+        min(args.max_items, len(load_golden_set("quant_generation")))
+        if "generation" in args.suite
+        else 0
+    )
     agent_calls = n_quant * 5  # 2 tutor probes + up to 3 solve attempts
-    judge_calls = n_quant * 7 + n_aw * 3
+    agent_calls += n_gen * (1 + 7)  # baseline 1; pipeline planner + 3 x (generate + critic)
+    judge_calls = n_quant * 7 + n_aw * 3 + n_gen * 2  # one verdict per emitted item
     per_call = estimate_cost(chain[0], 2000, 800)
     return {
         "mode": "dry-run",
         "model_chain": chain,
         "judge": args.judge,
-        "items": {"quant": n_quant, "aw": n_aw},
+        "items": {"quant": n_quant, "aw": n_aw, "generation": n_gen},
         "max_agent_calls": agent_calls,
         "max_judge_calls": judge_calls,
         "worst_case_usd_first_model": per_call * (agent_calls + judge_calls),
@@ -146,6 +161,10 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             if "aw" in args.suite:
                 items = runner.select_items("aw", args.max_items, SEED)
                 report["suites"]["aw"] = await runner.run_aw(items, judge)
+            if "generation" in args.suite:
+                report["suites"]["generation"] = await _run_generation(
+                    args.max_items, model, judge, transport
+                )
         except (BudgetExceededError, AllModelsFailedError) as exc:
             report["aborted"] = f"{type(exc).__name__}: {exc}"
             exit_code = 2
@@ -157,6 +176,23 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     report["ledger_spent_usd"] = ledger.spent()
     report["regression_metrics"] = regression_metrics(report)
     return report, exit_code
+
+
+async def _run_generation(
+    max_items: int, model: str, judge: Judge, transport: MeteredTransport
+) -> dict[str, Any]:
+    """Baseline vs LangGraph pipeline, both routed to `model`, on the same requests."""
+    config = runner.write_model_config(model)
+    skill = runner.InProcessVerifySkill()
+    requests = [
+        GenerationRequest.model_validate(i)
+        for i in runner.select_items("quant_generation", max_items, SEED)
+    ]
+    targets: dict[str, generation.Target] = {
+        "baseline": build_baseline(config),
+        "pipeline": build_pipeline(skill, config),
+    }
+    return await generation.run_generation(requests, targets, judge, skill, transport)
 
 
 def regression_metrics(report: dict[str, Any]) -> dict[str, float]:
@@ -178,6 +214,13 @@ def regression_metrics(report: dict[str, Any]) -> dict[str, float]:
     aw = report["suites"].get("aw")
     if aw and aw["within_tolerance"] is not None:
         out["judge_aw_within_tolerance"] = aw["within_tolerance"]
+    gen = report["suites"].get("generation")
+    if gen:
+        pipe = gen["targets"].get("pipeline", {})
+        if pipe.get("valid_yield") is not None:
+            out["gen_pipeline_valid_yield"] = pipe["valid_yield"]
+        if pipe.get("shipped_defect_rate") is not None:
+            out["gen_pipeline_no_defect_rate"] = 1 - pipe["shipped_defect_rate"]
     return out
 
 
@@ -197,7 +240,7 @@ def _strip_rows(obj: Any) -> Any:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Agent-in-the-loop eval")
     p.add_argument("--mode", choices=["dry-run", "offline", "live"], default="dry-run")
-    p.add_argument("--suite", action="append", choices=["quant", "aw"], default=[])
+    p.add_argument("--suite", action="append", choices=["quant", "aw", "generation"], default=[])
     p.add_argument("--provider", choices=["free", "free+openai", "openai"], default="free")
     p.add_argument("--judge", choices=["llm", "jev"], default="llm")
     p.add_argument("--judge-model", default=None, help="litellm model string for the llm judge")
@@ -208,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--baseline", default=None, help="JSON of metrics to regression-check against")
     p.add_argument("--write-baseline", default=None, help="write measured metrics to this path")
     args = p.parse_args(argv)
-    args.suite = args.suite or ["quant", "aw"]
+    args.suite = args.suite or ["quant", "aw", "generation"]
     if not Path("prompts/quant_agent").exists():
         raise SystemExit("run from the repository root (prompts/ not found)")
 

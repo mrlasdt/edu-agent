@@ -69,7 +69,7 @@ jobs:
       - run: uv sync --extra dev
       - name: Eval pipeline check (offline, fake model, no network, no secrets)
         # Exercises the real agent code path against a deterministic fake model. It proves
-        # the harness works; it says nothing about model quality. Real runs are manual
+        # the harness (quant, aw and question-generation suites) works; it says nothing about model quality. Real runs are manual
         # (`--mode live`) and budget-capped; see README "Eval pipeline".
         run: uv run python -m evals.agent_eval --mode offline
 

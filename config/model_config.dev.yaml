@@ -50,6 +50,23 @@ roles:
     model: gpt-4o-mini
     temperature: 0
 
+  # Question-generation pipeline (LangGraph): planner and critic are cheap, the generator
+  # experts are the main tier. Evals reroute every role to one model with write_model_config.
+  question_planner:
+    provider: openai
+    model: gpt-4o-mini
+    temperature: 0
+
+  question_generator:
+    provider: openai
+    model: gpt-4o
+    temperature: 0.4
+
+  question_critic:
+    provider: openai
+    model: gpt-4o-mini
+    temperature: 0
+
   # Background jobs
   style_extractor:
     provider: openai
@@ -66,3 +83,11 @@ prompts:
   aw_agent:
     tutor: v1
     solve: v1
+  # Question pipeline roles (prompts/question_pipeline/<role>/<version>.md)
+  question_pipeline:
+    planner: v1
+    numeric_expert: v1
+    choice_expert: v1
+    comparison_expert: v1
+    critic: v1
+    baseline: v1

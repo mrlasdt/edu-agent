@@ -31,9 +31,13 @@ Moderation API).
 - verify_math exposed over HTTP so Quant solve mode works
 - real dense RAG: ingest -> Qdrant -> retrieve (Qdrant v1.18)
 - CI made green: web peer-dependency fix (@vitejs/plugin-react 6), ruff clean, mypy strict clean
+- agent-in-the-loop eval harness with budget ledger (evals/agent_eval)
+- LangGraph question-generation pipeline (services/agent/src/agent/pipeline, ADR-0012): planner,
+  expert routing, sympy/leak/distractor tools, critic, bounded revise loop, per-item trace; eval
+  target `generation` compares it with a single-call baseline (offline fake in CI)
 
 ### Current counts
-- Python tests: 189 passing (uv run pytest tests/ -q)
+- Python tests: 231 passing (uv run pytest tests/ -q)
 - Frontend (Vitest) tests: 55 passing (cd web && npm test)
 - CI checks: ruff, mypy (strict), pytest, web typecheck + vitest
 
@@ -53,3 +57,7 @@ Moderation API).
 - QuantAgent._verify compares the agent's answer to itself, so verifier_fail is unreliable.
 - No ETS corpus is checked in, so AW citations have nothing to cite until one is ingested.
 - k8s manifests and deploy workflow were never applied to a cluster.
+- Question-generation pipeline: library + eval target only (no HTTP endpoint, UI, dedup, difficulty
+  calibration or review-queue store). The only live run (free models, 3 requests) was inconclusive:
+  5 of 6 units dropped as the free tier was unavailable. Offline before/after uses a fake model with
+  seeded flaws and proves wiring, not model quality. No measured real-model comparison yet.

@@ -4,13 +4,14 @@ A GRE test-prep tutor built as a reference implementation of agentic AI engineer
 
 ## Status
 
-The backend services are built and covered by 189 Python tests (mocked LLM and Qdrant) plus 55 frontend unit tests. It is **not usable end to end yet**:
+The backend services are built and covered by 231 Python tests (mocked LLM and Qdrant) plus 55 frontend unit tests. It is **not usable end to end yet**:
 
 - **No web app shell.** `web/` holds React components and tests but no `index.html` or entry point, so `npm run build` fails and nothing renders in a browser. The only way in today is `POST /chat` on the gateway, which needs `OPENAI_API_KEY`.
 - **RAG is dense-only.** The sparse vector, RRF hybrid and BGE reranker from ADR-0004 are designed but not wired.
 - **`/chat` applies only the content-safety guardrail.** The enrichment and complexity steps in the Orchestrator are stubs. The answer-leak, PII, rate-limit and citation guardrails are implemented and unit tested but not yet applied in `/chat`.
 - **Agent metadata is dropped.** `/generate` streams text only, so sources and verifier events never reach a UI.
 - **Evals are small and CI never scores a real model.** 5 Quant and 2 AW golden items. The agent-in-the-loop harness (below) runs the real Quant agent, but CI only runs it offline against a fake model; real runs are manual and there is no measured baseline checked in.
+- **The question-generation pipeline is a library plus an eval target.** It is not exposed over HTTP, has no UI, and has only been run for real on a handful of items on free models (see "Question-generation pipeline").
 - **No corpus is checked in**, and the k8s manifests have never been applied to a cluster.
 
 The sections below describe the intended design; see `progress.txt` for the current state of each piece.
@@ -22,6 +23,7 @@ A Candidate submits a GRE Quant or Analytical Writing question. The system:
 - **Tutors by default** — scaffolds toward the answer via Socratic hints, never revealing it
 - **Solves on request** — returns a fully worked solution (Quant) or a scored sample essay (AW)
 - **Verifies math** — every Quant answer is checked by a sympy sandbox before emission; wrong answers retry → escalate → degrade gracefully
+- **Generates practice questions** - a LangGraph pipeline plans, routes to a generator expert, verifies the key with sympy, critiques the wording and revises within a bounded retry budget (library only, see below)
 - **Cites sources** — AW responses reference numbered passages from a curated ETS corpus; uncited claims are blocked or stripped (the corpus must be ingested first; none is checked in)
 - **Matches your style** — opt-in personal style feature biases essay voice toward the Candidate's own writing while preserving ETS structural rubric
 
@@ -145,13 +147,13 @@ docker compose -f infra/docker-compose.yml --profile embeddings up -d
 ### 4. Run tests
 
 ```bash
-# Python tests (189)
+# Python tests (231)
 uv run pytest tests/ -q
 
 # Frontend tests (55)
 cd web && npm test
 
-# Eval pipeline check (offline fake model, no network, no keys)
+# Eval pipeline check (offline fake model, no network, no keys); includes the generation suite
 uv run python -m evals.agent_eval --mode offline
 ```
 
@@ -228,15 +230,69 @@ What it measures (Quant, `QuantAgent` unmodified, run on golden-set questions):
 - **Judge agreement with golden labels**: calibration probes with known labels (the golden answer vs a perturbed wrong one; a hint that states the answer vs one that does not) plus the judge's agreement with the rule/sympy labels on the agent's real outputs. For AW, the judge scores each published anchor essay with that anchor held out of its context and is compared with the anchor's score (within 1 point, and MAE).
 - **Cost and latency**: per run and per call, split into agent vs judge calls (tokens, USD, p50/p95 call latency, mean agent turn latency).
 
-What it does **not** measure: AW agent output (the AW agent needs the corpus service; AW is judge calibration only), multi-turn tutoring, retrieval quality, or anything the 5-item Quant slice is too small to support statistically. Offline numbers are plumbing checks, not quality. The free tier is heavily rate-limited: in the one smoke run (2 Quant items, free models, 0 USD) most units were dropped as unavailable and are counted in `units_dropped_model_unavailable`, so treat any free-model number as noisy and check that count. Real calls are made non-streaming and replayed to the agent as a stream, so time-to-first-token is not measured.
+The `generation` suite is described under "Question-generation pipeline" below. What it does **not** measure: AW agent output (the AW agent needs the corpus service; AW is judge calibration only), multi-turn tutoring, retrieval quality, or anything the 5-item Quant slice is too small to support statistically. Offline numbers are plumbing checks, not quality. The free tier is heavily rate-limited: in the one smoke run (2 Quant items, free models, 0 USD) most units were dropped as unavailable and are counted in `units_dropped_model_unavailable`, so treat any free-model number as noisy and check that count. Real calls are made non-streaming and replayed to the agent as a stream, so time-to-first-token is not measured.
 
 Providers and spend: the free chain is `openrouter/free` then pinned free models; `--provider free+openai` appends `openai/gpt-4o-mini` as the fallback for final runs. A persisted ledger (`.eval-ledger/ledger.json`, gitignored; `--ledger` to relocate) caps cumulative spend at 20 USD (`--ceiling`); each call is projected at worst case and aborts the run before it could exceed the cap. Free models count as zero. The jev judge (`typesafe/jev-1.14`, OpenRouter decisions API, typed yes/no and score answers, no explanations) is paid and off by default; its request/response mapping follows OpenRouter's docs but has not been run live. Reports (with model outputs) go to `.eval-runs/` (gitignored); only aggregates are printed.
 
 Known product gap the harness exposes: `QuantAgent._verify` checks the agent's answer against itself (`expected=claimed_answer`), so its `verifier_fail` rate is high even on correct multi-value answers. Fixing it is not part of the eval work.
 
 - **Regression check**: `--baseline file.json` fails the run (exit 1) when a higher-is-better metric drops more than 5% vs that file; `--write-baseline` records measured metrics. No baseline is checked in because none has been measured yet.
-- **Human review queue** (`evals/human_review_queue.py`): exists as a module with unit tests but is not wired into the harness.
+- **Human review queue** (`evals/human_review_queue.py`): in-memory; the `generation` suite sends unrepairable items to it and reports the count. Nothing else in the harness uses it and it has no store behind it.
 - `evals/judges/aw_judge.py` and `quant_judge.py` remain as judge building blocks; `grade_quant_item` requires an externally supplied candidate answer and no longer defaults to the golden answer.
+
+## Question-generation pipeline
+
+`services/agent/src/agent/pipeline/` is a LangGraph graph that writes new GRE Quant practice questions and refuses to emit ones it cannot verify (ADR-0012):
+
+```
+plan -> route -> generator expert -> verify tools -> critic -> accept
+          ^                              |             |
+          +--------- revise <------------+-------------+   (max 3 attempts)
+                                         |
+                                      escalate -> human review queue
+```
+
+- **Planner and router**: an LLM planner picks the question type and constraints (a type fixed by the request wins; an unusable reply falls back to a keyword rule); the type selects one of three experts (numeric entry, multiple choice, quantitative comparison), each with its own versioned prompt in `prompts/question_pipeline/`.
+- **Verifier tools** (deterministic): structure, leak (answer stated or marked in the stem or options), a sympy solver that recomputes the key through the existing verify-math skill, and a distractor check (keyed options are exactly the solution values; a comparison keyed D must really change sign). The generator never grades its own key.
+- **Critic**: an LLM wording check for ambiguity and answer leaks, run only on items that passed the tools. It fails closed: an unparseable reply counts as a failed check, so the item is retried and then escalated.
+- **Revise loop**: failed checks become feedback to the same expert; after `max_attempts` the item is escalated instead of emitted.
+- **Trace**: every result carries a `TraceEvent` per step (plan, routing, each attempt's item, every check result, feedback, model, latency).
+- **Provider layer**: roles `question_planner`, `question_generator`, `question_critic` in `config/model_config.dev.yaml`, called through `litellm`, so the eval harness's metered transport (free OpenRouter first, OpenAI fallback, 20 USD ledger checked before every call) applies unchanged.
+
+```python
+from services.agent.src.agent.pipeline.factory import build_pipeline
+from services.agent.src.agent.pipeline.schema import GenerationRequest
+
+result = await build_pipeline().run(GenerationRequest(request_id="r1", topic="quadratic equations"))
+result.status, result.item, result.trace   # accepted | needs_review
+```
+
+Items are structured so the key is recomputable (a sympy `expression`, or two quantities for a comparison) and options must be numeric values, so text-option and word-heavy items are out of scope for "verified" in v1.
+
+### Evaluating it
+
+```bash
+uv run python -m evals.agent_eval --mode offline --suite generation --max-items 12
+uv run python -m evals.agent_eval --mode live --suite generation --provider free --max-items 3
+```
+
+The `generation` suite runs the single-call baseline (same model role and item schema, one prompt for all types, output emitted unchecked) and the pipeline on the same requests (`evals/golden/gre_quant_generation.jsonl`, 12 requests), audits every emitted item, and prints both side by side: valid yield per request, shipped-defect rate and which check caught it, escalation rate, unparseable rate, mean LLM calls, an independent judge verdict, and calls/tokens/USD per target and per valid item. Two further metrics: `verifier_reject_rate` is the share of generate attempts (parsed or unparseable, counted per generate step across all requests) whose deterministic verify step failed, read from the per-attempt traces (`null` for the baseline, which never verifies); `cost.usd_per_accepted_item` is the target's USD divided by emitted items (status accepted or unchecked), alongside `emitted_rate` and `cost.usd_per_valid_item` (USD divided by audit-valid items). Per-item traces are saved in the run report under `rows` (gitignored `.eval-runs/`).
+
+**Offline before/after (fake model with seeded flaws, 12 requests; plumbing, not model quality):**
+
+| | baseline | pipeline |
+|---|---|---|
+| valid yield per request | 25% | 92% |
+| shipped defect rate | 70% | 0% |
+| unparseable replies | 17% | 0% |
+| escalated to review | n/a | 8% (1 request the fake never fixes) |
+| mean LLM calls per request | 1.0 | 3.75 |
+
+Read this honestly: the fake injects a wrong key, a leaked answer, a duplicated option or non-JSON on the first attempt and fixes it only when the prompt carries revision feedback, so the table shows that the routing, tools, revise loop and escalation work, and what the loop costs in calls. It says nothing about how often a real model errs. The audit also reuses the pipeline's own tools, so the pipeline's 0% shipped-defect rate is by construction; the offline judge is derived from the audit, so only a live run gives an independent judge verdict.
+
+**Live smoke (2026-10-24, free OpenRouter chain only, 3 requests, 0 USD):** inconclusive. The free tier was mostly unavailable: 5 of the 6 units (3 baseline, 3 pipeline) were dropped because every model in the chain failed, so only one baseline item completed (it shipped a leak defect) and the pipeline completed none. An earlier attempt with a 900-token cap had every reply cut off mid-JSON by the routed model's hidden reasoning, which is why `max_tokens` is now 2500 for these roles. A pipeline item makes up to 7 calls and one failed call drops the whole item, so it is more exposed to a flaky free tier than the baseline; there is no per-call retry inside the pipeline beyond the transport's rate-limit retries and fallback chain. No measured before/after on a real model exists yet; a run on `--provider free+openai` (up to 8 calls per request across both targets, plus judge calls, at gpt-4o-mini prices) is the next step.
+
+Not done: dedup against the bank, difficulty calibration, knowledge-base grounding, an HTTP endpoint on the agent service, persisting traces, a store behind the review queue, and Verbal or AW generation.
 
 ## Guardrails (5 layers)
 

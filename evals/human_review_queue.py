@@ -16,6 +16,7 @@ class HumanReviewQueue:
     Trigger conditions:
       - AW score at a boundary tier (3.5, 4.5)
       - verifier_fail events
+      - generated questions the pipeline could not make pass its checks
     """
 
     def __init__(self) -> None:
@@ -35,6 +36,14 @@ class HumanReviewQueue:
             "item_id": item_id,
             "reason": "verifier_fail",
             "expression": expression,
+            "trace_id": trace_id,
+        })
+
+    def add_generation_review(self, request_id: str, failures: list[str], trace_id: str) -> None:
+        self._items.append({
+            "item_id": request_id,
+            "reason": "generation_needs_review",
+            "failures": failures,
             "trace_id": trace_id,
         })
 
