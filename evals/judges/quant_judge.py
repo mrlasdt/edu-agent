@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from services.math_verifier.src.math_verifier.sandbox import verify_expression
 
@@ -13,7 +14,7 @@ class QuantResult:
     error: str | None = None
 
 
-async def grade_quant_item(item: dict) -> QuantResult:
+async def grade_quant_item(item: dict[str, Any]) -> QuantResult:
     """
     Grade a Quant golden-set item using the sympy sandbox.
     No LLM call — purely deterministic.

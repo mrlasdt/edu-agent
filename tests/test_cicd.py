@@ -9,9 +9,9 @@ Behaviors under test:
   5. Dockerfiles exist for all services
 """
 
-import yaml
-import pytest
 from pathlib import Path
+
+import yaml
 from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).parent.parent

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import AsyncGenerator, AsyncIterator
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import Any
 
 import litellm
 
@@ -37,15 +38,27 @@ def _load_prompt(mode: Mode, version: str) -> str:
     return re.sub(r"^---\n.*?\n---\n", "", raw, flags=re.DOTALL).strip()
 
 
-def _format_chunks_for_context(chunks: list) -> str:
+def _format_chunks_for_context(chunks: list[Any]) -> str:
     if not chunks:
         return ""
     lines = ["\n\n## Reference Material\n"]
     for i, chunk in enumerate(chunks, start=1):
         text = chunk.get("text", "") if isinstance(chunk, dict) else getattr(chunk, "text", "")
-        tier = chunk.get("tier", "global") if isinstance(chunk, dict) else getattr(chunk, "tier", "global")
-        section = chunk.get("page_or_section", "") if isinstance(chunk, dict) else getattr(chunk, "page_or_section", "")
-        tier_label = {"global": "Official ETS material", "school": "Course notes", "candidate": "Your notes"}.get(tier, "Reference")
+        tier = (
+            chunk.get("tier", "global")
+            if isinstance(chunk, dict)
+            else getattr(chunk, "tier", "global")
+        )
+        section = (
+            chunk.get("page_or_section", "")
+            if isinstance(chunk, dict)
+            else getattr(chunk, "page_or_section", "")
+        )
+        tier_label = {
+            "global": "Official ETS material",
+            "school": "Course notes",
+            "candidate": "Your notes",
+        }.get(tier, "Reference")
         lines.append(f"[{i}] ({tier_label} — {section})\n{text}")
     return "\n\n".join(lines)
 
@@ -60,10 +73,13 @@ def _format_exemplars(exemplars: list[str]) -> str:
 
 
 def _build_messages(
-    session: Session, user_message: str, system_prompt: str,
-    chunk_context: str, exemplar_context: str = ""
-) -> list[dict]:
-    messages: list[dict] = [{"role": "system", "content": system_prompt}]
+    session: Session,
+    user_message: str,
+    system_prompt: str,
+    chunk_context: str,
+    exemplar_context: str = "",
+) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     for msg in session.history:
         role = "user" if msg.role == MessageRole.candidate else "assistant"
         messages.append({"role": role, "content": msg.content})
@@ -76,7 +92,7 @@ def _build_messages(
     return messages
 
 
-async def _collect_stream(stream) -> tuple[list[str], str]:
+async def _collect_stream(stream: AsyncIterator[Any]) -> tuple[list[str], str]:
     tokens: list[str] = []
     async for chunk in stream:
         content = chunk.choices[0].delta.content
@@ -109,7 +125,9 @@ class AWAgent(BaseAgent):
         self._match_style_skill = match_style_skill or MatchStudentStyleSkill()
         self._model_config_path = model_config_path
 
-    async def run(self, session: Session, message: str) -> AsyncGenerator[str | dict, None]:
+    async def run(
+        self, session: Session, message: str
+    ) -> AsyncGenerator[str | dict[str, Any], None]:
         chunks = await self._retrieve(session, message)
         chunk_context = _format_chunks_for_context(chunks)
         version = self._model_config.prompt_version("aw_agent", session.mode.value)
@@ -124,15 +142,22 @@ class AWAgent(BaseAgent):
     # ── tutor mode ────────────────────────────────────────────────────────────
 
     async def _tutor_turn(
-        self, session: Session, message: str, chunk_context: str, chunks: list, version: str = "v1"
-    ) -> AsyncGenerator[str | dict, None]:
+        self,
+        session: Session,
+        message: str,
+        chunk_context: str,
+        chunks: list[Any],
+        version: str = "v1",
+    ) -> AsyncGenerator[str | dict[str, Any], None]:
         system_prompt = _load_prompt(Mode.tutor, version)
         messages = _build_messages(session, message, system_prompt, chunk_context)
         model = self._model_config.litellm_model("aw_agent")
         temperature = self._model_config.role("aw_agent").temperature
 
         # Attempt 1
-        response = await litellm.acompletion(model=model, messages=messages, temperature=temperature, stream=True)
+        response = await litellm.acompletion(
+            model=model, messages=messages, temperature=temperature, stream=True
+        )
         tokens, full_text = await _collect_stream(response)
         valid, invalid = self._check_citations(full_text, len(chunks))
 
@@ -143,8 +168,18 @@ class AWAgent(BaseAgent):
             return
 
         # Retry on citation failure
-        retry_messages = messages + [{"role": "assistant", "content": f"[Invalid citations: {', '.join(invalid)}. Must only cite [1]–[{len(chunks)}].]"}]
-        response = await litellm.acompletion(model=model, messages=retry_messages, temperature=temperature, stream=True)
+        retry_messages = messages + [
+            {
+                "role": "assistant",
+                "content": (
+                    f"[Invalid citations: {', '.join(invalid)}. "
+                    f"Must only cite [1]–[{len(chunks)}].]"
+                ),
+            }
+        ]
+        response = await litellm.acompletion(
+            model=model, messages=retry_messages, temperature=temperature, stream=True
+        )
         tokens, full_text = await _collect_stream(response)
         valid, invalid = self._check_citations(full_text, len(chunks))
 
@@ -160,20 +195,29 @@ class AWAgent(BaseAgent):
     # ── solve mode ────────────────────────────────────────────────────────────
 
     async def _solve_turn(
-        self, session: Session, message: str, chunk_context: str, chunks: list, version: str = "v1"
-    ) -> AsyncGenerator[str | dict, None]:
+        self,
+        session: Session,
+        message: str,
+        chunk_context: str,
+        chunks: list[Any],
+        version: str = "v1",
+    ) -> AsyncGenerator[str | dict[str, Any], None]:
         system_prompt = _load_prompt(Mode.solve, version)
         model = self._model_config.litellm_model("aw_agent")
         temperature = self._model_config.role("aw_agent").temperature
 
         # Personal style exemplars (if opted-in + >= 2 essays)
         exemplars = await self._get_personal_style_exemplars(session)
-        exemplar_context = _format_exemplars(exemplars) if len(exemplars) >= _MIN_PERSONAL_ESSAYS else ""
+        exemplar_context = (
+            _format_exemplars(exemplars) if len(exemplars) >= _MIN_PERSONAL_ESSAYS else ""
+        )
 
         messages = _build_messages(session, message, system_prompt, chunk_context, exemplar_context)
 
         # Generate essay
-        response = await litellm.acompletion(model=model, messages=messages, temperature=temperature, stream=True)
+        response = await litellm.acompletion(
+            model=model, messages=messages, temperature=temperature, stream=True
+        )
         tokens, full_text = await _collect_stream(response)
 
         # Style critic — one rewrite pass on structural violation
@@ -181,16 +225,34 @@ class AWAgent(BaseAgent):
         if not style_ok:
             rewrite_messages = messages + [
                 {"role": "assistant", "content": full_text},
-                {"role": "user", "content": f"Please rewrite to fix: {style_feedback}. Keep the same thesis and evidence."},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Please rewrite to fix: {style_feedback}. "
+                        "Keep the same thesis and evidence."
+                    ),
+                },
             ]
-            response = await litellm.acompletion(model=model, messages=rewrite_messages, temperature=temperature, stream=True)
+            response = await litellm.acompletion(
+                model=model, messages=rewrite_messages, temperature=temperature, stream=True
+            )
             tokens, full_text = await _collect_stream(response)
 
         # Citation check
         valid, invalid = self._check_citations(full_text, len(chunks))
         if not valid:
-            retry_messages = messages + [{"role": "assistant", "content": f"[Invalid citations: {', '.join(invalid)}. Must only cite [1]–[{len(chunks)}].]"}]
-            response = await litellm.acompletion(model=model, messages=retry_messages, temperature=temperature, stream=True)
+            retry_messages = messages + [
+                {
+                    "role": "assistant",
+                    "content": (
+                        f"[Invalid citations: {', '.join(invalid)}. "
+                        f"Must only cite [1]–[{len(chunks)}].]"
+                    ),
+                }
+            ]
+            response = await litellm.acompletion(
+                model=model, messages=retry_messages, temperature=temperature, stream=True
+            )
             tokens, full_text = await _collect_stream(response)
             valid, invalid = self._check_citations(full_text, len(chunks))
             if not valid:
@@ -209,7 +271,7 @@ class AWAgent(BaseAgent):
 
     # ── seams ─────────────────────────────────────────────────────────────────
 
-    async def _retrieve(self, session: Session, message: str) -> list:
+    async def _retrieve(self, session: Session, message: str) -> list[Any]:
         return await self._retrieve_skill.retrieve(
             query=message,
             candidate_id=session.candidate_id,

@@ -10,10 +10,11 @@ Behaviors under test (from issue 06 acceptance criteria):
 """
 
 import pytest
-from services.ingestion.src.ingestion.chunker import Chunk, chunk_text
 
+from services.ingestion.src.ingestion.chunker import chunk_text
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
 
 def approx_tokens(text: str) -> int:
     """Word-count approximation: words × 1.3 ≈ tokens."""
@@ -25,6 +26,7 @@ def long_paragraph(n_words: int) -> str:
 
 
 # ── 1. Plain text produces chunks ─────────────────────────────────────────────
+
 
 def test_plain_text_produces_chunks():
     text = "\n\n".join([long_paragraph(200) for _ in range(5)])  # ~1000 words
@@ -43,8 +45,12 @@ def test_chunk_size_approximately_correct():
 
 # ── 2. Headings preserved in section_title ────────────────────────────────────
 
+
 def test_markdown_heading_captured_as_section_title():
-    text = "# Introduction\n\nThis is the intro paragraph.\n\n# Methods\n\nThis is the methods section."
+    text = (
+        "# Introduction\n\nThis is the intro paragraph.\n\n"
+        "# Methods\n\nThis is the methods section."
+    )
     chunks = chunk_text(text)
     titles = [c.section_title for c in chunks]
     assert "Introduction" in titles or any("Introduction" in (t or "") for t in titles)
@@ -60,6 +66,7 @@ def test_chunk_without_heading_has_none_section_title():
 
 # ── 3. Overlap ────────────────────────────────────────────────────────────────
 
+
 def test_adjacent_chunks_share_overlap():
     # Build enough text to guarantee multiple chunks
     text = "\n\n".join([long_paragraph(120) for _ in range(8)])
@@ -69,11 +76,14 @@ def test_adjacent_chunks_share_overlap():
     # The end of chunk N should overlap with the start of chunk N+1
     # Verify by checking that char ranges overlap or are adjacent
     for i in range(len(chunks) - 1):
-        assert chunks[i].char_end >= chunks[i + 1].char_start - 1, \
-            f"Chunk {i} end={chunks[i].char_end} does not overlap chunk {i+1} start={chunks[i+1].char_start}"
+        assert chunks[i].char_end >= chunks[i + 1].char_start - 1, (
+            f"Chunk {i} end={chunks[i].char_end} does not overlap "
+            f"chunk {i + 1} start={chunks[i + 1].char_start}"
+        )
 
 
 # ── 4. Empty text ─────────────────────────────────────────────────────────────
+
 
 def test_empty_text_returns_empty_list():
     assert chunk_text("") == []
@@ -84,6 +94,7 @@ def test_whitespace_only_returns_empty_list():
 
 
 # ── 5. Chunk metadata populated ───────────────────────────────────────────────
+
 
 def test_chunk_has_char_start_and_end():
     text = "First paragraph here.\n\nSecond paragraph here."

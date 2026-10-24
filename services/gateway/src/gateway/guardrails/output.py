@@ -55,4 +55,4 @@ async def _call_leak_checker(text: str) -> bool:
         stream=False,
     )
     content = response.choices[0].message.content.strip().upper()
-    return content.startswith("LEAK")
+    return bool(content.startswith("LEAK"))

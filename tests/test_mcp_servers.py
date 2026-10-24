@@ -17,22 +17,23 @@ Admin server:
   7. get_job_status returns error for unknown job
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
-from mcp_servers.candidate_server import (
-    search_corpus_tool,
-    get_question_tool,
-    get_model_essay_tool,
-)
+import pytest
+
 from mcp_servers.admin_server import (
+    get_job_status_tool,
     ingest_document_tool,
     list_ingestion_jobs_tool,
-    get_job_status_tool,
+)
+from mcp_servers.candidate_server import (
+    get_model_essay_tool,
+    get_question_tool,
+    search_corpus_tool,
 )
 
-
 # ── 0. Server modules import cleanly (guards FastMCP instantiation kwargs) ────
+
 
 def test_all_mcp_server_modules_import():
     """
@@ -56,8 +57,8 @@ def test_mcp_servers_bind_host_and_port_via_constructor():
     passed to mcp.run() — run() rejects those kwargs in this SDK version. This
     guards the SSE launch path that integration-only testing would otherwise miss.
     """
-    from mcp_servers.candidate_server import mcp as candidate_mcp
     from mcp_servers.admin_server import mcp as admin_mcp
+    from mcp_servers.candidate_server import mcp as candidate_mcp
     from services.math_verifier.src.math_verifier.server import mcp as verifier_mcp
 
     assert (candidate_mcp.settings.host, candidate_mcp.settings.port) == ("0.0.0.0", 8091)
@@ -67,17 +68,22 @@ def test_mcp_servers_bind_host_and_port_via_constructor():
 
 # ── 1. search_corpus ──────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_search_corpus_returns_chunks():
     mock_chunks = [
-        {"text": "GRE prep tip.", "tier": "global", "source_uri": "guide.pdf",
-         "page_or_section": "Intro", "score": 0.9}
+        {
+            "text": "GRE prep tip.",
+            "tier": "global",
+            "source_uri": "guide.pdf",
+            "page_or_section": "Intro",
+            "score": 0.9,
+        }
     ]
     with patch("mcp_servers.candidate_server._search_corpus", new_callable=AsyncMock) as mock:
         mock.return_value = mock_chunks
         result = await search_corpus_tool(
-            query="quadratic equations", test_type="gre",
-            candidate_id="c1", school_id=""
+            query="quadratic equations", test_type="gre", candidate_id="c1", school_id=""
         )
     assert isinstance(result, list)
     assert len(result) == 1
@@ -97,15 +103,20 @@ async def test_search_corpus_passes_test_type():
 
 # ── 2. get_question ───────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_get_question_returns_question():
     mock_question = {
-        "id": "q001", "question_type": "numeric_entry",
-        "expression": "x**2 - 5*x + 6 = 0", "ground_truth": "2,3"
+        "id": "q001",
+        "question_type": "numeric_entry",
+        "expression": "x**2 - 5*x + 6 = 0",
+        "ground_truth": "2,3",
     }
     with patch("mcp_servers.candidate_server._get_random_question", new_callable=AsyncMock) as mock:
         mock.return_value = mock_question
-        result = await get_question_tool(test_type="gre", section="quant", question_type="numeric_entry")
+        result = await get_question_tool(
+            test_type="gre", section="quant", question_type="numeric_entry"
+        )
     assert result["id"] == "q001"
     assert "expression" in result
 
@@ -114,13 +125,16 @@ async def test_get_question_returns_question():
 async def test_get_question_passes_section_and_type():
     with patch("mcp_servers.candidate_server._get_random_question", new_callable=AsyncMock) as mock:
         mock.return_value = {"id": "q1"}
-        await get_question_tool(test_type="gre", section="quant", question_type="quantitative_comparison")
+        await get_question_tool(
+            test_type="gre", section="quant", question_type="quantitative_comparison"
+        )
     call_kwargs = mock.call_args.kwargs
     assert call_kwargs.get("section") == "quant"
     assert call_kwargs.get("question_type") == "quantitative_comparison"
 
 
 # ── 3. get_model_essay ────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_get_model_essay_returns_essay_at_tier():
@@ -142,6 +156,7 @@ async def test_get_model_essay_passes_score_tier():
 
 
 # ── 4. ingest_document ────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_ingest_document_returns_job_id():
@@ -165,6 +180,7 @@ async def test_ingest_document_passes_tier():
 
 # ── 5. list_ingestion_jobs ────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_list_ingestion_jobs_returns_jobs():
     mock_jobs = [
@@ -180,6 +196,7 @@ async def test_list_ingestion_jobs_returns_jobs():
 
 # ── 6. get_job_status — known job ─────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_get_job_status_returns_status():
     with patch("mcp_servers.admin_server._get_job", new_callable=AsyncMock) as mock:
@@ -190,6 +207,7 @@ async def test_get_job_status_returns_status():
 
 
 # ── 7. get_job_status — unknown job ───────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_get_job_status_returns_error_for_unknown():

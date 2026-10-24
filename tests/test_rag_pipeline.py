@@ -21,8 +21,8 @@ from services.corpus.src.corpus.main import search_corpus
 from services.corpus.src.corpus.retriever import build_search_filter
 from services.ingestion.src.ingestion.main import run_ingestion_pipeline
 
-
 # ── 1. filter builder ─────────────────────────────────────────────────────────
+
 
 def test_build_search_filter_combines_test_type_and_acl():
     f = build_search_filter(candidate_id="c1", school_id="s1", test_type="gre")
@@ -34,10 +34,14 @@ def test_build_search_filter_combines_test_type_and_acl():
     assert len(acl.should) == 3
     # the candidate branch carries the requesting candidate's id
     cand_branch = acl.should[2]
-    assert any(getattr(c, "key", None) == "candidate_id" and c.match.value == "c1" for c in cand_branch.must)
+    assert any(
+        getattr(c, "key", None) == "candidate_id" and c.match.value == "c1"
+        for c in cand_branch.must
+    )
 
 
 # ── 2. search_corpus happy path ───────────────────────────────────────────────
+
 
 def _point(pid, score, payload):
     p = MagicMock()
@@ -53,11 +57,19 @@ async def test_search_corpus_projects_and_strips_acl_ids(mock_embed, mock_factor
     client.collection_exists.return_value = True
     client.query_points.return_value = MagicMock(
         points=[
-            _point("p1", 0.92, {
-                "text": "GRE content", "tier": "global", "test_type": "gre",
-                "source_uri": "ets.pdf", "page_or_section": "Intro",
-                "candidate_id": "secret", "school_id": "secret",
-            })
+            _point(
+                "p1",
+                0.92,
+                {
+                    "text": "GRE content",
+                    "tier": "global",
+                    "test_type": "gre",
+                    "source_uri": "ets.pdf",
+                    "page_or_section": "Intro",
+                    "candidate_id": "secret",
+                    "school_id": "secret",
+                },
+            )
         ]
     )
     mock_factory.return_value = client
@@ -75,6 +87,7 @@ async def test_search_corpus_projects_and_strips_acl_ids(mock_embed, mock_factor
 
 
 # ── 3. graceful degradation ───────────────────────────────────────────────────
+
 
 @patch("services.corpus.src.corpus.main.get_qdrant_client")
 @patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
@@ -94,6 +107,7 @@ async def test_search_corpus_degrades_on_embedder_failure(mock_embed):
 
 
 # ── 4 & 5. ingestion pipeline ─────────────────────────────────────────────────
+
 
 @patch("services.ingestion.src.ingestion.main.get_qdrant_client")
 @patch("services.ingestion.src.ingestion.main.ensure_collection", new_callable=AsyncMock)

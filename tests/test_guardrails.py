@@ -11,13 +11,15 @@ Behaviors under test:
   7. Every guardrail emits structured log event with trace_id
 """
 
-import pytest
 import logging
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
+from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
 from services.gateway.src.gateway.guardrails.input import (
-    check_content_safety,
     check_completeness,
+    check_content_safety,
 )
 from services.gateway.src.gateway.guardrails.output import (
     check_answer_leak,
@@ -26,7 +28,6 @@ from services.gateway.src.gateway.guardrails.output import (
 from services.gateway.src.gateway.guardrails.rate_limit import (
     RateLimiter,
 )
-from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
 from shared.src.shared.models import Mode, Session
 
 

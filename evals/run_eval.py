@@ -15,9 +15,10 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from evals.human_review_queue import HumanReviewQueue
-from evals.judges.aw_judge import AWResult, grade_aw_item
+from evals.judges.aw_judge import grade_aw_item
 from evals.judges.quant_judge import grade_quant_item
 from evals.loader import load_golden_set, sample_golden_set
 from evals.regression import check_regression
@@ -25,7 +26,7 @@ from evals.regression import check_regression
 _BASELINE_PATH = Path(__file__).parent / "baseline.json"
 
 
-async def run_quant(sample_rate: float, queue: HumanReviewQueue) -> dict:
+async def run_quant(sample_rate: float, queue: HumanReviewQueue) -> dict[str, Any]:
     items = sample_golden_set(load_golden_set("quant"), sample_rate, seed=42)
     results = await asyncio.gather(*[grade_quant_item(item) for item in items])
     correct = sum(1 for r in results if r.correct)
@@ -44,7 +45,7 @@ async def run_quant(sample_rate: float, queue: HumanReviewQueue) -> dict:
     return {"quant_accuracy": accuracy}
 
 
-async def run_aw(sample_rate: float, queue: HumanReviewQueue) -> dict:
+async def run_aw(sample_rate: float, queue: HumanReviewQueue) -> dict[str, Any]:
     items = sample_golden_set(load_golden_set("aw"), sample_rate, seed=42)
     results = await asyncio.gather(*[grade_aw_item(item) for item in items])
     scores = [r.score for r in results]
@@ -65,7 +66,7 @@ async def main() -> int:
     suites = args.suite or ["quant", "aw"]
 
     queue = HumanReviewQueue()
-    metrics: dict = {}
+    metrics: dict[str, Any] = {}
 
     if "quant" in suites:
         metrics.update(await run_quant(args.sample, queue))

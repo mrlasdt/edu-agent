@@ -5,21 +5,23 @@ Behaviors under test (from issue 07 acceptance criteria):
   1. RRF merge: two ranked lists → correct RRF-scored merged list
   2. ACL filter construction: builds correct three-tier Qdrant filter
   3. Tier-priority tiebreak: within-5%-threshold, prefer Student > School > Global
-  4. POST /corpus/retrieve → chunks with required fields (text, tier, source_uri, page_or_section, score)
+  4. POST /corpus/retrieve → chunks with required fields
+     (text, tier, source_uri, page_or_section, score)
   5. Candidate cannot retrieve another candidate's chunks (ACL)
   6. test_type filter applied
 """
 
-import pytest
-from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch
 
+import pytest
+from fastapi.testclient import TestClient
+
+from services.corpus.src.corpus.main import app
 from services.corpus.src.corpus.retriever import (
     _build_acl_filter,
     _rrf_merge,
     _tier_tiebreak,
 )
-from services.corpus.src.corpus.main import app
 
 
 @pytest.fixture
@@ -28,6 +30,7 @@ def client():
 
 
 # ── 1. RRF merge ──────────────────────────────────────────────────────────────
+
 
 def test_rrf_merge_combines_two_lists():
     dense = [
@@ -66,6 +69,7 @@ def test_rrf_merge_single_list():
 
 # ── 2. ACL filter ─────────────────────────────────────────────────────────────
 
+
 def test_acl_filter_includes_global_tier():
     f = _build_acl_filter(candidate_id="c1", school_id="s1")
     conditions = f["should"]
@@ -81,16 +85,16 @@ def test_acl_filter_includes_school_tier_with_school_id():
     conditions = f["should"]
     school_cond = next(
         (
-            c for c in conditions
-            if isinstance(c, dict) and "must" in c
+            c
+            for c in conditions
+            if isinstance(c, dict)
+            and "must" in c
             and any(m.get("match", {}).get("value") == "school" for m in c["must"])
         ),
         None,
     )
     assert school_cond is not None
-    school_id_cond = next(
-        m for m in school_cond["must"] if m.get("key") == "school_id"
-    )
+    school_id_cond = next(m for m in school_cond["must"] if m.get("key") == "school_id")
     assert school_id_cond["match"]["value"] == "s1"
 
 
@@ -99,8 +103,10 @@ def test_acl_filter_includes_candidate_tier_with_candidate_id():
     conditions = f["should"]
     cand_cond = next(
         (
-            c for c in conditions
-            if isinstance(c, dict) and "must" in c
+            c
+            for c in conditions
+            if isinstance(c, dict)
+            and "must" in c
             and any(m.get("match", {}).get("value") == "candidate" for m in c["must"])
         ),
         None,
@@ -111,6 +117,7 @@ def test_acl_filter_includes_candidate_tier_with_candidate_id():
 
 
 # ── 3. Tier-priority tiebreak ─────────────────────────────────────────────────
+
 
 def make_result(doc_id, score, tier):
     return {"id": doc_id, "score": score, "payload": {"tier": tier}}
@@ -150,6 +157,7 @@ def test_tiebreak_single_result_unchanged():
 
 # ── 4. HTTP endpoint ──────────────────────────────────────────────────────────
 
+
 def test_retrieve_endpoint_returns_chunks_with_required_fields(client):
     mock_chunks = [
         {
@@ -160,7 +168,9 @@ def test_retrieve_endpoint_returns_chunks_with_required_fields(client):
             "score": 0.92,
         }
     ]
-    with patch("services.corpus.src.corpus.main.search_corpus", new_callable=AsyncMock) as mock_search:
+    with patch(
+        "services.corpus.src.corpus.main.search_corpus", new_callable=AsyncMock
+    ) as mock_search:
         mock_search.return_value = mock_chunks
         response = client.post(
             "/corpus/retrieve",
@@ -185,7 +195,9 @@ def test_retrieve_endpoint_returns_chunks_with_required_fields(client):
 
 
 def test_retrieve_passes_test_type_to_search(client):
-    with patch("services.corpus.src.corpus.main.search_corpus", new_callable=AsyncMock) as mock_search:
+    with patch(
+        "services.corpus.src.corpus.main.search_corpus", new_callable=AsyncMock
+    ) as mock_search:
         mock_search.return_value = []
         client.post(
             "/corpus/retrieve",
@@ -202,7 +214,9 @@ def test_retrieve_passes_test_type_to_search(client):
 
 
 def test_retrieve_passes_acl_ids_to_search(client):
-    with patch("services.corpus.src.corpus.main.search_corpus", new_callable=AsyncMock) as mock_search:
+    with patch(
+        "services.corpus.src.corpus.main.search_corpus", new_callable=AsyncMock
+    ) as mock_search:
         mock_search.return_value = []
         client.post(
             "/corpus/retrieve",

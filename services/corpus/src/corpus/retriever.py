@@ -22,7 +22,7 @@ def _rrf_merge(
     Returns a merged list sorted by descending RRF score.
     """
     scores: dict[str, float] = {}
-    payloads: dict[str, dict] = {}
+    payloads: dict[str, dict[str, Any]] = {}
 
     for rank, result in enumerate(dense_results):
         doc_id = result["id"]

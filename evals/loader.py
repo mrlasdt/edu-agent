@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import random
 from pathlib import Path
+from typing import Any
 
 _GOLDEN_DIR = Path(__file__).parent / "golden"
 
 
-def load_golden_set(suite: str) -> list[dict]:
+def load_golden_set(suite: str) -> list[dict[str, Any]]:
     """Load all items from the golden set JSONL for the given suite ('quant' or 'aw')."""
     path = _GOLDEN_DIR / f"gre_{suite}.jsonl"
     items = []
@@ -20,10 +21,10 @@ def load_golden_set(suite: str) -> list[dict]:
 
 
 def sample_golden_set(
-    items: list[dict],
+    items: list[dict[str, Any]],
     sample_rate: float = 1.0,
     seed: int | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Return a deterministic random sample of items at the given rate."""
     if sample_rate >= 1.0:
         return list(items)

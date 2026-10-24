@@ -10,8 +10,8 @@ Behaviors under test:
 
 import pytest
 
-from services.agent.src.agent.registry import AgentNotRegisteredError, AgentRegistry
 from services.agent.src.agent.base import BaseAgent
+from services.agent.src.agent.registry import AgentNotRegisteredError, AgentRegistry
 
 
 class StubQuantAgent(BaseAgent):

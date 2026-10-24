@@ -1,23 +1,22 @@
 from __future__ import annotations
 
-from enum import Enum
-from typing import Literal
+from enum import StrEnum
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
 
-class Mode(str, Enum):
+class Mode(StrEnum):
     tutor = "tutor"
     solve = "solve"
 
 
-class Complexity(str, Enum):
+class Complexity(StrEnum):
     basic = "basic"
     advanced = "advanced"  # architected but not implemented in v1
 
 
-class MessageRole(str, Enum):
+class MessageRole(StrEnum):
     candidate = "candidate"
     agent = "agent"
 
@@ -42,15 +41,15 @@ class Session(BaseModel):
     history: list[Message] = Field(default_factory=list)
     personal_style_enabled: bool = False
 
-    def switch_mode(self, new_mode: Mode) -> "Session":
+    def switch_mode(self, new_mode: Mode) -> Session:
         """Return a new Session with mode switched. Immutable update."""
         return self.model_copy(update={"mode": new_mode})
 
-    def reset_mode(self) -> "Session":
+    def reset_mode(self) -> Session:
         """Reset mode to tutor at the start of a new question."""
         return self.model_copy(update={"mode": Mode.tutor})
 
-    def append_message(self, role: MessageRole, content: str) -> "Session":
+    def append_message(self, role: MessageRole, content: str) -> Session:
         return self.model_copy(
             update={"history": [*self.history, Message(role=role, content=content)]}
         )

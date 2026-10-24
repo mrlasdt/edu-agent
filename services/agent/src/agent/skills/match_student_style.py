@@ -4,7 +4,10 @@ and returns up to 2 as few-shot exemplars for style injection.
 
 Returns [] (silent fallback to Canonical style) when fewer than 2 essays are available.
 """
+
 from __future__ import annotations
+
+from typing import Any
 
 import httpx
 
@@ -28,7 +31,9 @@ class MatchStudentStyleSkill:
             return []
         return [r.get("text", "") for r in raw[:_MIN_ESSAYS]]
 
-    async def _fetch_candidate_essays(self, candidate_id: str, test_type: str) -> list[dict]:
+    async def _fetch_candidate_essays(
+        self, candidate_id: str, test_type: str
+    ) -> list[dict[str, Any]]:
         """Retrieve Candidate-tier chunks from the Corpus Service."""
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(

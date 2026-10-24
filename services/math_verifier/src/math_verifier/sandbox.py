@@ -78,7 +78,9 @@ def _solve_equation(expression: str) -> tuple[str, set[sp.Expr]]:
 def _sync_verify(expression: str, expected: str) -> VerificationResult:
     """Run sympy verification synchronously. Executed inside a thread executor."""
     if not expression or not expression.strip():
-        return VerificationResult(verified=False, computed="", error="parse error: empty expression")
+        return VerificationResult(
+            verified=False, computed="", error="parse error: empty expression"
+        )
     try:
         if "=" in expression:
             computed_str, computed_set = _solve_equation(expression)
@@ -112,5 +114,5 @@ async def verify_expression(
             timeout=timeout,
         )
         return result
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return VerificationResult(verified=False, computed="", error="timeout")

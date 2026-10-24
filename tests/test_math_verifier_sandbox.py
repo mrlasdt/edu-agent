@@ -9,15 +9,14 @@ Behaviors under test (from issue 04 acceptance criteria):
   5. Timeout returns timeout error (no crash)
 """
 
-import asyncio
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 from services.math_verifier.src.math_verifier.sandbox import (
     VerificationResult,
     verify_expression,
 )
-
 
 # ── 1. Correct quadratic ──────────────────────────────────────────────────────
 

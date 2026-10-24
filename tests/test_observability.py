@@ -12,12 +12,13 @@ Behaviors under test:
   8. QuantAgent.run() calls LiteLLM with metadata containing prompt_version
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from shared.src.shared.observability import setup_observability, build_llm_metadata
+import pytest
+
 from services.agent.src.agent.agents.quant import QuantAgent
 from shared.src.shared.models import Mode, Session
+from shared.src.shared.observability import build_llm_metadata, setup_observability
 
 
 def make_session() -> Session:
@@ -82,7 +83,6 @@ def test_build_llm_metadata_includes_experiment_name():
     meta = build_llm_metadata(
         trace_id="trace-1", prompt_version="v2", experiment_name="aw-agent-v2-test"
     )
-    tags = meta.get("metadata", {}).get("tags", [])
     meta_str = str(meta)
     assert "aw-agent-v2-test" in meta_str
 

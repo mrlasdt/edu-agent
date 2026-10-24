@@ -3,6 +3,7 @@ Style critic — checks AW essay for canonical structural rubric (PEEL/MEAL).
 Runs post-generation using a Haiku-tier model call.
 Returns (passed: bool, feedback: str).
 """
+
 from __future__ import annotations
 
 import litellm
@@ -23,7 +24,9 @@ Respond with exactly:
 Do not suggest rewrites. Only assess structure."""
 
 
-async def run_style_critic(essay_text: str, model_config_path: str | None = None) -> tuple[bool, str]:
+async def run_style_critic(
+    essay_text: str, model_config_path: str | None = None
+) -> tuple[bool, str]:
     """
     Run the style critic on an essay.
     Returns (passed, feedback) where feedback is empty when passed=True.
