@@ -249,6 +249,7 @@ Known product gap the harness exposes: `QuantAgent._verify` still checks the age
 | Tier | Where it comes from | How far to trust it |
 |---|---|---|
 | `examiner` | band and comments published in the owner's own Cambridge IELTS books | highest; not a re-rating, and the publisher says sample scripts are not definitive examples of a band |
+| `teacher_graded` | IELTS Buddy essays with per-criterion bands and comments from one named instructor | single rater, not an official examiner; overall is the band stated in the page heading, else the mean of the four criteria |
 | `captain_blind` | project-owner scores under a blind protocol | single rater, not an examiner (none exist yet) |
 | `site_or_model_weak` | writing9 site/model scores (Hugging Face) | noisy (about 1.4 bands off an LLM grader per the dataset card); large-n statistics and judge calibration only, never examiner truth |
 | `solver` | sympy plus a second independent computation, which must agree | machine-verified (SAT Math) |
@@ -261,11 +262,12 @@ Known product gap the harness exposes: `QuantAgent._verify` still checks the age
 ```bash
 uv run python -m evals.exam_set import-writing9 --limit 1200   # HF datasets-server, no key; slow because the API rate-limits
 uv run python -m evals.exam_set import-cambridge --dir ~/ielts-books   # text, text PDF or scans; scans need `brew install tesseract`
+uv run python -m evals.exam_set import-ieltsbuddy   # instructor-graded essays; polite: robots.txt, rate limited, cached
 uv run python -m evals.exam_set manifest   # sources, licence status, tier, counts
 uv run python -m evals.exam_set summary    # counts by exam, skill, tier
 ```
 
-The Cambridge importer extracts Writing tasks with their sample answers, published bands and examiner comments, and writes the extracted text to `evals/golden/local/cambridge_extracted/` so OCR slips can be fixed by hand. **It has only been tested on synthetic text** (no book files were available), and real book layouts vary, so run it on one book and read the extracted text and printed counts before trusting it. Samples with no recoverable band are skipped and counted.
+The Cambridge importer extracts Writing tasks with their sample answers, published bands and examiner comments, and writes the extracted text to `evals/golden/local/cambridge_extracted/` so OCR slips can be fixed by hand. **It has only been tested on synthetic text** (no book files were available), and real book layouts vary, so run it on one book and read the extracted text and printed counts before trusting it. Samples with no recoverable band are skipped and counted. Subfolders are searched, and a file that cannot be read (stalled cloud-drive mount, scan without OCR, corrupt PDF) is counted and named in the manifest notes instead of aborting the run. Sources surveyed so far, their tiers and the follow-ups are in `docs/ielts-golden-sources.md`.
 
 **IELTS Writing Task 2 grader target** (`--suite ielts_writing`, opt-in because it needs local data): a model scores each essay on Task Response, Coherence and Cohesion, Lexical Resource and Grammatical Range and Accuracy using an original rubric (official descriptors are not reproduced); the overall band is computed in code from the four. It reports within-0.5 rate, quadratic weighted kappa, exact match, MAE, bias and the same per criterion, against the best tier present (`--ielts-tier` forces one), always with `label_tier`, `label_tier_caveat` and `n_items`.
 
