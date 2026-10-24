@@ -294,7 +294,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--judge", choices=["llm", "jev"], default="llm")
     p.add_argument("--judge-model", default=None, help="litellm model string for the llm judge")
     p.add_argument("--ielts-tier", default="best",
-                   choices=["best", "examiner", "captain_blind", "site_or_model_weak"],
+                   choices=["best", "examiner", "teacher_graded", "captain_blind",
+                            "site_or_model_weak"],
                    help="label tier the IELTS Writing grader is scored against")
     p.add_argument("--local-dir", default=None,
                    help="third-party golden data directory (default evals/golden/local)")

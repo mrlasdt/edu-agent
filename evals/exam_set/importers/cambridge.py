@@ -26,11 +26,14 @@ trusting it; fix the extracted text rather than the labels.
 """
 from __future__ import annotations
 
+import io
 import re
 import shutil
 import subprocess
 import tempfile
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -56,10 +59,26 @@ TEXT_SUFFIXES = {".txt", ".md"}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
 OcrFn = Callable[[bytes], str]
 MIN_PAGE_CHARS = 40  # a PDF page with less text than this is treated as a scan
+READ_TIMEOUT_S = 120.0  # a cloud-drive mount can hang a read forever; give up per file
 
 
 class OcrUnavailableError(RuntimeError):
     pass
+
+
+class FileReadTimeoutError(RuntimeError):
+    pass
+
+
+def read_bytes(path: Path, timeout_s: float = READ_TIMEOUT_S) -> bytes:
+    """Read a file with a deadline: a stalled network or cloud-drive mount raises, never hangs."""
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        return pool.submit(path.read_bytes).result(timeout=timeout_s)
+    except FutureTimeout as exc:
+        raise FileReadTimeoutError(f"read of {path.name} did not finish in {timeout_s:g}s") from exc
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)  # a stuck read thread is abandoned
 
 
 def tesseract_ocr(image: bytes) -> str:
@@ -82,21 +101,29 @@ def tesseract_ocr(image: bytes) -> str:
 
 def _page_images(page: object) -> list[bytes]:
     """Embedded images of a pypdf page (a scanned page is usually one full-page image)."""
-    images = getattr(page, "images", [])
-    return [bytes(img.data) for img in images]
+    try:
+        return [bytes(img.data) for img in getattr(page, "images", [])]
+    except Exception as exc:  # noqa: BLE001 - pypdf raises ImportError/DependencyError/ValueError
+        raise OcrUnavailableError(
+            "a scanned PDF page could not be decoded into an image for OCR "
+            f"({type(exc).__name__}: {exc}); the PDF needs pillow and, for JBIG2 scans, the "
+            "jbig2dec binary, or supply text/text-PDF files"
+        ) from exc
 
 
-def extract_text(path: Path, ocr: OcrFn = tesseract_ocr) -> str:
+def extract_text(
+    path: Path, ocr: OcrFn = tesseract_ocr, read_timeout_s: float = READ_TIMEOUT_S
+) -> str:
     suffix = path.suffix.lower()
     if suffix in TEXT_SUFFIXES:
-        return path.read_text(encoding="utf-8", errors="replace")
+        return read_bytes(path, read_timeout_s).decode("utf-8", errors="replace")
     if suffix in IMAGE_SUFFIXES:
-        return ocr(path.read_bytes())
+        return ocr(read_bytes(path, read_timeout_s))
     if suffix == ".pdf":
         from pypdf import PdfReader
 
         pages: list[str] = []
-        for page in PdfReader(str(path)).pages:
+        for page in PdfReader(io.BytesIO(read_bytes(path, read_timeout_s))).pages:
             text = (page.extract_text() or "").strip()
             if len(text) < MIN_PAGE_CHARS:
                 scanned = "\n".join(ocr(img) for img in _page_images(page))
@@ -263,21 +290,47 @@ def parse_book_text(text: str, book: str) -> ParseResult:
     return result
 
 
+def _book_files(folder: Path) -> list[Path]:
+    """Every non-hidden file under `folder` (books usually sit one folder each), sorted."""
+    return sorted(
+        p for p in folder.rglob("*")
+        if p.is_file() and not any(part.startswith(".") for part in p.relative_to(folder).parts)
+    )
+
+
 def import_folder(
-    folder: Path, directory: Path, ocr: OcrFn = tesseract_ocr
+    folder: Path, directory: Path, ocr: OcrFn = tesseract_ocr,
+    read_timeout_s: float = READ_TIMEOUT_S,
 ) -> tuple[SourceRecord, dict[str, int]]:
-    """Read every supported file in `folder` and register the extracted items locally."""
-    files = sorted(p for p in folder.iterdir() if p.is_file() and not p.name.startswith("."))
+    """Read every supported file under `folder` and register the extracted items locally.
+
+    A file that cannot be read (scan with no OCR, stalled mount, corrupt PDF) is counted and
+    named in the manifest notes; the rest of the folder still imports.
+    """
     items: list[ExamItem] = []
-    totals = {"files": 0, "tasks_seen": 0, "skipped_no_band": 0, "items": 0, "unsupported": 0}
+    totals = {"files": 0, "tasks_seen": 0, "skipped_no_band": 0, "items": 0, "unsupported": 0,
+              "failed": 0}
+    failures: list[str] = []
     extract_dir = directory / EXTRACT_DIR
     extract_dir.mkdir(parents=True, exist_ok=True)
-    for path in files:
+    for path in _book_files(folder):
         if path.suffix.lower() not in TEXT_SUFFIXES | IMAGE_SUFFIXES | {".pdf"}:
             totals["unsupported"] += 1
             continue
-        text = extract_text(path, ocr)
-        (extract_dir / f"{path.stem}.txt").write_text(text, encoding="utf-8")
+        rel = path.relative_to(folder)
+        try:
+            text = extract_text(path, ocr, read_timeout_s)
+        except (OcrUnavailableError, FileReadTimeoutError, OSError, ValueError) as exc:
+            totals["failed"] += 1
+            failures.append(f"{rel}: {exc}")
+            continue
+        except Exception as exc:  # noqa: BLE001 - pypdf raises many types on corrupt PDFs
+            totals["failed"] += 1
+            failures.append(f"{rel}: {type(exc).__name__}: {exc}")
+            continue
+        out = extract_dir / rel.with_suffix(".txt")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
         parsed = parse_book_text(text, path.stem)
         items.extend(parsed.items)
         totals["files"] += 1
@@ -295,7 +348,9 @@ def import_folder(
         caveat=TIER_CAVEATS[LabelTier.examiner],
         notes=(
             f"{totals['files']} files, {totals['tasks_seen']} writing tasks seen, "
-            f"{totals['skipped_no_band']} samples skipped (no recoverable band)"
+            f"{totals['skipped_no_band']} samples skipped (no recoverable band), "
+            f"{totals['failed']} files failed"
+            + (": " + "; ".join(failures) if failures else "")
         ),
     )
     return record, totals
