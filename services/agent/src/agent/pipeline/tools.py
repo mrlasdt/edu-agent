@@ -195,12 +195,6 @@ def leak_check(item: QuestionItem) -> CheckResult:
         problems.append("stem states or labels the answer")
     if any(re.search(r"[*✓✔]|\(correct\)", c, re.IGNORECASE) for c in item.choices):
         problems.append("a choice is marked as correct")
-    if item.question_type != QuestionType.quantitative_comparison:
-        values = split_values(item.answer)
-        if values and all(
-            re.search(rf"(?<![\w.]){re.escape(v)}(?![\w]|\.\d)", item.stem) for v in values
-        ):
-            problems.append("every keyed value already appears in the stem")
     return CheckResult(name="leak", passed=not problems, detail="; ".join(problems))
 
 

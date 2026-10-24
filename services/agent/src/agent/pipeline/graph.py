@@ -105,6 +105,12 @@ def parse_item(text: str) -> tuple[QuestionItem | None, str]:
         return None, f"invalid item JSON at {where}: {first['msg']}"
 
 
+def _flag(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "yes"}
+    return value is True
+
+
 def _user(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return [{"role": "user", "content": json.dumps(payload)}]
 
@@ -313,10 +319,12 @@ class QuestionPipeline:
         raw = await self._ask(ROLE_CRITIC, "critic", item.model_dump(mode="json"), state)
         verdict = extract_json(raw)
         if verdict is None:
-            check = CheckResult(name="critic", passed=True, detail="no verdict (unparseable reply)")
+            check = CheckResult(
+                name="critic", passed=False, detail="critic reply was not parseable JSON"
+            )
         else:
             issues = [str(i) for i in verdict.get("issues", [])][:4]
-            flagged = bool(verdict.get("ambiguous")) or bool(verdict.get("leaks_answer"))
+            flagged = _flag(verdict.get("ambiguous")) or _flag(verdict.get("leaks_answer"))
             check = CheckResult(
                 name="critic", passed=not flagged,
                 detail="; ".join(issues) or ("flagged without detail" if flagged else ""),

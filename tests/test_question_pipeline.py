@@ -166,6 +166,9 @@ def test_structure_and_leak_checks():
     assert not tools.leak_check(item(NUMERIC, stem=NUMERIC["stem"] + " The answer is 3,4.")).passed
     assert not tools.leak_check(item(MC_SINGLE, choices=["12", "14 (correct)", "20", "24"])).passed
     assert tools.leak_check(item(MC_SINGLE)).passed
+    constant_key = item(NUMERIC, stem="Solve x + 2 = 4 for x.", answer="2")
+    assert tools.leak_check(constant_key).passed
+    assert not tools.leak_check(item(NUMERIC, stem="Solve x + 2 = 4. Answer: 2")).passed
 
 
 # ── graph: happy path, routing, revise loop, bounded retries ─────────────────
@@ -245,7 +248,7 @@ async def test_retries_are_bounded_then_escalated_to_review():
     assert result.failures and "solver" in result.failures[0]
 
 
-async def test_critic_flag_triggers_revision_and_unparseable_critic_does_not_block():
+async def test_critic_flag_triggers_revision_and_unparseable_critic_fails_closed():
     flag = json.dumps({"ambiguous": True, "leaks_answer": False, "issues": ["two readings"]})
     ok = json.dumps({"ambiguous": False, "leaks_answer": False, "issues": []})
     llm = Scripted([plan_reply("numeric_entry")], [json.dumps(NUMERIC)], [flag, ok])
@@ -255,6 +258,12 @@ async def test_critic_flag_triggers_revision_and_unparseable_critic_does_not_blo
     assert revise.data["feedback"] == ["critic: two readings"]
 
     llm = Scripted([plan_reply("numeric_entry")], [json.dumps(NUMERIC)], ["not json"])
+    result = await QuestionPipeline(llm, SKILL, max_attempts=2).run(request())
+    assert result.status == "needs_review" and result.attempts == 2
+    assert "critic" in result.failures[0]
+
+    strings = json.dumps({"ambiguous": "false", "leaks_answer": "false"})
+    llm = Scripted([plan_reply("numeric_entry")], [json.dumps(NUMERIC)], [strings])
     assert (await QuestionPipeline(llm, SKILL).run(request())).status == "accepted"
 
 
@@ -345,6 +354,25 @@ def test_pipeline_beats_the_single_call_baseline_offline():
     assert out["comparison"]["valid_yield_gain"] == pytest.approx(
         pipe["valid_yield"] - base["valid_yield"]
     )
+
+
+def test_verifier_reject_and_per_accepted_cost_metrics():
+    out = _offline_run()
+    pipe, base = out["targets"]["pipeline"], out["targets"]["baseline"]
+    rows = out["rows"]["pipeline"]
+    events = [e for r in rows for e in r["trace"]]
+    gens = sum(e["step"] == "generate" for e in events)
+    rejected = sum(e["step"] == "verify" and not e["ok"] for e in events)
+    assert rejected > 0
+    assert pipe["verifier_reject_rate"] == pytest.approx(rejected / gens)
+    assert base["verifier_reject_rate"] is None
+    emitted = sum(r["status"] in ("accepted", "unchecked") for r in rows)
+    if pipe["cost"]["usd"]:
+        assert pipe["cost"]["usd_per_accepted_item"] == pytest.approx(
+            pipe["cost"]["usd"] / emitted
+        )
+    else:
+        assert pipe["cost"]["usd_per_accepted_item"] == 0.0
 
 
 def test_unrepairable_items_go_to_review_not_to_the_candidate():

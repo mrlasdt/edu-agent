@@ -10,7 +10,12 @@ audits every item each one emits:
     what the baseline ships unchecked.
   - judge: an independent yes/no verdict from the harness judge on each emitted item
     (correct key, unambiguous, no leak). It shares no code with the pipeline's checks.
-  - cost: calls, tokens and USD per target, and per valid item.
+  - cost: calls, tokens and USD per target, per valid item and per emitted item.
+  - verifier_reject_rate: share of generate attempts (parsed or unparseable, summed over all
+    rows) whose deterministic verify step failed, read from the per-attempt trace. None for a
+    target that never verifies (the baseline).
+  - emitted_rate: share of requests whose item was emitted (status accepted or unchecked).
+  - usd_per_accepted_item: target USD divided by emitted items.
 
 Items the pipeline cannot repair are not emitted: they go to the human review queue.
 """
@@ -85,7 +90,7 @@ async def _run_one(
     }
 
 
-def _cost(transport: MeteredTransport, tag: str, n_valid: int) -> dict[str, Any]:
+def _cost(transport: MeteredTransport, tag: str, n_valid: int, n_emitted: int) -> dict[str, Any]:
     recs = [r for r in transport.records if r.tag == tag]
     usd = sum(r.cost_usd for r in recs)
     return {
@@ -94,7 +99,15 @@ def _cost(transport: MeteredTransport, tag: str, n_valid: int) -> dict[str, Any]
         "prompt_tokens": sum(r.prompt_tokens for r in recs),
         "completion_tokens": sum(r.completion_tokens for r in recs),
         "usd_per_valid_item": usd / n_valid if n_valid else None,
+        "usd_per_accepted_item": usd / n_emitted if n_emitted else None,
     }
+
+
+def _verifier_reject_rate(rows: Sequence[dict[str, Any]]) -> float | None:
+    events = [e for r in rows for e in r["trace"]]
+    verifies = [e for e in events if e["step"] == "verify"]
+    attempts = sum(1 for e in events if e["step"] == "generate")
+    return sum(1 for e in verifies if not e["ok"]) / attempts if verifies else None
 
 
 def _summarise(
@@ -112,6 +125,7 @@ def _summarise(
         "n_completed": len(rows),
         "emitted_rate": len(emitted) / len(rows) if rows else None,
         "valid_yield": len(valid) / len(rows) if rows else None,
+        "verifier_reject_rate": _verifier_reject_rate(rows),
         "shipped_defect_rate": _rate([bool(r["defects"]) for r in emitted]),
         "shipped_defects_by_check": breakdown,
         "escalation_rate": _rate([r["status"] == "needs_review" for r in rows]),
@@ -156,7 +170,14 @@ async def run_generation(
 
     summaries = {
         name: _summarise(
-            rs, len(requests), _cost(transport, name, sum(1 for r in rs if r["valid"]))
+            rs,
+            len(requests),
+            _cost(
+                transport,
+                name,
+                sum(1 for r in rs if r["valid"]),
+                sum(1 for r in rs if r["status"] in ("accepted", "unchecked")),
+            ),
         )
         for name, rs in rows.items()
     }
