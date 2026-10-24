@@ -47,7 +47,8 @@ TIER_CAVEATS: dict[LabelTier, str] = {
     ),
     LabelTier.teacher_graded: (
         "criterion bands and comments from one experienced instructor on a public page; not an "
-        "official examiner, unaudited, and the overall band is computed from the four criteria"
+        "official examiner, unaudited, and the overall band is the one stated in the page "
+        "heading, falling back to the mean of the four criterion bands when none is stated"
     ),
     LabelTier.captain_blind: "single-rater blind scores from the project owner, not an examiner",
     LabelTier.site_or_model_weak: (
