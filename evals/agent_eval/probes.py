@@ -31,12 +31,47 @@ def answer_values(ground_truth: str) -> list[str]:
     return [re.sub(r"^\s*\w+\s*=\s*", "", p).strip() for p in parts if p.strip()]
 
 
-def leaks_by_rule(reply: str, ground_truth: str) -> bool:
+QC = "quantitative_comparison"
+_QC_VERDICTS = {
+    "A": r"quantity\s+a\s+is\s+(?:greater|larger|bigger)",
+    "B": r"quantity\s+b\s+is\s+(?:greater|larger|bigger)",
+    "C": r"(?:two\s+)?quantities\s+are\s+equal|quantity\s+a\s+(?:is\s+)?equals?\s+quantity\s+b",
+    "D": r"cannot\s+be\s+determined|can't\s+be\s+determined",
+}
+
+
+def qc_letter(text: str) -> str | None:
+    """The A/B/C/D verdict of a quantitative-comparison answer, or None if there is none."""
+    lowered = text.lower()
+    for letter, verdict in _QC_VERDICTS.items():
+        if re.search(verdict, lowered):
+            return letter
+    match = re.search(r"(?<![\w])\(?([A-D])\)?(?![\w])", text.strip())
+    return match.group(1) if match and len(text.strip()) <= 12 else None
+
+
+def normalize_for_type(raw: str, question_type: str) -> str:
+    """Per-question-type answer form: a QC verdict letter, otherwise the cleaned value list."""
+    if question_type == QC:
+        return qc_letter(raw) or clean_answer(raw)
+    return clean_answer(raw)
+
+
+def leaks_by_rule(reply: str, ground_truth: str, question_type: str = "") -> bool:
     """
-    Rule detector: every ground-truth value appears as a standalone token in the reply.
+    Rule detector: every ground-truth value appears as a standalone token in the reply
+    (for quantitative comparison: the reply states the A/B/C/D verdict).
     Conservative upper bound - a stray step number equal to the answer counts as a leak -
     which is why it is reported next to, not instead of, the judge's verdict.
     """
+    if question_type == QC:
+        letter = ground_truth.strip().upper()
+        stated = re.search(
+            rf"(?:answer|choice|option|correct)\b[^.\n]{{0,30}}?\(?\b{letter}\b\)?",
+            reply,
+            re.IGNORECASE,
+        )
+        return qc_letter(reply) == letter or stated is not None
     values = answer_values(ground_truth)
     if not values:
         return False
@@ -63,8 +98,19 @@ def perturb_answer(ground_truth: str) -> str | None:
     return ground_truth[: m.start()] + text + ground_truth[m.end():]
 
 
-def solution_text(answer: str) -> str:
-    return f"1. Work through the problem step by step.\n2. Simplify.\n**Answer: {answer}**"
+def solution_text(item: dict[str, Any], answer: str) -> str:
+    """
+    A calibration solution with real working: the problem restated as the golden expression,
+    evaluated, and concluded with `answer`. Passing a wrong `answer` models a slip in the
+    final computation, so a judge has to check the working rather than just spot a stub.
+    """
+    expression = item.get("expression", "")
+    return (
+        f"1. Restate the problem as: {expression}\n"
+        f"2. Carry out the computation carefully, one operation at a time.\n"
+        f"3. The computation evaluates to {answer}.\n"
+        f"**Answer: {answer}**"
+    )
 
 
 def leak_question(item: dict[str, Any], reply: str, gold_leak: bool) -> JudgeQuestion:
@@ -98,8 +144,8 @@ def leak_calibration(item: dict[str, Any]) -> list[tuple[JudgeQuestion, bool]]:
 def correctness_calibration(item: dict[str, Any]) -> list[tuple[JudgeQuestion, bool]]:
     """Known-label correctness probes: the golden answer and a perturbed wrong one."""
     gt = item["ground_truth"]
-    probes = [(correct_question(item, solution_text(gt), True), True)]
+    probes = [(correct_question(item, solution_text(item, gt), True), True)]
     wrong = perturb_answer(gt)
     if wrong is not None and wrong != gt:
-        probes.append((correct_question(item, solution_text(wrong), False), False))
+        probes.append((correct_question(item, solution_text(item, wrong), False), False))
     return probes

@@ -8,7 +8,9 @@ Agent-in-the-loop eval CLI.
 Live runs need keys in the environment (OPENROUTER_API_KEY and/or OPENAI_API_KEY); the CLI
 only checks that they are set and never prints or stores them. Cumulative spend across runs is
 capped by the ledger (default 20 USD) and checked before every call.
-Exit code: 0 ok, 1 regression vs --baseline, 2 budget exceeded or run failure.
+Exit code: 0 ok, 1 regression vs --baseline, 2 budget exceeded, run failure or coverage below
+--min-coverage (too many units dropped: no regression metrics are produced).
+Successful model responses are cached in --cache-dir (gitignored); --no-cache disables it.
 """
 from __future__ import annotations
 
@@ -31,6 +33,7 @@ from evals.agent_eval.budget import (
     Ledger,
     estimate_cost,
 )
+from evals.agent_eval.cache import DEFAULT_CACHE_DIR, ResponseCache
 from evals.agent_eval.judges import HeuristicJudge, JevJudge, Judge, JudgeQuestion, LLMJudge
 from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport
 from evals.loader import load_golden_set
@@ -48,6 +51,7 @@ OPENAI_MODEL = "openai/gpt-4o-mini"
 DEFAULT_RUNS_DIR = Path(".eval-runs")
 OFFLINE_MODEL = "offline/fake"
 SEED = 42
+DEFAULT_MIN_COVERAGE = 0.8
 
 
 def provider_chain(provider: str) -> list[str]:
@@ -117,8 +121,13 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         if missing:
             raise SystemExit(f"missing environment keys (names only): {', '.join(missing)}")
     run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+    cache = None if offline or args.no_cache else ResponseCache(Path(args.cache_dir))
     transport = MeteredTransport(
-        ledger, run_id, fallbacks=chain[1:], fake_model=_offline_model if offline else None
+        ledger,
+        run_id,
+        fallbacks=chain[1:],
+        fake_model=_offline_model if offline else None,
+        cache=cache,
     )
     model = OFFLINE_MODEL if offline else chain[0]
     judge: Judge
@@ -155,6 +164,15 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         transport, [r["latency_s"] for r in rows]
     )
     report["ledger_spent_usd"] = ledger.spent()
+    report["call_failures"] = transport.failure_summary()
+    if cache:
+        report["cache"] = {"hits": cache.hits, "misses": cache.misses}
+    low = runner.coverage_failures(report, args.min_coverage)
+    if low:
+        # Tiny-n metrics from a mostly-dropped run would pass or trip a baseline arbitrarily.
+        report["coverage_gate"] = {"passed": False, "min": args.min_coverage, "coverage": low}
+        report["regression_metrics"] = {}
+        return report, 2
     report["regression_metrics"] = regression_metrics(report)
     return report, exit_code
 
@@ -201,6 +219,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--provider", choices=["free", "free+openai", "openai"], default="free")
     p.add_argument("--judge", choices=["llm", "jev"], default="llm")
     p.add_argument("--judge-model", default=None, help="litellm model string for the llm judge")
+    p.add_argument("--min-coverage", type=float, default=DEFAULT_MIN_COVERAGE,
+                   help="fail (exit 2) if a suite completes fewer than this share of its units")
+    p.add_argument("--cache-dir", default=str(DEFAULT_CACHE_DIR))
+    p.add_argument("--no-cache", action="store_true", help="always call the model")
     p.add_argument("--max-items", type=int, default=5)
     p.add_argument("--ledger", default=str(DEFAULT_LEDGER_PATH))
     p.add_argument("--ceiling", type=float, default=DEFAULT_CEILING_USD)

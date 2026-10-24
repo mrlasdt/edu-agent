@@ -50,6 +50,8 @@ Moderation API).
 - Evals are small (5 Quant and 2 AW golden items). evals/agent_eval runs the real QuantAgent
   (leak rate, sympy-graded accuracy, judge-vs-golden agreement, cost/latency, 20 USD ledger);
   AW is judge calibration only. No baseline is measured/checked in; CI runs it offline only.
-- QuantAgent._verify compares the agent's answer to itself, so verifier_fail is unreliable.
+- QuantAgent._verify still compares the agent's answer to itself (parse/well-formedness only);
+  multi-value and prose answers no longer spuriously fail it. Independent verification needs a
+  design decision (see README Eval pipeline).
 - No ETS corpus is checked in, so AW citations have nothing to cite until one is ingested.
 - k8s manifests and deploy workflow were never applied to a cluster.

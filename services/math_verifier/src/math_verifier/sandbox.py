@@ -31,22 +31,40 @@ def _parse_safe(s: str) -> sp.Expr | None:
         return None
 
 
+def _value_list(s: str) -> list[str]:
+    """Split a value list ("2, 3", "x=2 or x=3", "[2, 3]") into bare value strings."""
+    s = s.strip().lstrip("[{").rstrip("]}]")
+    parts = re.split(r"\bor\b|\band\b|[,;]", s, flags=re.IGNORECASE)
+    return [re.sub(r"^\s*\w+\s*=\s*", "", p.strip()) for p in parts if p.strip()]
+
+
 def _normalize_expected(expected: str) -> set[sp.Expr]:
     """
     Parse an expected-answer string into a set of sympy values.
     Handles: "2", "2, 3", "x=2 or x=3", "[2, 3]", "{2, 3}"
     """
-    s = expected.strip().lstrip("[{").rstrip("]}]")
-    # Strip variable assignment prefixes like "x ="
-    parts = re.split(r"\bor\b|[,;]", s, flags=re.IGNORECASE)
     result: set[sp.Expr] = set()
-    for part in parts:
-        # Remove "x =" prefix
-        cleaned = re.sub(r"^\s*\w+\s*=\s*", "", part.strip())
+    for cleaned in _value_list(expected):
         expr = _parse_safe(cleaned)
         if expr is not None:
             result.add(sp.simplify(expr))
     return result
+
+
+_PROSE = re.compile(r"[A-Za-z]{2,}\s+[A-Za-z]{2,}")
+
+
+def _parse_value(value: str) -> sp.Expr:
+    """Strict parse of one value; words are rejected rather than read as implicit products."""
+    if _PROSE.search(value):
+        raise ValueError(f"not a math value: {value!r}")
+    return parse_expr(value, transformations=TRANSFORMS)
+
+
+def _is_value_list(expression: str) -> bool:
+    """A list of two or more values ("2, -2"), not an equation to solve."""
+    values = _value_list(expression)
+    return len(values) > 1 and not any("=" in v for v in values)
 
 
 def _solve_equation(expression: str) -> tuple[str, set[sp.Expr]]:
@@ -82,7 +100,10 @@ def _sync_verify(expression: str, expected: str) -> VerificationResult:
             verified=False, computed="", error="parse error: empty expression"
         )
     try:
-        if "=" in expression:
+        if _is_value_list(expression):
+            computed_set = {sp.simplify(_parse_value(v)) for v in _value_list(expression)}
+            computed_str = str(sorted(computed_set, key=str))
+        elif "=" in expression:
             computed_str, computed_set = _solve_equation(expression)
         else:
             expr = parse_expr(expression.strip(), transformations=TRANSFORMS)

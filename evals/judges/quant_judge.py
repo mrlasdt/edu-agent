@@ -1,9 +1,21 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
+import sympy as sp
+
 from services.math_verifier.src.math_verifier.sandbox import verify_expression
+
+
+def _qc_verdict(difference: str) -> str | None:
+    """A/B/C from the sign of `Qty A - Qty B`. D (cannot be determined) is never computable."""
+    try:
+        value = sp.sympify(difference)
+        return "A" if value > 0 else "B" if value < 0 else "C"
+    except (sp.SympifyError, TypeError):
+        return None
 
 
 @dataclass
@@ -32,6 +44,18 @@ async def grade_quant_item(
     if candidate is None or not str(candidate).strip():
         return QuantResult(
             item_id=item_id, correct=False, computed="", error="no candidate answer"
+        )
+
+    if item.get("question_type") == "quantitative_comparison":
+        # The expression is `Qty A - Qty B`; the answer is a verdict letter, not a value.
+        computed = await verify_expression(expression, "")
+        expected = _qc_verdict(computed.computed) or str(item.get("ground_truth", "")).upper()
+        given = re.sub(r"[^A-D]", "", str(candidate).strip().upper())
+        return QuantResult(
+            item_id=item_id,
+            correct=len(given) == 1 and given == expected,
+            computed=expected,
+            error=computed.error,
         )
 
     result = await verify_expression(expression, str(candidate))
