@@ -120,6 +120,14 @@ _Avoid_: Follow-up, retry, prompt-for-info
 A suggestion the Orchestrator surfaces when a turn in Basic complexity looks like it belongs in Advanced (or vice-versa). The Candidate decides whether to switch — never silently re-routed.
 _Avoid_: Auto-promote, escalate, upgrade
 
+**Question-generation pipeline**:
+The LangGraph graph that writes new practice questions: a planner picks the question type, a router sends the plan to a generator expert (numeric entry, multiple choice, quantitative comparison), verifier tools and a critic check the item, and failures loop back through a bounded revise step. Items that cannot be repaired are escalated to the Human review queue instead of being emitted. Each item carries a trace of every step. Not a tutoring turn: it is not routed through the Orchestrator or the Agent registry.
+_Avoid_: Item factory, content generator, question bot
+
+**Generated item**:
+A question produced by the Question-generation pipeline, structured so its key can be recomputed (a sympy expression, or the two quantities of a comparison) and accepted only when every verifier tool passes.
+_Avoid_: Synthetic question, auto question
+
 ## Quality criteria
 
 **Quant correctness**:

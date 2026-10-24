@@ -1,0 +1,12 @@
+{"request_id": "g01", "topic": "quadratic equations with integer roots", "difficulty": "medium", "question_type": "numeric_entry"}
+{"request_id": "g02", "topic": "order of operations", "difficulty": "easy", "question_type": "multiple_choice_single"}
+{"request_id": "g03", "topic": "comparison of powers", "difficulty": "medium", "question_type": null}
+{"request_id": "g04", "topic": "solutions of x squared equals a perfect square", "difficulty": "medium", "question_type": "multiple_choice_multiple"}
+{"request_id": "g05", "topic": "linear equations in one variable", "difficulty": "easy", "question_type": "numeric_entry"}
+{"request_id": "g06", "topic": "solve a ratio word problem", "difficulty": "medium", "question_type": null}
+{"request_id": "g07", "topic": "exponent rules", "difficulty": "medium", "question_type": "quantitative_comparison"}
+{"request_id": "g08", "topic": "percent change", "difficulty": "medium", "question_type": "multiple_choice_single"}
+{"request_id": "g09", "topic": "roots of a polynomial", "difficulty": "hard", "question_type": null}
+{"request_id": "g10", "topic": "area of a circle with pi = 3.14", "difficulty": "easy", "question_type": "numeric_entry"}
+{"request_id": "g11", "topic": "fraction arithmetic", "difficulty": "hard", "question_type": "multiple_choice_single"}
+{"request_id": "g12", "topic": "squares of consecutive integers", "difficulty": "hard", "question_type": "quantitative_comparison"}
