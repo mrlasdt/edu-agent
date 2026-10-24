@@ -4,7 +4,7 @@ A GRE test-prep tutor built as a reference implementation of agentic AI engineer
 
 ## Status
 
-The backend services are built and covered by 231 Python tests (mocked LLM and Qdrant) plus 55 frontend unit tests. It is **not usable end to end yet**:
+The backend services are built and covered by 367 Python tests (mocked LLM and Qdrant) plus 55 frontend unit tests. It is **not usable end to end yet**:
 
 - **No web app shell.** `web/` holds React components and tests but no `index.html` or entry point, so `npm run build` fails and nothing renders in a browser. The only way in today is `POST /chat` on the gateway, which needs `OPENAI_API_KEY`.
 - **RAG is dense-only.** The sparse vector, RRF hybrid and BGE reranker from ADR-0004 are designed but not wired.
@@ -147,7 +147,7 @@ docker compose -f infra/docker-compose.yml --profile embeddings up -d
 ### 4. Run tests
 
 ```bash
-# Python tests (231)
+# Python tests (367)
 uv run pytest tests/ -q
 
 # Frontend tests (55)
