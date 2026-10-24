@@ -28,3 +28,6 @@ build/
 .eval-ledger/
 .eval-runs/
 .eval-cache/
+
+# Third-party golden-set data (scraped / copyrighted text): local only, never commit
+evals/golden/local/
