@@ -43,7 +43,7 @@ needs the gateway and OPENAI_API_KEY (content safety calls the OpenAI Moderation
   (--suite ielts_writing: within-0.5, QWK, per-criterion, always with tier and n)
 
 ### Current counts
-- Python tests: 367 passing (uv run pytest tests/ -q)
+- Python tests: 429 passing (uv run pytest tests/ -q)
 - Frontend (Vitest) tests: 55 passing (cd web && npm test)
 - Browser smoke test (mocked /chat): cd web && npm run test:e2e (Playwright)
 - CI checks: ruff, mypy (strict), pytest, web typecheck + vitest + vite build + Playwright
@@ -53,9 +53,9 @@ needs the gateway and OPENAI_API_KEY (content safety calls the OpenAI Moderation
   not wired into it, and /chat has only been exercised with a mocked stream.
 - RAG is dense-only. ADR-0004's sparse vectors, RRF hybrid and BGE reranker are not
   wired (_rrf_merge exists in the retriever but is unused).
-- Gateway /chat only applies the content-safety check. Enrichment and complexity
-  classification in the Orchestrator are stubs. Answer-leak, PII redaction, rate limit
-  and citation guardrails are implemented and unit tested but not applied in /chat.
+- Orchestrator enrichment and complexity classification are stubs. Gateway /chat applies
+  rate limit, PII redaction, content safety, answer-leak and citation guardrails; output
+  content safety is not applied.
 - /generate streams text only; verifier_fail / citation_stripped metadata is dropped,
   so SourcesPanel has nothing to show.
 - Evals are small (5 Quant and 2 AW golden items). evals/agent_eval runs the real QuantAgent
