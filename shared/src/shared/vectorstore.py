@@ -19,6 +19,11 @@ from shared.src.shared.embedder import EMBED_DIM
 COLLECTION = "corpus"
 DISTANCE = models.Distance.COSINE
 
+# Named vectors: the collection holds a dense (BGE-M3 via TEI) and a sparse
+# (lexical, see shared.sparse) vector per chunk; hybrid retrieval fuses the two.
+DENSE_VECTOR = "dense"
+SPARSE_VECTOR = "sparse"
+
 
 def get_qdrant_client(url: str | None = None) -> AsyncQdrantClient:
     return AsyncQdrantClient(url=url or get_settings().qdrant_url)
@@ -31,5 +36,10 @@ async def ensure_collection(
     if not await client.collection_exists(collection):
         await client.create_collection(
             collection_name=collection,
-            vectors_config=models.VectorParams(size=dim, distance=DISTANCE),
+            vectors_config={DENSE_VECTOR: models.VectorParams(size=dim, distance=DISTANCE)},
+            sparse_vectors_config={
+                # IDF is computed by Qdrant over the collection, so the sparse
+                # vectors only carry term frequencies.
+                SPARSE_VECTOR: models.SparseVectorParams(modifier=models.Modifier.IDF)
+            },
         )

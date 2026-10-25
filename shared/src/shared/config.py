@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     langfuse_public_key: str = ""
     langfuse_host: str = "http://localhost:3000"
     tei_embedder_url: str = "http://localhost:8080"
+    # Dense + sparse fused by RRF (ADR-0004). Set false to fall back to dense-only.
+    hybrid_retrieval_enabled: bool = True
     corpus_service_url: str = "http://localhost:8001"
     agent_service_url: str = "http://localhost:8002"
     ingestion_service_url: str = "http://localhost:8003"

@@ -18,17 +18,23 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from shared.src.shared.config import get_settings
+
 
 def setup_observability() -> None:
     """
-    Configure LiteLLM → Langfuse callback if keys are present.
+    Configure LiteLLM → Langfuse callback if keys are configured (env or .env).
     Safe to call multiple times; idempotent.
     """
-    public_key = os.getenv("LANGFUSE_PUBLIC_KEY", "")
-    secret_key = os.getenv("LANGFUSE_SECRET_KEY", "")
-
-    if not (public_key and secret_key):
+    settings = get_settings()
+    if not (settings.langfuse_public_key and settings.langfuse_secret_key):
         return  # no-op in dev/test without Langfuse
+
+    # The LiteLLM Langfuse callback reads its credentials from os.environ, but
+    # Settings may have loaded them from .env; mirror them across.
+    os.environ.setdefault("LANGFUSE_PUBLIC_KEY", settings.langfuse_public_key)
+    os.environ.setdefault("LANGFUSE_SECRET_KEY", settings.langfuse_secret_key)
+    os.environ.setdefault("LANGFUSE_HOST", settings.langfuse_host)
 
     import litellm
 
