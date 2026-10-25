@@ -27,7 +27,9 @@ _log = logging.getLogger(__name__)
 _NUM_WORD = r"(?:zero|one|two|three|four|five|six|seven|eight|nine|ten)\b"
 _NUM = rf"(?:[-+\u2212]?\$?\d[\d,./]*|{_NUM_WORD})"
 _END = r"(?=[ \t]*(?:[.,;!?)]|\n))"
-_ANSWER_TAG = re.compile(r"^[\s*#>_-]*(?:final\s+)?answer\s*:\s*\S", re.IGNORECASE | re.MULTILINE)
+_ANSWER_TAG = re.compile(
+    r"(?:^|[.!?;])[\s*#>_-]*(?:final\s+)?answer\s*:\s*\S", re.IGNORECASE | re.MULTILINE
+)
 _BOLD_ANSWER = re.compile(r"\*\*\s*(?:final\s+)?answer\s*:", re.IGNORECASE)
 _ANSWER_IS = re.compile(
     r"\b(?:final\s+)?answer\s+(?:is|=)\s*[:*\s]*"

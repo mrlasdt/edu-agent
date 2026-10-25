@@ -129,6 +129,7 @@ def test_tutor_reply_that_leaks_the_answer_is_blocked_with_a_notice():
         "So the answer is x = 4.",
         "The answer is\nx = 4.",
         "Answer:\n4",
+        "Let's solve it. Answer: 4",
         "Therefore x equals four.",
         "x = 4",
         "So x = 4.",
