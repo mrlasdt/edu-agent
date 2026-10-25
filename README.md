@@ -4,12 +4,12 @@ A GRE test-prep tutor built as a reference implementation of agentic AI engineer
 
 ## Status
 
-The backend services are built and covered by 367 Python tests (mocked LLM and Qdrant) plus 55 frontend unit tests. It is **not usable end to end yet**:
+The backend services are built and covered by 429 Python tests (mocked LLM and Qdrant) plus 55 frontend unit tests. It is **not usable end to end yet**:
 
 - **The web app shell is minimal.** `web/` renders a subject picker, a tutor/solve mode switch and a chat that streams `POST /chat` into message bubbles. Chatting for real still needs the gateway and `OPENAI_API_KEY`; the browser smoke test (`npm run test:e2e`) mocks `/chat`. Sources, feedback, preferences and upload are not wired into the shell yet.
 - **RAG is dense-only.** The sparse vector, RRF hybrid and BGE reranker from ADR-0004 are designed but not wired.
-- **`/chat` applies only the content-safety guardrail.** The enrichment and complexity steps in the Orchestrator are stubs. The answer-leak, PII, rate-limit and citation guardrails are implemented and unit tested but not yet applied in `/chat`.
-- **Agent metadata is dropped.** `/generate` streams text only, so sources and verifier events never reach a UI.
+- **The Orchestrator's enrichment and complexity steps are stubs.** `/chat` applies the rate-limit, PII, content-safety, answer-leak and citation guardrails (see "Guardrails"), but not output content safety.
+- **Agent metadata is dropped.** `/generate` streams text only, apart from an `X-Source-Count` header the gateway uses for the citation check, so sources and verifier events never reach a UI.
 - **Evals are small and CI never scores a real model.** 5 Quant and 2 AW golden GRE items, plus 33 SAT Math, 41 IELTS Reading and 8 IELTS Writing prompt items (see "IELTS and SAT golden sets"); the IELTS Writing target needs third-party data downloaded locally and CI has none. The agent-in-the-loop harness (below) runs the real Quant agent, but CI only runs it offline against a fake model; real runs are manual and there is no measured baseline checked in.
 - **The question-generation pipeline is a library plus an eval target.** It is not exposed over HTTP, has no UI, and has only been run for real on a handful of items on free models (see "Question-generation pipeline").
 - **No corpus is checked in**, and the k8s manifests have never been applied to a cluster.
@@ -147,7 +147,7 @@ docker compose -f infra/docker-compose.yml --profile embeddings up -d
 ### 4. Run tests
 
 ```bash
-# Python tests (367)
+# Python tests (429)
 uv run pytest tests/ -q
 
 # Frontend tests (55)
@@ -337,7 +337,7 @@ Not done: dedup against the bank, difficulty calibration, knowledge-base groundi
 
 ## Guardrails (5 layers)
 
-All five layers are implemented and unit tested, but `/chat` currently applies only the input content-safety check (see Status).
+`/chat` applies the rate-limit, input PII, content-safety, answer-leak, citation and output PII layers. Enrichment (the Orchestrator step) is a stub and output content safety is not applied (see Status). Guardrail decisions that change the reply are streamed to the Candidate as bracketed notices. The answer-leak regex stage runs on the stream and stops it on a hit; the LLM stage runs once after the full reply and can only append a notice. Citation checking applies only when the agent reports a source count (the AW agent).
 
 | Layer | What it checks |
 |---|---|

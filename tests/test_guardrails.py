@@ -28,6 +28,7 @@ from services.gateway.src.gateway.guardrails.output import (
 from services.gateway.src.gateway.guardrails.rate_limit import (
     RateLimiter,
 )
+from shared.src.shared.config import Settings
 from shared.src.shared.models import Mode, Session
 
 
@@ -100,6 +101,40 @@ def test_clean_text_unchanged():
     assert redact_pii(text) == text
 
 
+@pytest.mark.parametrize(
+    "phone",
+    [
+        "555-123-4567",
+        "555.123.4567",
+        "555 123 4567",
+        "(555) 123-4567",
+        "(555)123-4567",
+        "+1 555 123 4567",
+        "+1-555-123-4567",
+        "+15551234567",
+        "0912345678",
+    ],
+)
+def test_formatted_phone_numbers_redacted(phone):
+    result = redact_pii(f"Call {phone}, thanks.")
+    assert result == "Call [REDACTED], thanks."
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "2^33 = 8589934592 and 3141592653",
+        "The product is 1234567890.",
+        "x = 5551234567",
+        "5551234567*2 = 11102469134",
+        "12345678901234",
+        "1.5551234567",
+    ],
+)
+def test_bare_digit_runs_are_not_phone_numbers(text):
+    assert redact_pii(text) == text
+
+
 def test_multiple_pii_all_redacted():
     text = "Email: bob@test.org, Phone: 123-456-7890"
     result = redact_pii(text)
@@ -138,6 +173,44 @@ async def test_no_leak_in_safe_hint():
         mock_check.return_value = False
         leaked = await check_answer_leak(
             "What happens when you factor the left side?", mode=Mode.tutor, trace_id="trace-7"
+        )
+    assert leaked is False
+
+
+@pytest.mark.asyncio
+async def test_regex_stage_flags_leak_without_calling_the_llm():
+    with patch("services.gateway.src.gateway.guardrails.output._call_leak_checker",
+               new_callable=AsyncMock) as mock_check:
+        leaked = await check_answer_leak(
+            "Therefore x equals four.", mode=Mode.tutor, trace_id="trace-8"
+        )
+    mock_check.assert_not_called()
+    assert leaked is True
+
+
+@pytest.mark.asyncio
+async def test_llm_stage_is_skipped_when_provider_has_no_api_key():
+    settings = Settings(openai_api_key="", anthropic_api_key="")
+    with patch("services.gateway.src.gateway.guardrails.output.get_settings",
+               return_value=settings), \
+         patch("services.gateway.src.gateway.guardrails.output.litellm.acompletion",
+               new_callable=AsyncMock) as mock_llm:
+        leaked = await check_answer_leak(
+            "Try isolating the variable.", mode=Mode.tutor, trace_id="trace-9"
+        )
+    mock_llm.assert_not_called()
+    assert leaked is False
+
+
+@pytest.mark.asyncio
+async def test_llm_stage_failure_is_not_a_leak():
+    settings = Settings(openai_api_key="k", anthropic_api_key="k")
+    with patch("services.gateway.src.gateway.guardrails.output.get_settings",
+               return_value=settings), \
+         patch("services.gateway.src.gateway.guardrails.output.litellm.acompletion",
+               new_callable=AsyncMock, side_effect=RuntimeError("boom")):
+        leaked = await check_answer_leak(
+            "Try isolating the variable.", mode=Mode.tutor, trace_id="trace-10"
         )
     assert leaked is False
 
