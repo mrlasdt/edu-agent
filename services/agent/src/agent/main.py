@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
@@ -59,11 +60,24 @@ async def generate(req: GenerateRequest) -> StreamingResponse:
         personal_style_enabled=req.personal_style_enabled,
     )
 
+    items = agent.run(session, req.message)
+    # Agents that retrieve sources report the count first; surface it as a header so the
+    # gateway can check citations against it.
+    headers: dict[str, str] = {}
+    first: str | dict[str, Any] | None = await anext(items, None)
+    if isinstance(first, dict) and "sources" in first:
+        headers["X-Source-Count"] = str(first["sources"])
+        first = None
+
     async def token_stream() -> AsyncGenerator[bytes, None]:
-        async for item in agent.run(session, req.message):
+        if isinstance(first, str):
+            yield first.encode("utf-8")
+        async for item in items:
             if isinstance(item, str):
                 yield item.encode("utf-8")
             # dict metadata (verifier_fail, citation_stripped) is not part of the
             # text stream in v1 — it will move to a trailing SSE event later.
 
-    return StreamingResponse(token_stream(), media_type="text/plain; charset=utf-8")
+    return StreamingResponse(
+        token_stream(), media_type="text/plain; charset=utf-8", headers=headers
+    )

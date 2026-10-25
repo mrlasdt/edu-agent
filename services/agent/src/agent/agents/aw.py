@@ -129,6 +129,7 @@ class AWAgent(BaseAgent):
         self, session: Session, message: str
     ) -> AsyncGenerator[str | dict[str, Any], None]:
         chunks = await self._retrieve(session, message)
+        yield {"sources": len(chunks)}
         chunk_context = _format_chunks_for_context(chunks)
         version = self._model_config.prompt_version("aw_agent", session.mode.value)
 
