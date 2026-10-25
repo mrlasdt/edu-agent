@@ -10,8 +10,14 @@ from pydantic import BaseModel, Field
 from services.agent.src.agent.bootstrap import build_registry
 from services.agent.src.agent.registry import AgentNotRegisteredError
 from shared.src.shared.models import Message, MessageRole, Mode, Session
+from shared.src.shared.observability import setup_observability
 
 app = FastAPI(title="Agent Service")
+
+# Every LLM call in the agent service (agents, critics, question pipeline) goes
+# through litellm, so register the Langfuse callback once at import. No-op
+# without Langfuse keys.
+setup_observability()
 
 # Built once at startup; the registry is the (test_type, section) → agent map.
 _registry = build_registry()

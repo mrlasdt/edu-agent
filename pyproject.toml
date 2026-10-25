@@ -26,7 +26,7 @@ dependencies = [
     # MCP
     "mcp>=1.0.0",
     # Observability
-    "langfuse>=2.30.0",
+    "langfuse>=2.30.0,<3",
     # Math verification
     "sympy>=1.12",
     # Document parsing

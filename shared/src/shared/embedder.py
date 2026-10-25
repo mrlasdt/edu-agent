@@ -6,9 +6,9 @@ queries) — because they MUST embed with the identical model/endpoint or the
 query and document vectors live in different spaces and retrieval silently
 returns garbage. Same single-source-of-truth rationale as ChunkPayload.
 
-Note: this returns DENSE embeddings only. ADR-0004's hybrid (dense + sparse)
-and the BGE reranker are architected but not wired in this slice — see
-search_corpus for where they slot in.
+Note: this returns DENSE embeddings only. ADR-0004's hybrid (dense + sparse,
+see shared.sparse) is wired in search_corpus; the BGE reranker is architected
+but not wired in this slice — search_corpus shows where it slots in.
 """
 from __future__ import annotations
 

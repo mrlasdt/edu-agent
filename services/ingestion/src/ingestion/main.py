@@ -11,7 +11,14 @@ from services.ingestion.src.ingestion.chunker import chunk_text
 from services.ingestion.src.ingestion.parser import is_allowed, parse_bytes
 from shared.src.shared.corpus import ChunkPayload, Tier
 from shared.src.shared.embedder import embed_texts
-from shared.src.shared.vectorstore import COLLECTION, ensure_collection, get_qdrant_client
+from shared.src.shared.sparse import encode_document
+from shared.src.shared.vectorstore import (
+    COLLECTION,
+    DENSE_VECTOR,
+    SPARSE_VECTOR,
+    ensure_collection,
+    get_qdrant_client,
+)
 
 app = FastAPI(title="Ingestion Service")
 
@@ -117,8 +124,9 @@ async def run_ingestion_pipeline(
     chunks: list[dict[str, Any]], metadata: dict[str, Any]
 ) -> dict[str, Any]:
     """
-    Embed each chunk's text via TEI (BGE-M3 dense) and upsert into Qdrant with
-    the ChunkPayload as the point payload. The collection is created on first
+    Embed each chunk's text via TEI (BGE-M3 dense), add its lexical sparse
+    vector, and upsert both as named vectors into Qdrant with the ChunkPayload
+    as the point payload. The collection is created on first
     write using the embedding's actual dimension, so it can never mismatch the
     model. Raises on embedder/Qdrant failure so the upload surfaces the error.
     """
@@ -130,7 +138,11 @@ async def run_ingestion_pipeline(
     try:
         await ensure_collection(client, dim=len(vectors[0]))
         points = [
-            models.PointStruct(id=str(uuid.uuid4()), vector=vector, payload=chunk)
+            models.PointStruct(
+                id=str(uuid.uuid4()),
+                vector={DENSE_VECTOR: vector, SPARSE_VECTOR: encode_document(chunk["text"])},
+                payload=chunk,
+            )
             for chunk, vector in zip(chunks, vectors)
         ]
         await client.upsert(collection_name=COLLECTION, points=points)

@@ -28,8 +28,11 @@ from services.gateway.src.gateway.orchestrator import (
 )
 from shared.src.shared.config import get_settings
 from shared.src.shared.models import Message, MessageRole, Mode, Session
+from shared.src.shared.observability import setup_observability
 
 app = FastAPI(title="Gateway Service")
+
+setup_observability()
 
 # The orchestrator validates + routes; the registry is the same one the agent
 # service uses, so routing decisions here match what /generate will accept.

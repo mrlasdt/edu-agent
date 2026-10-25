@@ -37,28 +37,85 @@ def mock_stream(tokens=None):
 
 # ── 1. setup_observability with keys present ──────────────────────────────────
 
-def test_setup_observability_enables_langfuse_callback(monkeypatch):
+@pytest.fixture
+def clean_callbacks(monkeypatch):
+    import litellm
+
+    from shared.src.shared.config import get_settings
+
+    monkeypatch.setattr(litellm, "success_callback", [])
+    monkeypatch.setattr(litellm, "failure_callback", [])
+    get_settings.cache_clear()
+    yield litellm
+    get_settings.cache_clear()
+
+
+def test_setup_observability_enables_langfuse_callback(monkeypatch, clean_callbacks):
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
     monkeypatch.setenv("LANGFUSE_HOST", "http://localhost:3000")
 
-    import litellm
-    original = list(getattr(litellm, "success_callback", []))
-
     setup_observability()
+    setup_observability()  # idempotent
 
-    assert "langfuse" in litellm.success_callback
-    # cleanup
-    litellm.success_callback = original
+    assert clean_callbacks.success_callback == ["langfuse"]
+    assert clean_callbacks.failure_callback == ["langfuse"]
 
 
 # ── 2. setup_observability no-op when keys absent ────────────────────────────
 
-def test_setup_observability_noop_without_keys(monkeypatch):
-    monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
-    monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
-    # Should not raise
+def test_setup_observability_noop_without_keys(monkeypatch, clean_callbacks):
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "")
+
     setup_observability()
+
+    assert clean_callbacks.success_callback == []
+    assert clean_callbacks.failure_callback == []
+
+
+def test_agent_service_registers_callback_at_startup(monkeypatch, clean_callbacks):
+    """Importing the agent service app wires Langfuse when keys are configured."""
+    import importlib
+
+    import services.agent.src.agent.main as agent_main
+    from shared.src.shared.config import get_settings
+
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
+    get_settings.cache_clear()
+    importlib.reload(agent_main)
+
+    assert "langfuse" in clean_callbacks.success_callback
+
+
+def test_agent_service_startup_leaves_callbacks_empty_without_keys(monkeypatch, clean_callbacks):
+    import importlib
+
+    import services.agent.src.agent.main as agent_main
+    from shared.src.shared.config import get_settings
+
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "")
+    get_settings.cache_clear()
+    importlib.reload(agent_main)
+
+    assert clean_callbacks.success_callback == []
+
+
+def test_gateway_service_registers_callback_at_startup(monkeypatch, clean_callbacks):
+    """Importing the gateway app wires Langfuse (answer-leak check uses litellm)."""
+    import importlib
+
+    import services.gateway.src.gateway.main as gateway_main
+    from shared.src.shared.config import get_settings
+
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
+    get_settings.cache_clear()
+    importlib.reload(gateway_main)
+
+    assert "langfuse" in clean_callbacks.success_callback
 
 
 # ── 3. build_llm_metadata includes trace_id ──────────────────────────────────
