@@ -27,10 +27,9 @@ export async function* streamChat(
       section: turn.subject,
       message: turn.message,
       mode: turn.mode,
-      history: turn.history.map((m) => ({
-        role: m.role,
-        content: m.content,
-      })),
+      history: turn.history
+        .filter((m) => m.content)
+        .map((m) => ({ role: m.role, content: m.content })),
     }),
   });
   if (!res.ok || !res.body) {

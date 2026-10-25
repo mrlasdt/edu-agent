@@ -38,3 +38,43 @@ test("picks a subject, sends a message and renders the streamed answer", async (
     page.getByRole("button", { name: "Back to hints" })
   ).toBeVisible();
 });
+
+test("failed and empty turns are not replayed as history", async ({ page }) => {
+  const requests: Record<string, unknown>[] = [];
+  const bodies = [
+    { status: 500, body: "boom" },
+    { status: 200, body: "" },
+    { status: 200, body: "Fine." },
+  ];
+  await page.route("**/chat", async (route) => {
+    requests.push(route.request().postDataJSON());
+    const next = bodies[requests.length - 1];
+    await route.fulfill({
+      status: next.status,
+      contentType: "text/plain; charset=utf-8",
+      body: next.body,
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Quant" }).click();
+  const input = page.getByLabel("Your message");
+  const send = page.getByRole("button", { name: "Send" });
+
+  await input.fill("first");
+  await send.click();
+  await expect(page.getByText("Chat request failed (500)")).toBeVisible();
+
+  await input.fill("second");
+  await send.click();
+  await expect(page.getByText("No response received")).toBeVisible();
+
+  await input.fill("third");
+  await send.click();
+  await expect(page.getByText("Fine.")).toBeVisible();
+
+  expect(requests[2].history).toEqual([
+    { role: "candidate", content: "first" },
+    { role: "candidate", content: "second" },
+  ]);
+});

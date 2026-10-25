@@ -62,7 +62,10 @@ export function App() {
           status: undefined,
         }));
       }
-      patchMessage(agentId, (m) => ({ ...m, status: undefined }));
+      patchMessage(agentId, (m) => ({
+        ...m,
+        status: m.content ? undefined : "No response received",
+      }));
     } catch (err) {
       patchMessage(agentId, (m) => ({
         ...m,
