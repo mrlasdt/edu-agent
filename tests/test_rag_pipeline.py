@@ -11,20 +11,24 @@ Behaviors under test:
   4. run_ingestion_pipeline: embeds + upserts one point per chunk with payload
   5. run_ingestion_pipeline: empty chunk list short-circuits
   6. search_corpus hybrid: dense + sparse searches share the ACL filter, RRF fuses,
-     tier tiebreak still applies
+     tier only breaks exact RRF ties, sparse failure falls back to dense
   7. search_corpus dense-only fallback via HYBRID_RETRIEVAL_ENABLED=false
   8. run_ingestion_pipeline writes named dense + sparse vectors
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import pytest
 from qdrant_client import models
+from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 
-from services.corpus.src.corpus.main import search_corpus
+from services.corpus.src.corpus.main import app, lifespan, search_corpus
 from services.corpus.src.corpus.retriever import build_search_filter
 from services.ingestion.src.ingestion.main import run_ingestion_pipeline
 from shared.src.shared.config import Settings
+from shared.src.shared.vectorstore import CollectionSchemaError, ensure_collection
 
 # ── 1. filter builder ─────────────────────────────────────────────────────────
 
@@ -142,18 +146,9 @@ async def test_search_corpus_hybrid_fuses_dense_and_sparse_with_same_acl_filter(
     client.close.assert_awaited_once()
 
 
-@patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(True))
-@patch("services.corpus.src.corpus.main.get_qdrant_client")
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
-async def test_search_corpus_hybrid_keeps_tier_tiebreak(mock_embed, mock_factory, _settings):
-    mock_embed.return_value = [0.1]
-    # Identical ranks in both channels give near-tied RRF scores; candidate tier wins.
-    dense = MagicMock(
-        points=[_point("g", 0.9, _payload("G")), _point("k", 0.8, _payload("K", "candidate"))]
-    )
-    sparse = MagicMock(
-        points=[_point("g", 3.0, _payload("G")), _point("k", 2.0, _payload("K", "candidate"))]
-    )
+def _hybrid_client(dense_points, sparse_points):
+    dense = MagicMock(points=dense_points)
+    sparse = MagicMock(points=sparse_points)
 
     async def query_points(**kwargs):
         return dense if kwargs["using"] == "dense" else sparse
@@ -161,11 +156,98 @@ async def test_search_corpus_hybrid_keeps_tier_tiebreak(mock_embed, mock_factory
     client = AsyncMock()
     client.collection_exists.return_value = True
     client.query_points.side_effect = query_points
+    return client
+
+
+@patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(True))
+@patch("services.corpus.src.corpus.main.get_qdrant_client")
+@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+async def test_search_corpus_hybrid_does_not_demote_higher_ranked_chunk_by_tier(
+    mock_embed, mock_factory, _settings
+):
+    mock_embed.return_value = [0.1]
+    # G outranks K in both channels (2/61 vs 2/62): tier must not reorder them.
+    mock_factory.return_value = _hybrid_client(
+        [_point("g", 0.9, _payload("G")), _point("k", 0.8, _payload("K", "candidate"))],
+        [_point("g", 3.0, _payload("G")), _point("k", 2.0, _payload("K", "candidate"))],
+    )
+
+    out = await search_corpus("q", "c1", "s1", "gre", top_k=2)
+
+    assert [r["text"] for r in out] == ["G", "K"]
+
+
+@patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(True))
+@patch("services.corpus.src.corpus.main.get_qdrant_client")
+@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+async def test_search_corpus_hybrid_tier_breaks_exact_rrf_ties(mock_embed, mock_factory, _settings):
+    mock_embed.return_value = [0.1]
+    # Ranks swapped between channels give identical RRF scores; candidate tier wins.
+    mock_factory.return_value = _hybrid_client(
+        [_point("g", 0.9, _payload("G")), _point("k", 0.8, _payload("K", "candidate"))],
+        [_point("k", 3.0, _payload("K", "candidate")), _point("g", 2.0, _payload("G"))],
+    )
+
+    out = await search_corpus("q", "c1", "s1", "gre", top_k=2)
+
+    assert [r["text"] for r in out] == ["K", "G"]
+
+
+@patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(True))
+@patch("services.corpus.src.corpus.main.get_qdrant_client")
+@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+async def test_search_corpus_hybrid_falls_back_to_dense_when_sparse_fails(
+    mock_embed, mock_factory, _settings
+):
+    mock_embed.return_value = [0.1]
+    dense = MagicMock(points=[_point("a", 0.9, _payload("A")), _point("b", 0.8, _payload("B"))])
+
+    async def query_points(**kwargs):
+        if kwargs["using"] == "sparse":
+            raise UnexpectedResponse(400, "Bad Request", b"sparse boom", {})
+        return dense
+
+    client = AsyncMock()
+    client.collection_exists.return_value = True
+    client.query_points.side_effect = query_points
     mock_factory.return_value = client
 
     out = await search_corpus("q", "c1", "s1", "gre", top_k=2)
-    # G leads on RRF score (2/61 vs 2/62) but the 1.6% gap is inside the tiebreak threshold
-    assert [r["text"] for r in out] == ["K", "G"]
+
+    assert [r["text"] for r in out] == ["A", "B"]
+    client.close.assert_awaited_once()
+
+
+@pytest.mark.parametrize("hybrid", [True, False])
+async def test_search_corpus_propagates_schema_rejection_instead_of_empty(hybrid):
+    with (
+        patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(hybrid)),
+        patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock) as embed,
+        patch("services.corpus.src.corpus.main.get_qdrant_client") as factory,
+    ):
+        embed.return_value = [0.1]
+        client = AsyncMock()
+        client.collection_exists.return_value = True
+        client.query_points.side_effect = UnexpectedResponse(
+            400, "Bad Request", b"Not existing vector name error: dense", {}
+        )
+        factory.return_value = client
+
+        with pytest.raises(UnexpectedResponse):
+            await search_corpus("q", "c1", "s1", "gre")
+        client.close.assert_awaited_once()
+
+
+@patch("services.corpus.src.corpus.main.get_qdrant_client")
+@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+async def test_search_corpus_degrades_when_qdrant_unreachable(mock_embed, mock_factory):
+    mock_embed.return_value = [0.1]
+    client = AsyncMock()
+    client.collection_exists.side_effect = ResponseHandlingException(httpx.ConnectError("down"))
+    mock_factory.return_value = client
+
+    assert await search_corpus("q", "c1", "s1", "gre") == []
+    client.close.assert_awaited_once()
 
 
 @patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(False))
@@ -240,3 +322,66 @@ async def test_run_ingestion_pipeline_upserts_one_point_per_chunk(
 async def test_run_ingestion_pipeline_empty_short_circuits(mock_embed):
     assert await run_ingestion_pipeline([], {}) == {"chunks_indexed": 0}
     mock_embed.assert_not_awaited()
+
+
+# ── 9. collection schema guard (legacy single-unnamed-vector collection) ──────
+
+
+def _collection_info(vectors, sparse_vectors=None):
+    params = SimpleNamespace(vectors=vectors, sparse_vectors=sparse_vectors)
+    return SimpleNamespace(config=SimpleNamespace(params=params))
+
+
+_LEGACY = _collection_info(models.VectorParams(size=4, distance=models.Distance.COSINE))
+_CURRENT = _collection_info(
+    {"dense": models.VectorParams(size=4, distance=models.Distance.COSINE)},
+    {"sparse": models.SparseVectorParams()},
+)
+
+
+async def test_ensure_collection_rejects_legacy_layout_with_reingest_hint():
+    client = AsyncMock()
+    client.collection_exists.return_value = True
+    client.get_collection.return_value = _LEGACY
+
+    with pytest.raises(CollectionSchemaError, match="re-ingest"):
+        await ensure_collection(client)
+    client.create_collection.assert_not_awaited()
+
+
+async def test_corpus_startup_fails_on_legacy_collection():
+    with patch("services.corpus.src.corpus.main.get_qdrant_client") as factory:
+        client = AsyncMock()
+        client.collection_exists.return_value = True
+        client.get_collection.return_value = _LEGACY
+        factory.return_value = client
+
+        with pytest.raises(CollectionSchemaError):
+            async with lifespan(app):
+                pass
+        client.close.assert_awaited_once()
+
+
+async def test_corpus_startup_tolerates_missing_collection_and_unreachable_qdrant():
+    with patch("services.corpus.src.corpus.main.get_qdrant_client") as factory:
+        client = AsyncMock()
+        client.collection_exists.return_value = False
+        factory.return_value = client
+        async with lifespan(app):
+            pass
+
+        client.collection_exists.side_effect = ResponseHandlingException(
+            httpx.ConnectError("down")
+        )
+        async with lifespan(app):
+            pass
+
+
+async def test_corpus_startup_accepts_named_layout():
+    with patch("services.corpus.src.corpus.main.get_qdrant_client") as factory:
+        client = AsyncMock()
+        client.collection_exists.return_value = True
+        client.get_collection.return_value = _CURRENT
+        factory.return_value = client
+        async with lifespan(app):
+            pass

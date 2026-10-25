@@ -1,5 +1,6 @@
 """Tests for the local lexical sparse encoder and the sparse-aware collection config."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 from qdrant_client import models
@@ -47,5 +48,11 @@ async def test_ensure_collection_is_idempotent():
     client = MagicMock()
     client.collection_exists = AsyncMock(return_value=True)
     client.create_collection = AsyncMock()
+    params = SimpleNamespace(
+        vectors={"dense": models.VectorParams(size=8, distance=models.Distance.COSINE)},
+        sparse_vectors={"sparse": models.SparseVectorParams()},
+    )
+    info = SimpleNamespace(config=SimpleNamespace(params=params))
+    client.get_collection = AsyncMock(return_value=info)
     await ensure_collection(client, dim=8)
     client.create_collection.assert_not_awaited()

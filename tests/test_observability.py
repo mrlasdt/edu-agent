@@ -103,6 +103,21 @@ def test_agent_service_startup_leaves_callbacks_empty_without_keys(monkeypatch, 
     assert clean_callbacks.success_callback == []
 
 
+def test_gateway_service_registers_callback_at_startup(monkeypatch, clean_callbacks):
+    """Importing the gateway app wires Langfuse (answer-leak check uses litellm)."""
+    import importlib
+
+    import services.gateway.src.gateway.main as gateway_main
+    from shared.src.shared.config import get_settings
+
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
+    get_settings.cache_clear()
+    importlib.reload(gateway_main)
+
+    assert "langfuse" in clean_callbacks.success_callback
+
+
 # ── 3. build_llm_metadata includes trace_id ──────────────────────────────────
 
 def test_build_llm_metadata_includes_trace_id():

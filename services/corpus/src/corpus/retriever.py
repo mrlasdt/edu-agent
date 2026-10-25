@@ -9,6 +9,11 @@ TIER_PRIORITY = {"candidate": 3, "school": 2, "global": 1}
 
 RRF_K = 60  # Standard RRF constant
 
+# RRF scores are ~1/(k+rank), so adjacent ranks already differ by ~1.5% and the
+# cosine-tuned 5% window would reorder across several ranks. Only exactly tied
+# fused scores (e.g. ranks swapped between the two channels) count as ties.
+RRF_TIE_THRESHOLD = 1e-9
+
 
 def _rrf_merge(
     dense_results: list[dict[str, Any]],
