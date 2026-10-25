@@ -39,7 +39,7 @@ def _is_transient(exc: Exception) -> bool:
     by Qdrant, must surface.
     """
     if isinstance(exc, UnexpectedResponse):
-        return exc.status_code >= 500
+        return (exc.status_code or 0) >= 500
     return isinstance(exc, httpx.HTTPError | ResponseHandlingException)
 
 
@@ -163,6 +163,8 @@ async def search_corpus(
         return []
     if not query_vec:
         return []
+    dense_response: Any
+    sparse_response: Any
     try:
         search_filter = build_search_filter(candidate_id, school_id, test_type)
         limit = max(top_k, 20)  # over-fetch so fusion and the tiebreak have room

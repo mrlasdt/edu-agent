@@ -51,8 +51,8 @@ needs the gateway and OPENAI_API_KEY (content safety calls the OpenAI Moderation
 ### Known gaps (not done)
 - Web app shell is minimal: Sources, feedback, preferences and upload components are
   not wired into it, and /chat has only been exercised with a mocked stream.
-- RAG is dense-only. ADR-0004's sparse vectors, RRF hybrid and BGE reranker are not
-  wired (_rrf_merge exists in the retriever but is unused).
+- RAG has no reranker. Hybrid (dense + sparse, RRF) retrieval is wired in search_corpus;
+  ADR-0004's BGE reranker is not.
 - Orchestrator enrichment and complexity classification are stubs. Gateway /chat applies
   rate limit, PII redaction, content safety, answer-leak and citation guardrails; output
   content safety is not applied.
