@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 from fastapi import FastAPI
 from pydantic import BaseModel
-from qdrant_client.http.exceptions import ResponseHandlingException
+from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 
 from services.corpus.src.corpus.retriever import (
     RRF_TIE_THRESHOLD,
@@ -31,9 +31,16 @@ from shared.src.shared.vectorstore import (
 
 logger = logging.getLogger(__name__)
 
-# Infrastructure being unreachable degrades to "no chunks"; anything else
-# (notably a schema mismatch rejected by Qdrant) must surface.
-_UNREACHABLE = (httpx.HTTPError, ResponseHandlingException)
+
+def _is_transient(exc: Exception) -> bool:
+    """
+    Infrastructure trouble that degrades to "no chunks": unreachable embedder or
+    Qdrant, Qdrant 5xx, or a malformed embedder response body. Anything else,
+    notably a 4xx schema mismatch rejected by Qdrant, must surface.
+    """
+    if isinstance(exc, UnexpectedResponse):
+        return exc.status_code >= 500
+    return isinstance(exc, httpx.HTTPError | ResponseHandlingException | ValueError | KeyError)
 
 
 @asynccontextmanager
@@ -47,8 +54,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     try:
         if await client.collection_exists(COLLECTION):
             await check_collection_schema(client)
-    except _UNREACHABLE:
-        logger.warning("qdrant unreachable at startup; skipping schema check", exc_info=True)
+    except Exception as exc:
+        if not _is_transient(exc):
+            raise
+        logger.warning("qdrant unavailable at startup; skipping schema check", exc_info=True)
     finally:
         await client.close()
     yield
@@ -140,8 +149,8 @@ async def search_corpus(
     sparse search fails the dense results are used on their own.
 
     Degrades to [] (no context, no citations) if the corpus is empty or the
-    embedder/Qdrant is unreachable — the agent still answers, just ungrounded.
-    Other failures (e.g. a legacy collection schema) propagate.
+    embedder/Qdrant is unavailable — the agent still answers, just ungrounded.
+    Other failures (e.g. a 4xx schema rejection) propagate.
 
     Architected but not in this slice (ADR-0004): the BGE-reranker over the
     top-20. It slots in between steps 2–3.
@@ -191,7 +200,9 @@ async def search_corpus(
                 dense_response, sparse_response = await dense_search, None
         finally:
             await client.close()
-    except _UNREACHABLE:  # embedder down, Qdrant down — degrade, don't fail the turn
+    except Exception as exc:  # embedder down, Qdrant down — degrade, don't fail the turn
+        if not _is_transient(exc):
+            raise
         logger.warning("corpus retrieval unavailable; returning no chunks", exc_info=True)
         return []
 

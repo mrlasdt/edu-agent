@@ -238,16 +238,30 @@ async def test_search_corpus_propagates_schema_rejection_instead_of_empty(hybrid
         client.close.assert_awaited_once()
 
 
+@pytest.mark.parametrize(
+    "error",
+    [
+        UnexpectedResponse(503, "Service Unavailable", b"overloaded", {}),
+        ResponseHandlingException(httpx.ConnectError("down")),
+    ],
+)
 @patch("services.corpus.src.corpus.main.get_qdrant_client")
 @patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
-async def test_search_corpus_degrades_when_qdrant_unreachable(mock_embed, mock_factory):
+async def test_search_corpus_degrades_on_transient_qdrant_failure(mock_embed, mock_factory, error):
     mock_embed.return_value = [0.1]
     client = AsyncMock()
-    client.collection_exists.side_effect = ResponseHandlingException(httpx.ConnectError("down"))
+    client.collection_exists.side_effect = error
     mock_factory.return_value = client
 
     assert await search_corpus("q", "c1", "s1", "gre") == []
     client.close.assert_awaited_once()
+
+
+@pytest.mark.parametrize("error", [ValueError("bad json"), KeyError("embeddings")])
+@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+async def test_search_corpus_degrades_on_malformed_embedder_response(mock_embed, error):
+    mock_embed.side_effect = error
+    assert await search_corpus("q", "c1", "s1", "gre") == []
 
 
 @patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(False))
@@ -362,7 +376,7 @@ async def test_corpus_startup_fails_on_legacy_collection():
         client.close.assert_awaited_once()
 
 
-async def test_corpus_startup_tolerates_missing_collection_and_unreachable_qdrant():
+async def test_corpus_startup_tolerates_missing_collection():
     with patch("services.corpus.src.corpus.main.get_qdrant_client") as factory:
         client = AsyncMock()
         client.collection_exists.return_value = False
@@ -370,11 +384,32 @@ async def test_corpus_startup_tolerates_missing_collection_and_unreachable_qdran
         async with lifespan(app):
             pass
 
-        client.collection_exists.side_effect = ResponseHandlingException(
-            httpx.ConnectError("down")
-        )
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ResponseHandlingException(httpx.ConnectError("down")),
+        UnexpectedResponse(503, "Service Unavailable", b"overloaded", {}),
+    ],
+)
+async def test_corpus_startup_tolerates_transient_qdrant_failure(error):
+    with patch("services.corpus.src.corpus.main.get_qdrant_client") as factory:
+        client = AsyncMock()
+        client.collection_exists.side_effect = error
+        factory.return_value = client
         async with lifespan(app):
             pass
+        client.close.assert_awaited_once()
+
+
+async def test_corpus_startup_fails_on_qdrant_client_error():
+    with patch("services.corpus.src.corpus.main.get_qdrant_client") as factory:
+        client = AsyncMock()
+        client.collection_exists.side_effect = UnexpectedResponse(400, "Bad Request", b"bad", {})
+        factory.return_value = client
+        with pytest.raises(UnexpectedResponse):
+            async with lifespan(app):
+                pass
 
 
 async def test_corpus_startup_accepts_named_layout():
