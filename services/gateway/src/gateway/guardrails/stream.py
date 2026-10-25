@@ -2,7 +2,8 @@
 Streaming reply guard for /chat: answer-leak, citation and PII layers applied to the
 agent's token stream.
 
-Tokens are buffered to line boundaries so a marker split across chunks is still caught,
+Text is held back to the last sentence or line boundary so a marker split across chunks is
+still caught while single-paragraph replies keep streaming,
 and every decision that changes what the Candidate sees is announced in the stream with a
 bracketed notice, never dropped silently.
 """
@@ -15,21 +16,16 @@ from services.agent.src.agent.critics.citation_checker import (
     strip_uncited_claims,
 )
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
-from services.gateway.src.gateway.guardrails.output import redact_pii
+from services.gateway.src.gateway.guardrails.output import detect_answer_leak, redact_pii
 from shared.src.shared.models import Mode
-
-# A tutor reply that declares a final answer: an `Answer:` tag or line, or "the answer is <value>"
-# where a digit follows shortly after (e.g. "x = 4") or the value is a single choice letter.
-_ANSWER_TAG = re.compile(r"^[\s*#>_-]*(?:final\s+)?answer\s*:\s*\S", re.IGNORECASE)
-_BOLD_ANSWER = re.compile(r"\*\*\s*(?:final\s+)?answer\s*:", re.IGNORECASE)
-_ANSWER_IS = re.compile(
-    r"\b(?:final\s+)?answer\s+(?:is|=)\s*[:*\s]*(?:[^\n]{0,40}?\d|\(?[A-Ea-e]\)?(?:[\s.,;)]|$))",
-    re.IGNORECASE,
-)
 
 LEAK_NOTICE = (
     "\n\n[Answer withheld: in tutor mode I don't state the final answer. "
     "Ask for a hint, or use \"Show me the answer\".]"
+)
+LLM_LEAK_NOTICE = (
+    "\n\n[Answer check: this reply may state the final answer. "
+    "Ask for a hint if you want to work it out yourself.]"
 )
 CITATION_NOTICE = (
     "\n\n[Citation check: removed {n} sentence(s) that cited sources I did not retrieve.]"
@@ -41,12 +37,9 @@ INPUT_PII_NOTICE = (
 )
 
 
-def detect_answer_leak(text: str) -> bool:
-    """True when `text` states a final answer. Deterministic, so it runs offline."""
-    return any(
-        _ANSWER_TAG.search(line) or _BOLD_ANSWER.search(line) or _ANSWER_IS.search(line)
-        for line in text.splitlines()
-    )
+# A flush point: a sentence end (terminator then whitespace) or a newline. Citation sentences
+# and multi-word PII never straddle one, so each flushed segment is checked whole.
+_BOUNDARY = re.compile(r"(?<=[.!?])\s|\n")
 
 
 class ReplyGuard:
@@ -59,58 +52,66 @@ class ReplyGuard:
         self._mode = mode
         self._trace_id = trace_id
         self._num_sources = num_sources
-        self._buffer = ""
+        self._pending = ""
         self._pii_redacted = False
         self._citations_removed = 0
+        self.text = ""
         self.stopped = False
 
     def feed(self, text: str) -> str:
         if self.stopped:
             return ""
-        self._buffer += text
-        lines = self._buffer.splitlines(keepends=True)
-        if lines and not lines[-1].endswith(("\n", "\r")):
-            self._buffer = lines.pop()
-        else:
-            self._buffer = ""
-        return self._process(lines)
+        self.text += text
+        self._pending += text
+        if self._leaks(self.text):
+            return self._block_leak()
+        cut = 0
+        for match in _BOUNDARY.finditer(self._pending):
+            cut = match.end()
+        segment, self._pending = self._pending[:cut], self._pending[cut:]
+        return self._process(segment)
 
     def finish(self) -> str:
-        out = ""
-        if not self.stopped:
-            out = self._process([self._buffer] if self._buffer else [])
-            self._buffer = ""
-        if not self.stopped:
-            if self._citations_removed:
-                out += CITATION_NOTICE.format(n=self._citations_removed)
-            if self._pii_redacted:
-                out += PII_NOTICE
+        if self.stopped:
+            return ""
+        if self._leaks(self.text + "\n"):
+            return self._block_leak()
+        out = self._process(self._pending)
+        self._pending = ""
+        if self._citations_removed:
+            out += CITATION_NOTICE.format(n=self._citations_removed)
+        if self._pii_redacted:
+            out += PII_NOTICE
         return out
 
-    def _process(self, lines: list[str]) -> str:
-        out: list[str] = []
-        for line in lines:
-            if self._mode == Mode.tutor and detect_answer_leak(line):
-                emit_guardrail_event("generation", "tutor_mode_answer_leak", "fail", self._trace_id)
-                self.stopped = True
-                out.append(LEAK_NOTICE)
-                break
-            if self._num_sources is not None:
-                valid, invalid = check_citations(line, self._num_sources)
-                if not valid:
-                    emit_guardrail_event(
-                        "generation", "citation", "fail", self._trace_id, invalid=len(invalid)
-                    )
-                    self._citations_removed += 1
-                    trailing = line[len(line.rstrip("\r\n")):]
-                    line = strip_uncited_claims(line.rstrip("\r\n"), invalid)
-                    line = line + trailing if line else ""
-            redacted = redact_pii(line)
-            if redacted != line:
-                emit_guardrail_event("output", "pii", "redacted", self._trace_id)
-                self._pii_redacted = True
-            out.append(redacted)
-        return "".join(out)
+    def _leaks(self, text: str) -> bool:
+        return self._mode == Mode.tutor and detect_answer_leak(text)
+
+    def _block_leak(self) -> str:
+        emit_guardrail_event("generation", "tutor_mode_answer_leak", "fail", self._trace_id)
+        self.stopped = True
+        self._pending = ""
+        return LEAK_NOTICE
+
+    def _process(self, segment: str) -> str:
+        if not segment:
+            return ""
+        if self._num_sources is not None:
+            valid, invalid = check_citations(segment, self._num_sources)
+            if not valid:
+                emit_guardrail_event(
+                    "generation", "citation", "fail", self._trace_id, invalid=len(invalid)
+                )
+                self._citations_removed += 1
+                body = segment.rstrip()
+                trailing = segment[len(body):]
+                body = strip_uncited_claims(body, invalid)
+                segment = body + trailing if body else ""
+        redacted = redact_pii(segment)
+        if redacted != segment:
+            emit_guardrail_event("output", "pii", "redacted", self._trace_id)
+            self._pii_redacted = True
+        return redacted
 
 
 def redact_input(text: str, trace_id: str) -> tuple[str, bool]:

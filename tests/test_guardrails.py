@@ -28,6 +28,7 @@ from services.gateway.src.gateway.guardrails.output import (
 from services.gateway.src.gateway.guardrails.rate_limit import (
     RateLimiter,
 )
+from shared.src.shared.config import Settings
 from shared.src.shared.models import Mode, Session
 
 
@@ -138,6 +139,44 @@ async def test_no_leak_in_safe_hint():
         mock_check.return_value = False
         leaked = await check_answer_leak(
             "What happens when you factor the left side?", mode=Mode.tutor, trace_id="trace-7"
+        )
+    assert leaked is False
+
+
+@pytest.mark.asyncio
+async def test_regex_stage_flags_leak_without_calling_the_llm():
+    with patch("services.gateway.src.gateway.guardrails.output._call_leak_checker",
+               new_callable=AsyncMock) as mock_check:
+        leaked = await check_answer_leak(
+            "Therefore x equals four.", mode=Mode.tutor, trace_id="trace-8"
+        )
+    mock_check.assert_not_called()
+    assert leaked is True
+
+
+@pytest.mark.asyncio
+async def test_llm_stage_is_skipped_when_provider_has_no_api_key():
+    settings = Settings(openai_api_key="", anthropic_api_key="")
+    with patch("services.gateway.src.gateway.guardrails.output.get_settings",
+               return_value=settings), \
+         patch("services.gateway.src.gateway.guardrails.output.litellm.acompletion",
+               new_callable=AsyncMock) as mock_llm:
+        leaked = await check_answer_leak(
+            "Try isolating the variable.", mode=Mode.tutor, trace_id="trace-9"
+        )
+    mock_llm.assert_not_called()
+    assert leaked is False
+
+
+@pytest.mark.asyncio
+async def test_llm_stage_failure_is_not_a_leak():
+    settings = Settings(openai_api_key="k", anthropic_api_key="k")
+    with patch("services.gateway.src.gateway.guardrails.output.get_settings",
+               return_value=settings), \
+         patch("services.gateway.src.gateway.guardrails.output.litellm.acompletion",
+               new_callable=AsyncMock, side_effect=RuntimeError("boom")):
+        leaked = await check_answer_leak(
+            "Try isolating the variable.", mode=Mode.tutor, trace_id="trace-10"
         )
     assert leaked is False
 

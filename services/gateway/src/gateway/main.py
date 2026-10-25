@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import codecs
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -12,9 +13,11 @@ from pydantic import BaseModel, Field
 from services.agent.src.agent.bootstrap import build_registry
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
 from services.gateway.src.gateway.guardrails.input import check_content_safety
+from services.gateway.src.gateway.guardrails.output import check_answer_leak
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
 from services.gateway.src.gateway.guardrails.stream import (
     INPUT_PII_NOTICE,
+    LLM_LEAK_NOTICE,
     ReplyGuard,
     redact_input,
 )
@@ -129,16 +132,23 @@ async def chat(req: ChatRequest) -> StreamingResponse:
         }
         meta: dict[str, Any] = {}
         guard: ReplyGuard | None = None
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         async for chunk in _stream_from_agent(payload, meta):
             if guard is None:
                 guard = ReplyGuard(req.mode, trace_id, meta.get("num_sources"))
-            text = guard.feed(chunk.decode("utf-8", errors="replace"))
+            text = guard.feed(decoder.decode(chunk))
             if text:
                 yield text.encode("utf-8")
             if guard.stopped:
                 return
         if guard is not None:
-            tail = guard.finish()
+            tail = guard.feed(decoder.decode(b"", final=True)) + guard.finish()
+            if (
+                not guard.stopped
+                and guard.text.strip()
+                and await check_answer_leak(guard.text, req.mode, trace_id)
+            ):
+                tail += LLM_LEAK_NOTICE
             if tail:
                 yield tail.encode("utf-8")
 
