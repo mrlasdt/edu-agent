@@ -71,8 +71,9 @@ class ChunkResult(BaseModel):
     Deliberately omits ACL ids (school_id / candidate_id) so they never leak
     into a retrieval response; adds the retrieval score.
 
-    `score` is only meaningful for ordering: cosine similarity when hybrid
-    retrieval is disabled, the RRF fused score (about 0.03 at best) when enabled.
+    `score` is only meaningful for ordering, and its scale depends on the
+    request: the RRF fused score (about 0.03 at best) in hybrid mode, cosine
+    similarity when dense-only or when the sparse query fell back to dense.
     """
 
     text: str
