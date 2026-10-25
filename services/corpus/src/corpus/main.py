@@ -35,12 +35,12 @@ logger = logging.getLogger(__name__)
 def _is_transient(exc: Exception) -> bool:
     """
     Infrastructure trouble that degrades to "no chunks": unreachable embedder or
-    Qdrant, Qdrant 5xx, or a malformed embedder response body. Anything else,
-    notably a 4xx schema mismatch rejected by Qdrant, must surface.
+    Qdrant, or Qdrant 5xx. Anything else, notably a 4xx schema mismatch rejected
+    by Qdrant, must surface.
     """
     if isinstance(exc, UnexpectedResponse):
         return exc.status_code >= 500
-    return isinstance(exc, httpx.HTTPError | ResponseHandlingException | ValueError | KeyError)
+    return isinstance(exc, httpx.HTTPError | ResponseHandlingException)
 
 
 @asynccontextmanager
@@ -158,8 +158,12 @@ async def search_corpus(
     hybrid = get_settings().hybrid_retrieval_enabled
     try:
         query_vec = await embed_query(query)
-        if not query_vec:
-            return []
+    except (httpx.HTTPError, ValueError, KeyError):  # embedder down or malformed body
+        logger.warning("embedder unavailable; returning no chunks", exc_info=True)
+        return []
+    if not query_vec:
+        return []
+    try:
         search_filter = build_search_filter(candidate_id, school_id, test_type)
         limit = max(top_k, 20)  # over-fetch so fusion and the tiebreak have room
         client = get_qdrant_client()
@@ -200,7 +204,7 @@ async def search_corpus(
                 dense_response, sparse_response = await dense_search, None
         finally:
             await client.close()
-    except Exception as exc:  # embedder down, Qdrant down — degrade, don't fail the turn
+    except Exception as exc:  # Qdrant down — degrade, don't fail the turn
         if not _is_transient(exc):
             raise
         logger.warning("corpus retrieval unavailable; returning no chunks", exc_info=True)

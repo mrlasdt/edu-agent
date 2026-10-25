@@ -264,6 +264,35 @@ async def test_search_corpus_degrades_on_malformed_embedder_response(mock_embed,
     assert await search_corpus("q", "c1", "s1", "gre") == []
 
 
+@pytest.mark.parametrize("error", [ValueError("bad input"), KeyError("k")])
+@patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(True))
+@patch("services.corpus.src.corpus.main.encode_query")
+@patch("services.corpus.src.corpus.main.get_qdrant_client")
+@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+async def test_search_corpus_propagates_value_and_key_errors_after_embedding(
+    mock_embed, mock_factory, mock_encode, _settings, error
+):
+    mock_embed.return_value = [0.1]
+    mock_encode.side_effect = error
+    client = AsyncMock()
+    client.collection_exists.return_value = True
+    mock_factory.return_value = client
+
+    with pytest.raises(type(error)):
+        await search_corpus("q", "c1", "s1", "gre")
+    client.close.assert_awaited_once()
+
+
+@patch("services.corpus.src.corpus.main.get_qdrant_client")
+async def test_corpus_startup_does_not_swallow_value_errors(mock_factory):
+    client = AsyncMock()
+    client.collection_exists.side_effect = ValueError("bug")
+    mock_factory.return_value = client
+    with pytest.raises(ValueError):
+        async with lifespan(app):
+            pass
+
+
 @patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(False))
 @patch("services.corpus.src.corpus.main.get_qdrant_client")
 @patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
