@@ -274,6 +274,31 @@ def test_reply_citing_unretrieved_sources_has_those_sentences_removed_and_announ
     assert "[Citation check: removed 1 sentence(s)" in resp.text
 
 
+def test_only_the_offending_line_is_dropped_and_newlines_are_kept():
+    resp = _chat(["- a [1]\n- b [9] bad.\n- c [2]\n"], body={"section": "aw"}, num_sources=2)
+    assert resp.text.startswith("- a [1]\n- c [2]\n")
+    assert "[9]" not in resp.text
+    assert "[Citation check: removed 1 sentence(s)" in resp.text
+
+
+def test_only_the_offending_sentence_is_dropped_within_a_line():
+    resp = _chat(
+        ["Good [1]. Bad [9]. Fine [2].\nNext line.\n"], body={"section": "aw"}, num_sources=2
+    )
+    assert resp.text.startswith("Good [1]. Fine [2].\nNext line.\n")
+    assert "[9]" not in resp.text
+
+
+def test_dropping_a_trailing_sentence_keeps_the_line_break():
+    resp = _chat(["Good [1]. Bad [9].\nNext line.\n"], body={"section": "aw"}, num_sources=2)
+    assert resp.text.startswith("Good [1].\nNext line.\n")
+
+
+def test_math_reply_with_long_numbers_is_not_redacted():
+    resp = _chat(["2^33 = 8589934592 and 3141592653.\n"], body={"mode": "solve"})
+    assert resp.text == "2^33 = 8589934592 and 3141592653.\n"
+
+
 def test_citations_are_not_checked_when_agent_reports_no_source_count():
     resp = _chat(["Try isolating x first [1]."])
     assert resp.text == "Try isolating x first [1]."

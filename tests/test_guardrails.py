@@ -101,6 +101,40 @@ def test_clean_text_unchanged():
     assert redact_pii(text) == text
 
 
+@pytest.mark.parametrize(
+    "phone",
+    [
+        "555-123-4567",
+        "555.123.4567",
+        "555 123 4567",
+        "(555) 123-4567",
+        "(555)123-4567",
+        "+1 555 123 4567",
+        "+1-555-123-4567",
+        "+15551234567",
+        "0912345678",
+    ],
+)
+def test_formatted_phone_numbers_redacted(phone):
+    result = redact_pii(f"Call {phone}, thanks.")
+    assert result == "Call [REDACTED], thanks."
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "2^33 = 8589934592 and 3141592653",
+        "The product is 1234567890.",
+        "x = 5551234567",
+        "5551234567*2 = 11102469134",
+        "12345678901234",
+        "1.5551234567",
+    ],
+)
+def test_bare_digit_runs_are_not_phone_numbers(text):
+    assert redact_pii(text) == text
+
+
 def test_multiple_pii_all_redacted():
     text = "Email: bob@test.org, Phone: 123-456-7890"
     result = redact_pii(text)

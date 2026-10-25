@@ -12,7 +12,13 @@ from shared.src.shared.models import Mode
 
 # PII patterns
 _EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
-_PHONE_RE = re.compile(r"\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b")
+_PHONE_RE = re.compile(
+    r"(?<![\w.+\-*/^])"
+    r"(?:\+\d{1,3}[-.\s]?\d{10}"
+    r"|(?:\+\d{1,3}[-.\s]?)?(?:\(\d{3}\)\s?|\d{3}[-.\s])\d{3}[-.\s]?\d{4}"
+    r"|0\d{9,10})"
+    r"(?![\w*/^]|[-.+]\d)"
+)
 
 _log = logging.getLogger(__name__)
 

@@ -11,10 +11,7 @@ from __future__ import annotations
 
 import re
 
-from services.agent.src.agent.critics.citation_checker import (
-    check_citations,
-    strip_uncited_claims,
-)
+from services.agent.src.agent.critics.citation_checker import check_citations
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
 from services.gateway.src.gateway.guardrails.output import detect_answer_leak, redact_pii
 from shared.src.shared.models import Mode
@@ -40,6 +37,26 @@ INPUT_PII_NOTICE = (
 # A flush point: a sentence end (terminator then whitespace) or a newline. Citation sentences
 # and multi-word PII never straddle one, so each flushed segment is checked whole.
 _BOUNDARY = re.compile(r"(?<=[.!?])\s|\n")
+
+
+_SENTENCE_SPLIT = re.compile(r"((?<=[.!?])[ \t]+|\s*\n\s*)")
+
+
+def _drop_uncited(segment: str, invalid: list[str]) -> tuple[str, int]:
+    """Drop only the sentences or lines citing an invalid marker, keeping every separator."""
+    parts = _SENTENCE_SPLIT.split(segment)
+    out: list[str] = []
+    dropped = 0
+    for i in range(0, len(parts), 2):
+        text = parts[i]
+        sep = parts[i + 1] if i + 1 < len(parts) else ""
+        if any(marker in text for marker in invalid):
+            dropped += 1
+            if out and "\n" in sep and "\n" not in out[-1]:
+                out[-1] = sep
+            continue
+        out += [text, sep]
+    return "".join(out), dropped
 
 
 class ReplyGuard:
@@ -102,11 +119,8 @@ class ReplyGuard:
                 emit_guardrail_event(
                     "generation", "citation", "fail", self._trace_id, invalid=len(invalid)
                 )
-                self._citations_removed += 1
-                body = segment.rstrip()
-                trailing = segment[len(body):]
-                body = strip_uncited_claims(body, invalid)
-                segment = body + trailing if body else ""
+                segment, dropped = _drop_uncited(segment, invalid)
+                self._citations_removed += dropped
         redacted = redact_pii(segment)
         if redacted != segment:
             emit_guardrail_event("output", "pii", "redacted", self._trace_id)
