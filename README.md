@@ -6,7 +6,7 @@ A GRE test-prep tutor built as a reference implementation of agentic AI engineer
 
 The backend services are built and covered by 367 Python tests (mocked LLM and Qdrant) plus 55 frontend unit tests. It is **not usable end to end yet**:
 
-- **No web app shell.** `web/` holds React components and tests but no `index.html` or entry point, so `npm run build` fails and nothing renders in a browser. The only way in today is `POST /chat` on the gateway, which needs `OPENAI_API_KEY`.
+- **The web app shell is minimal.** `web/` renders a subject picker, a tutor/solve mode switch and a chat that streams `POST /chat` into message bubbles. Chatting for real still needs the gateway and `OPENAI_API_KEY`; the browser smoke test (`npm run test:e2e`) mocks `/chat`. Sources, feedback, preferences and upload are not wired into the shell yet.
 - **RAG is dense-only.** The sparse vector, RRF hybrid and BGE reranker from ADR-0004 are designed but not wired.
 - **`/chat` applies only the content-safety guardrail.** The enrichment and complexity steps in the Orchestrator are stubs. The answer-leak, PII, rate-limit and citation guardrails are implemented and unit tested but not yet applied in `/chat`.
 - **Agent metadata is dropped.** `/generate` streams text only, so sources and verifier events never reach a UI.
@@ -162,8 +162,8 @@ uv run python -m evals.agent_eval --mode offline
 The app services already run inside the stack (step 3). The two things you may still run on the host:
 
 ```bash
-# Web UI dev server (not containerized). There is no app shell yet, so this
-# serves nothing useful until index.html / main.tsx exist.
+# Web UI dev server (not containerized). /chat is proxied to the gateway at
+# http://localhost:8000 (override with GATEWAY_URL).
 cd web && npm run dev
 ```
 
@@ -391,7 +391,7 @@ edu-agent/
 │   └── math_verifier/    # FastMCP — sympy sandbox MCP server
 ├── shared/               # Pydantic models, config loader, observability
 ├── mcp_servers/          # Candidate + Admin MCP servers
-├── web/                  # Vite + React components and tests (no app shell yet)
+├── web/                  # Vite + React app shell, components, unit tests and a Playwright smoke test
 ├── evals/                # Eval harness, golden sets, judges, regression check
 ├── prompts/              # Versioned system prompts (quant_agent, aw_agent)
 ├── config/               # model_config.{dev,staging,prod}.yaml

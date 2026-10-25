@@ -1,10 +1,9 @@
 ## GRE Tutor v1 - Implementation Progress
 
 Status: the backend is built and well tested with mocked LLM and Qdrant. The product
-is NOT usable end to end yet: the web UI has components but no app shell, so nothing
-renders in a browser and nothing in the UI calls the gateway. The only way in today
-is POST /chat on the gateway (needs OPENAI_API_KEY; content safety calls the OpenAI
-Moderation API).
+is NOT usable end to end yet: the web app shell renders and streams POST /chat into
+message bubbles, but it has only been exercised against a mocked /chat. A real turn
+needs the gateway and OPENAI_API_KEY (content safety calls the OpenAI Moderation API).
 
 ### Slices 01-17 (components, services and tests written)
 - [x] 01 Local dev stack (pyproject.toml, docker-compose, config, .env.example)
@@ -46,11 +45,12 @@ Moderation API).
 ### Current counts
 - Python tests: 367 passing (uv run pytest tests/ -q)
 - Frontend (Vitest) tests: 55 passing (cd web && npm test)
-- CI checks: ruff, mypy (strict), pytest, web typecheck + vitest
+- Browser smoke test (mocked /chat): cd web && npm run test:e2e (Playwright)
+- CI checks: ruff, mypy (strict), pytest, web typecheck + vitest + vite build + Playwright
 
 ### Known gaps (not done)
-- Web UI has no app shell (no index.html / main.tsx / App.tsx); `vite build` fails and
-  CI does not run it. Nothing in the UI calls /chat.
+- Web app shell is minimal: Sources, feedback, preferences and upload components are
+  not wired into it, and /chat has only been exercised with a mocked stream.
 - RAG is dense-only. ADR-0004's sparse vectors, RRF hybrid and BGE reranker are not
   wired (_rrf_merge exists in the retriever but is unused).
 - Gateway /chat only applies the content-safety check. Enrichment and complexity
