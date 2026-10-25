@@ -22,7 +22,7 @@ needs the gateway and OPENAI_API_KEY (content safety calls the OpenAI Moderation
 - [x] 14 Admin UI components (AdminUploadForm, JobsTable)
 - [x] 15 MCP servers (Candidate + Admin; 6 tools)
 - [x] 16 k8s manifests, GitHub Actions CI/CD, Dockerfiles for all services
-- [x] 17 Langfuse observability (setup_observability, build_llm_metadata, QuantAgent wired)
+- [x] 17 Langfuse observability (setup_observability called at gateway and agent startup, build_llm_metadata, QuantAgent wired)
 
 ### Work after the 17 slices
 - embed entrypoints in docker
@@ -43,7 +43,7 @@ needs the gateway and OPENAI_API_KEY (content safety calls the OpenAI Moderation
   (--suite ielts_writing: within-0.5, QWK, per-criterion, always with tier and n)
 
 ### Current counts
-- Python tests: 429 passing (uv run pytest tests/ -q)
+- Python tests: 459 passing (uv run pytest tests/ -q)
 - Frontend (Vitest) tests: 55 passing (cd web && npm test)
 - Browser smoke test (mocked /chat): cd web && npm run test:e2e (Playwright)
 - CI checks: ruff, mypy (strict), pytest, web typecheck + vitest + vite build + Playwright
