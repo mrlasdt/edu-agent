@@ -45,9 +45,10 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
       - run: npm run typecheck
-      # No `npm run build` yet: the web UI has components but no app shell
-      # (no index.html / entry point), so `vite build` cannot succeed today.
       - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
 
   eval-slice:
     name: Eval slice (path-gated)
