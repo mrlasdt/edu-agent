@@ -12,7 +12,7 @@ Behaviors under test:
 """
 
 import logging
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -29,7 +29,7 @@ from services.gateway.src.gateway.guardrails.rate_limit import (
     RateLimiter,
 )
 from shared.src.shared.config import Settings
-from shared.src.shared.models import Mode, Session
+from shared.src.shared.models import Message, MessageRole, Mode, Session
 
 
 def make_session(mode: Mode = Mode.tutor) -> Session:
@@ -78,6 +78,50 @@ async def test_complete_question_passes():
             "Solve x^2 - 5x + 6 = 0 for all real values of x.", make_session(), "trace-4"
         )
     assert complete is True
+
+
+def _llm_response(content: str) -> MagicMock:
+    response = MagicMock()
+    response.choices[0].message.content = content
+    return response
+
+
+@pytest.mark.asyncio
+async def test_enrichment_llm_sees_history_and_carries_trace_metadata():
+    session = make_session()
+    session.history = [
+        Message(role=MessageRole.candidate, content="Solve 2x + 3 = 11."),
+        Message(role=MessageRole.agent, content="Subtract 3 from both sides: 2x = 8."),
+    ]
+    with patch(
+        "services.gateway.src.gateway.guardrails.input.litellm.acompletion",
+        new_callable=AsyncMock,
+    ) as mock_llm:
+        mock_llm.return_value = _llm_response('{"complete": true, "clarification": ""}')
+        complete, _ = await check_completeness("why did we subtract 3?", session, "trace-hist")
+    assert complete is True
+    kwargs = mock_llm.call_args.kwargs
+    assert [m["role"] for m in kwargs["messages"]] == ["system", "user", "assistant", "user"]
+    assert kwargs["messages"][1]["content"] == "Solve 2x + 3 = 11."
+    assert kwargs["messages"][-1]["content"] == "why did we subtract 3?"
+    assert kwargs["metadata"]["trace_id"] == "trace-hist"
+    assert "prompt_version" in kwargs["metadata"]
+
+
+@pytest.mark.asyncio
+async def test_enrichment_llm_history_is_capped_to_recent_turns():
+    session = make_session()
+    session.history = [
+        Message(role=MessageRole.candidate, content=f"turn {i}") for i in range(20)
+    ]
+    with patch(
+        "services.gateway.src.gateway.guardrails.input.litellm.acompletion",
+        new_callable=AsyncMock,
+    ) as mock_llm:
+        mock_llm.return_value = _llm_response('{"complete": true, "clarification": ""}')
+        await check_completeness("next", session, "trace-cap")
+    contents = [m["content"] for m in mock_llm.call_args.kwargs["messages"][1:]]
+    assert contents == [f"turn {i}" for i in range(14, 20)] + ["next"]
 
 
 # ── 3. Output PII redaction ───────────────────────────────────────────────────
