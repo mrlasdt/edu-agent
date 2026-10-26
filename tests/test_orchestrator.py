@@ -21,12 +21,12 @@ from shared.src.shared.models import Session
 
 
 class StubQuantAgent(BaseAgent):
-    async def run(self, session, message):
+    async def run(self, session, message, trace_id=""):
         yield "stub"  # pragma: no cover
 
 
 class StubAWAgent(BaseAgent):
-    async def run(self, session, message):
+    async def run(self, session, message, trace_id=""):
         yield "stub"  # pragma: no cover
 
 

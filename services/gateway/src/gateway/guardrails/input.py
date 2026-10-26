@@ -9,7 +9,10 @@ import litellm
 
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
 from shared.src.shared.config import get_settings, load_model_config
-from shared.src.shared.models import Session
+from shared.src.shared.models import MessageRole, Session
+from shared.src.shared.observability import build_llm_metadata
+
+_HISTORY_TURNS = 6
 
 
 async def check_content_safety(text: str, trace_id: str) -> tuple[bool, str]:
@@ -32,7 +35,7 @@ async def check_completeness(text: str, session: Session, trace_id: str) -> tupl
     Haiku-tier LLM check: is the question complete enough to answer?
     Returns (complete, clarification_prompt).
     """
-    result = await _call_enrichment_llm(text, session)
+    result = await _call_enrichment_llm(text, session, trace_id)
     complete = result.get("complete", True)
     clarification = result.get("clarification", "")
     label = "pass" if complete else "fail"
@@ -55,7 +58,7 @@ async def _call_moderation_api(text: str) -> dict[str, Any]:
         return {"flagged": result["flagged"], "categories": result["categories"]}
 
 
-async def _call_enrichment_llm(text: str, session: Session) -> dict[str, Any]:
+async def _call_enrichment_llm(text: str, session: Session, trace_id: str) -> dict[str, Any]:
     """
     Haiku-tier LLM call to detect incomplete questions.
     Returns {"complete": bool, "clarification": str}.
@@ -64,19 +67,32 @@ async def _call_enrichment_llm(text: str, session: Session) -> dict[str, Any]:
     cfg = load_model_config()
     model = cfg.litellm_model("orchestrator")
     system = (
-        f"You are checking if a GRE {session.section.upper()} question is complete and answerable. "
+        f"You are checking if the latest candidate message in a GRE {session.section.upper()} "
+        "session is complete enough to answer. Judge it in the context of the earlier "
+        "conversation: a follow-up, clarification or next-step request that refers to earlier "
+        "turns is complete. "
         'Reply with JSON: {"complete": true/false, '
         '"clarification": "<question to ask if incomplete>"}'
     )
+    history = [
+        {
+            "role": "user" if m.role == MessageRole.candidate else "assistant",
+            "content": m.content,
+        }
+        for m in session.history[-_HISTORY_TURNS:]
+    ]
+    version = cfg.prompt_version("orchestrator", "completeness")
     response = await litellm.acompletion(
         model=model,
         messages=[
             {"role": "system", "content": system},
+            *history,
             {"role": "user", "content": text},
         ],
         temperature=0,
         response_format={"type": "json_object"},
         stream=False,
+        **build_llm_metadata(trace_id=trace_id, prompt_version=version),
     )
     import json
 

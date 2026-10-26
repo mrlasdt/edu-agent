@@ -38,8 +38,9 @@ class Orchestrator:
                     On miss → ClarificationTurn (not an exception; the agent service is not called)
       3. Return   — RouteResult carries the agent class and validated session
 
-    Steps 2b (enrichment — Haiku LLM detecting incomplete questions) and
-    2c (complexity classification) are stub implementations in v1 and will
+    Step 2b (enrichment — Haiku LLM detecting incomplete questions) runs in the
+    gateway's /chat handler via check_completeness, before this class is called.
+    Step 2c (complexity classification) is a stub implementation in v1 and will
     be filled in by issue 10.
     """
 

@@ -16,7 +16,9 @@ class BaseAgent(ABC):
     """
 
     @abstractmethod
-    def run(self, session: Session, message: str) -> AsyncGenerator[str | dict[str, Any], None]:
+    def run(
+        self, session: Session, message: str, trace_id: str = ""
+    ) -> AsyncGenerator[str | dict[str, Any], None]:
         """
         Process a turn and yield response tokens as an async generator,
         optionally followed by a final dict of turn metadata.

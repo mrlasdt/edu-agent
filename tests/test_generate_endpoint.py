@@ -59,7 +59,7 @@ def test_generate_unregistered_section_returns_404():
 
 def test_generate_reports_retrieved_source_count_as_header():
     class FakeAgent:
-        async def run(self, session, message):
+        async def run(self, session, message, trace_id=""):
             yield {"sources": 3}
             yield "Cited [1]."
 
@@ -74,3 +74,29 @@ def test_generate_reports_retrieved_source_count_as_header():
         )
     assert resp.headers["x-source-count"] == "3"
     assert resp.text == "Cited [1]."
+
+
+def test_generate_passes_trace_id_to_the_agent():
+    seen: list[str] = []
+
+    class FakeAgent:
+        async def run(self, session, message, trace_id=""):
+            seen.append(trace_id)
+            yield "ok"
+
+    class FakeRegistry:
+        def get(self, test_type, section):
+            return FakeAgent
+
+    with patch("services.agent.src.agent.main._registry", FakeRegistry()):
+        client.post(
+            "/generate",
+            json={
+                "candidate_id": "c1",
+                "test_type": "gre",
+                "section": "aw",
+                "message": "x",
+                "trace_id": "trace-gen",
+            },
+        )
+    assert seen == ["trace-gen"]

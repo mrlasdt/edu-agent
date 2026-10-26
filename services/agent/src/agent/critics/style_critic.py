@@ -9,6 +9,8 @@ from __future__ import annotations
 import litellm
 
 from shared.src.shared.config import load_model_config
+from shared.src.shared.models import Mode
+from shared.src.shared.observability import build_llm_metadata
 
 _STYLE_RUBRIC = """You are a strict GRE essay structure reviewer.
 Check whether this essay follows the PEEL/MEAL paragraph structure:
@@ -25,7 +27,7 @@ Do not suggest rewrites. Only assess structure."""
 
 
 async def run_style_critic(
-    essay_text: str, model_config_path: str | None = None
+    essay_text: str, model_config_path: str | None = None, trace_id: str = ""
 ) -> tuple[bool, str]:
     """
     Run the style critic on an essay.
@@ -34,6 +36,7 @@ async def run_style_critic(
     cfg = load_model_config(model_config_path)
     model = cfg.litellm_model("style_critic")
     temperature = cfg.role("style_critic").temperature
+    version = cfg.prompt_version("aw_agent", Mode.solve.value)
 
     response = await litellm.acompletion(
         model=model,
@@ -43,6 +46,7 @@ async def run_style_critic(
         ],
         temperature=temperature,
         stream=False,
+        **build_llm_metadata(trace_id=trace_id, prompt_version=version),
     )
     result = response.choices[0].message.content.strip()
     if result.upper().startswith("PASS"):

@@ -8,7 +8,7 @@ The backend services are built and covered by 459 Python tests (mocked LLM and Q
 
 - **The web app shell is minimal.** `web/` renders a subject picker, a tutor/solve mode switch and a chat that streams `POST /chat` into message bubbles. Chatting for real still needs the gateway and `OPENAI_API_KEY`; the browser smoke test (`npm run test:e2e`) mocks `/chat`. Sources, feedback, preferences and upload are not wired into the shell yet.
 - **RAG has no reranker.** Retrieval is hybrid (dense + a locally hashed sparse vector, fused with RRF; `HYBRID_RETRIEVAL_ENABLED=false` for dense-only). The BGE reranker from ADR-0004 is designed but not wired.
-- **The Orchestrator's enrichment and complexity steps are stubs.** `/chat` applies the rate-limit, PII, content-safety, answer-leak and citation guardrails (see "Guardrails"), but not output content safety.
+- **The Orchestrator's complexity step is a stub.** `/chat` applies the rate-limit, PII, content-safety, completeness, answer-leak and citation guardrails (see "Guardrails"), but not output content safety.
 - **Agent metadata is dropped.** `/generate` streams text only, apart from an `X-Source-Count` header the gateway uses for the citation check, so sources and verifier events never reach a UI.
 - **Evals are small and CI never scores a real model.** 5 Quant and 2 AW golden GRE items, plus 33 SAT Math, 41 IELTS Reading and 8 IELTS Writing prompt items (see "IELTS and SAT golden sets"); the IELTS Writing target needs third-party data downloaded locally and CI has none. The agent-in-the-loop harness (below) runs the real Quant agent, but CI only runs it offline against a fake model; real runs are manual and there is no measured baseline checked in.
 - **The question-generation pipeline is a library plus an eval target.** It is not exposed over HTTP, has no UI, and has only been run for real on a handful of items on free models (see "Question-generation pipeline").
@@ -337,12 +337,12 @@ Not done: dedup against the bank, difficulty calibration, knowledge-base groundi
 
 ## Guardrails (5 layers)
 
-`/chat` applies the rate-limit, input PII, content-safety, answer-leak, citation and output PII layers. Enrichment (the Orchestrator step) is a stub and output content safety is not applied (see Status). Guardrail decisions that change the reply are streamed to the Candidate as bracketed notices. The answer-leak regex stage runs on the stream and stops it on a hit; the LLM stage runs once after the full reply and can only append a notice. Citation checking applies only when the agent reports a source count (the AW agent).
+`/chat` applies the rate-limit, input PII, content-safety, completeness (enrichment), answer-leak, citation and output PII layers. The completeness check sees the last 6 history turns so follow-ups are not flagged, and fails open if the check errors. Output content safety is not applied (see Status). Guardrail decisions that change the reply are streamed to the Candidate as bracketed notices. The answer-leak regex stage runs on the stream and stops it on a hit; the LLM stage runs once after the full reply and can only append a notice. Citation checking applies only when the agent reports a source count (the AW agent).
 
 | Layer | What it checks |
 |---|---|
 | Input validation | Schema, size, content safety (OpenAI Moderation API) |
-| Enrichment | Haiku-tier LLM detects incomplete questions → `ClarificationTurn` |
+| Enrichment | Haiku-tier LLM detects incomplete questions → clarification reply |
 | Generation | Tutor-mode answer-leak check (Haiku); citation completeness (deterministic) |
 | Output | PII regex redaction; content safety on output text |
 | Rate/quota | 60 turns/min and 200 turns/day per Candidate (in-memory; Redis in v2) |

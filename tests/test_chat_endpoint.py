@@ -5,7 +5,9 @@ Behaviors under test:
   1. Unsafe content is refused (agent never called)
   2. Unregistered (test_type, section) yields the orchestrator's clarification
   3. A safe, routable turn proxies the agent's streamed tokens back verbatim
-  4. Guardrails on the stream (answer leak, PII, rate limit, citations) are applied and
+  4. Incomplete requests get a clarifying reply without calling the agent; a failing
+     completeness check does not break the turn
+  5. Guardrails on the stream (answer leak, PII, rate limit, citations) are applied and
      announced to the Candidate in the stream; all offline with the agent stream mocked
 """
 
@@ -32,6 +34,16 @@ def leak_llm():
         new_callable=AsyncMock,
     ) as mock:
         mock.return_value = False
+        yield mock
+
+
+@pytest.fixture(autouse=True)
+def completeness():
+    """The completeness check; mocked so no test makes a model call. Defaults to complete."""
+    with patch(
+        "services.gateway.src.gateway.main.check_completeness", new_callable=AsyncMock
+    ) as mock:
+        mock.return_value = (True, "")
         yield mock
 
 
@@ -86,6 +98,56 @@ def test_chat_proxies_agent_stream_on_route():
         )
     assert resp.status_code == 200
     assert resp.text == "Hello, world"
+
+
+# ── Completeness check wired into /chat ───────────────────────────────────────
+
+
+def test_complete_request_reaches_the_agent(completeness):
+    sent: list = []
+    resp = _chat(["Step one."], sent=sent)
+    assert resp.text == "Step one."
+    assert len(sent) == 1
+    completeness.assert_awaited_once()
+
+
+def test_incomplete_request_is_asked_to_clarify_without_calling_the_agent(completeness):
+    completeness.return_value = (False, "Which equation do you want to solve?")
+    sent: list = []
+    resp = _chat(["never streamed"], body={"message": "solve this"}, sent=sent)
+    assert resp.text == "Which equation do you want to solve?"
+    assert sent == []
+
+
+def test_incomplete_request_without_a_prompt_gets_a_default_clarification(completeness):
+    completeness.return_value = (False, "")
+    sent: list = []
+    resp = _chat(["never streamed"], sent=sent)
+    assert "full question" in resp.text.lower()
+    assert sent == []
+
+
+def test_completeness_check_failure_does_not_break_chat(completeness):
+    completeness.side_effect = RuntimeError("model down")
+    resp = _chat(["Step one."])
+    assert resp.status_code == 200
+    assert resp.text == "Step one."
+
+
+def test_completeness_runs_on_the_redacted_message_after_the_safety_check(completeness):
+    resp = _chat(["ok"], body={"message": "Solve 2x+3=11, email me at a@b.com"})
+    assert resp.status_code == 200
+    sent_text = completeness.await_args.args[0]
+    assert "a@b.com" not in sent_text
+
+
+def test_unsafe_request_never_reaches_the_completeness_check(completeness):
+    with patch(
+        "services.gateway.src.gateway.main.check_content_safety", new_callable=AsyncMock
+    ) as mock_safety:
+        mock_safety.return_value = (False, "content flagged: violence")
+        client.post("/chat", json=_BODY)
+    completeness.assert_not_called()
 
 
 # ── Guardrails wired into /chat ───────────────────────────────────────────────
