@@ -141,6 +141,8 @@ docker compose -f infra/docker-compose.yml build
 
 The BGE-M3 embedder and BGE reranker are opt-in (amd64-only, emulated on Apple Silicon). To use the reranker, also set `TEI_RERANKER_URL` in `.env` (see `.env.example`):
 
+On Apple Silicon the emulated amd64 TEI image is too slow for the reranker's 2s timeout (about 20s for the 20-candidate window), so locally the reranker times out and search uses the RRF order. Real rerank latency needs native hardware, for example an arm64 CPU TEI build or a native amd64/GPU host.
+
 ```bash
 docker compose -f infra/docker-compose.yml --profile embeddings up -d
 ```
