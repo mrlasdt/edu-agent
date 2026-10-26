@@ -32,7 +32,10 @@ async def rerank_texts(
         results = resp.json()
     scores: list[float | None] = [None] * len(texts)
     for item in results:
-        scores[int(item["index"])] = float(item["score"])
+        index = int(item["index"])
+        if not 0 <= index < len(texts):
+            raise ValueError(f"reranker returned index {index} for {len(texts)} texts")
+        scores[index] = float(item["score"])
     if any(s is None for s in scores):
         raise ValueError("reranker response did not score every text")
     return [s for s in scores if s is not None]

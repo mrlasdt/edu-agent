@@ -4,7 +4,7 @@ A GRE test-prep tutor built as a reference implementation of agentic AI engineer
 
 ## Status
 
-The backend services are built and covered by 486 Python tests (mocked LLM and Qdrant) plus 55 frontend unit tests. It is **not usable end to end yet**:
+The backend services are built and covered by 488 Python tests (mocked LLM and Qdrant) plus 55 frontend unit tests. It is **not usable end to end yet**:
 
 - **The web app shell is minimal.** `web/` renders a subject picker, a tutor/solve mode switch and a chat that streams `POST /chat` into message bubbles. Chatting for real still needs the gateway and `OPENAI_API_KEY`; the browser smoke test (`npm run test:e2e`) mocks `/chat`. Sources, feedback, preferences and upload are not wired into the shell yet.
 - **The RAG reranker is optional.** Retrieval is hybrid (dense + a locally hashed sparse vector, fused with RRF; `HYBRID_RETRIEVAL_ENABLED=false` for dense-only). When `TEI_RERANKER_URL` is set, the top 20 fused hits are reranked by BGE-reranker-v2-m3 (leave it unset to turn reranking off); if the reranker is down or slow, retrieval logs a warning and keeps the RRF order. Retrieval quality with the reranker has not been evaluated.
@@ -150,7 +150,7 @@ docker compose -f infra/docker-compose.yml --profile embeddings up -d
 ### 4. Run tests
 
 ```bash
-# Python tests (486)
+# Python tests (488)
 uv run pytest tests/ -q
 
 # Frontend tests (55)

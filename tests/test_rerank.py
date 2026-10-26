@@ -257,3 +257,23 @@ async def test_rerank_texts_times_out_well_inside_caller_budget():
     timeouts = route.calls.last.request.extensions["timeout"]
     # agent callers give /corpus/retrieve 10s in total, embed + Qdrant included
     assert all(t is not None and t <= 2.0 for t in timeouts.values())
+
+
+@pytest.mark.parametrize("bad_index", [3, -1])
+@respx.mock
+async def test_rerank_texts_rejects_out_of_range_index(bad_index):
+    # an index outside the input must surface as ValueError (the corpus fails open
+    # on it), not IndexError or a silent negative-index write to another text
+    respx.post("http://tei/rerank").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"index": 0, "score": 0.9},
+                {"index": 1, "score": 0.5},
+                {"index": 2, "score": 0.4},
+                {"index": bad_index, "score": 0.1},
+            ],
+        )
+    )
+    with pytest.raises(ValueError):
+        await rerank_texts("q", ["t0", "t1", "t2"], url="http://tei")
