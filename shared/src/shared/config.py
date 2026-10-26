@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     # rollback to the old collection layout: both modes need the named
     # dense/sparse vectors, so a legacy collection must be recreated and re-ingested.
     hybrid_retrieval_enabled: bool = True
+    # BGE-reranker-v2-m3 cross-encoder over the RRF top candidates (ADR-0004).
+    # Empty URL = no reranker service configured. RERANK_ENABLED unset follows the
+    # URL (on when configured); false switches it off even when configured.
+    tei_reranker_url: str = ""
+    rerank_enabled: bool | None = None
+    rerank_candidates: int = 20
     corpus_service_url: str = "http://localhost:8001"
     agent_service_url: str = "http://localhost:8002"
     ingestion_service_url: str = "http://localhost:8003"
@@ -68,6 +74,12 @@ class Settings(BaseSettings):
     admin_password: str = "changeme"
     env: str = "dev"
     model_config_path: str = "config/model_config.dev.yaml"
+
+    @property
+    def rerank_active(self) -> bool:
+        if not self.tei_reranker_url:
+            return False
+        return True if self.rerank_enabled is None else self.rerank_enabled
 
 
 @lru_cache

@@ -100,6 +100,27 @@ services:
       timeout: 10s
       retries: 20
 
+  # BGE-reranker-v2-m3 cross-encoder via Hugging Face Text Embeddings Inference,
+  # exposing /rerank. Same image, platform and "embeddings" profile as the
+  # embedder (amd64-only, emulated on Apple Silicon). The corpus service only
+  # calls it when TEI_RERANKER_URL is set (in ../.env: http://tei-reranker:8080
+  # for containers, http://localhost:8081 for a host-run corpus); if the service
+  # is down, retrieval fails open to the RRF order.
+  tei-reranker:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.4
+    platform: linux/amd64
+    profiles: [embeddings]
+    command: --model-id BAAI/bge-reranker-v2-m3 --port 8080
+    ports:
+      - "8081:8080"
+    volumes:
+      - tei_reranker_cache:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+
   # Math verifier MCP server — SSE transport on port 8090.
   # The Agent Service connects to http://math-verifier:8090 via the verify-math Skill.
   # In k8s Phase 2, runs as a sidecar to the agent pod (cluster-internal, no external exposure).
@@ -190,3 +211,4 @@ volumes:
   postgres_data:
   qdrant_data:
   tei_cache:
+  tei_reranker_cache:
