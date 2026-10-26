@@ -14,6 +14,7 @@ from services.agent.src.agent.skills.match_student_style import MatchStudentStyl
 from services.agent.src.agent.skills.retrieve_corpus import RetrieveCorpusSkill
 from shared.src.shared.config import load_model_config
 from shared.src.shared.models import MessageRole, Mode, Session
+from shared.src.shared.observability import build_llm_metadata
 
 _PROMPT_ROOT = Path("prompts/aw_agent")
 
@@ -126,18 +127,23 @@ class AWAgent(BaseAgent):
         self._model_config_path = model_config_path
 
     async def run(
-        self, session: Session, message: str
+        self, session: Session, message: str, trace_id: str = ""
     ) -> AsyncGenerator[str | dict[str, Any], None]:
         chunks = await self._retrieve(session, message)
         yield {"sources": len(chunks)}
         chunk_context = _format_chunks_for_context(chunks)
         version = self._model_config.prompt_version("aw_agent", session.mode.value)
+        obs_meta = build_llm_metadata(trace_id=trace_id, prompt_version=version)
 
         if session.mode == Mode.tutor:
-            async for item in self._tutor_turn(session, message, chunk_context, chunks, version):
+            async for item in self._tutor_turn(
+                session, message, chunk_context, chunks, version, obs_meta
+            ):
                 yield item
         else:
-            async for item in self._solve_turn(session, message, chunk_context, chunks, version):
+            async for item in self._solve_turn(
+                session, message, chunk_context, chunks, version, obs_meta, trace_id
+            ):
                 yield item
 
     # ── tutor mode ────────────────────────────────────────────────────────────
@@ -149,6 +155,7 @@ class AWAgent(BaseAgent):
         chunk_context: str,
         chunks: list[Any],
         version: str = "v1",
+        obs_meta: dict[str, Any] | None = None,
     ) -> AsyncGenerator[str | dict[str, Any], None]:
         system_prompt = _load_prompt(Mode.tutor, version)
         messages = _build_messages(session, message, system_prompt, chunk_context)
@@ -157,7 +164,8 @@ class AWAgent(BaseAgent):
 
         # Attempt 1
         response = await litellm.acompletion(
-            model=model, messages=messages, temperature=temperature, stream=True
+            model=model, messages=messages, temperature=temperature, stream=True,
+            **(obs_meta or {}),
         )
         tokens, full_text = await _collect_stream(response)
         valid, invalid = self._check_citations(full_text, len(chunks))
@@ -179,7 +187,8 @@ class AWAgent(BaseAgent):
             }
         ]
         response = await litellm.acompletion(
-            model=model, messages=retry_messages, temperature=temperature, stream=True
+            model=model, messages=retry_messages, temperature=temperature, stream=True,
+            **(obs_meta or {}),
         )
         tokens, full_text = await _collect_stream(response)
         valid, invalid = self._check_citations(full_text, len(chunks))
@@ -202,6 +211,8 @@ class AWAgent(BaseAgent):
         chunk_context: str,
         chunks: list[Any],
         version: str = "v1",
+        obs_meta: dict[str, Any] | None = None,
+        trace_id: str = "",
     ) -> AsyncGenerator[str | dict[str, Any], None]:
         system_prompt = _load_prompt(Mode.solve, version)
         model = self._model_config.litellm_model("aw_agent")
@@ -217,12 +228,13 @@ class AWAgent(BaseAgent):
 
         # Generate essay
         response = await litellm.acompletion(
-            model=model, messages=messages, temperature=temperature, stream=True
+            model=model, messages=messages, temperature=temperature, stream=True,
+            **(obs_meta or {}),
         )
         tokens, full_text = await _collect_stream(response)
 
         # Style critic — one rewrite pass on structural violation
-        style_ok, style_feedback = await self._run_style_critic(full_text)
+        style_ok, style_feedback = await self._run_style_critic(full_text, trace_id)
         if not style_ok:
             rewrite_messages = messages + [
                 {"role": "assistant", "content": full_text},
@@ -235,7 +247,8 @@ class AWAgent(BaseAgent):
                 },
             ]
             response = await litellm.acompletion(
-                model=model, messages=rewrite_messages, temperature=temperature, stream=True
+                model=model, messages=rewrite_messages, temperature=temperature, stream=True,
+                **(obs_meta or {}),
             )
             tokens, full_text = await _collect_stream(response)
 
@@ -252,7 +265,8 @@ class AWAgent(BaseAgent):
                 }
             ]
             response = await litellm.acompletion(
-                model=model, messages=retry_messages, temperature=temperature, stream=True
+                model=model, messages=retry_messages, temperature=temperature, stream=True,
+                **(obs_meta or {}),
             )
             tokens, full_text = await _collect_stream(response)
             valid, invalid = self._check_citations(full_text, len(chunks))
@@ -284,8 +298,8 @@ class AWAgent(BaseAgent):
     def _check_citations(self, text: str, num_chunks: int) -> tuple[bool, list[str]]:
         return check_citations(text, num_chunks)
 
-    async def _run_style_critic(self, essay_text: str) -> tuple[bool, str]:
-        return await run_style_critic(essay_text, self._model_config_path)
+    async def _run_style_critic(self, essay_text: str, trace_id: str = "") -> tuple[bool, str]:
+        return await run_style_critic(essay_text, self._model_config_path, trace_id)
 
     async def _get_personal_style_exemplars(self, session: Session) -> list[str]:
         if not session.personal_style_enabled:

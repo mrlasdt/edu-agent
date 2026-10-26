@@ -10,13 +10,16 @@ Behaviors under test:
   6. build_llm_metadata() includes cache hit/miss field
   7. QuantAgent.run() calls LiteLLM with metadata containing trace_id
   8. QuantAgent.run() calls LiteLLM with metadata containing prompt_version
+  9. AWAgent.run() (tutor and solve) and the style critic pass trace_id and prompt_version
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from services.agent.src.agent.agents.aw import AWAgent
 from services.agent.src.agent.agents.quant import QuantAgent
+from services.agent.src.agent.critics.style_critic import run_style_critic
 from shared.src.shared.models import Mode, Session
 from shared.src.shared.observability import build_llm_metadata, setup_observability
 
@@ -190,3 +193,68 @@ async def test_quant_agent_passes_prompt_version_to_litellm():
     metadata = call_kwargs.get("metadata", {})
     assert "prompt_version" in metadata
     assert metadata["prompt_version"]  # non-empty
+
+
+# ── 9. AWAgent and the style critic pass trace metadata ──────────────────────
+
+def _aw_session(mode: Mode) -> Session:
+    return Session(candidate_id="c1", test_type="gre", section="aw", mode=mode)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", [Mode.tutor, Mode.solve])
+async def test_aw_agent_passes_trace_metadata_on_every_llm_call(mode):
+    agent = AWAgent(model_config_path="config/model_config.dev.yaml")
+    version = agent._model_config.prompt_version("aw_agent", mode.value)
+
+    with (
+        patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm,
+        patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]),
+        patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(False, "x")),
+        patch.object(agent, "_check_citations", side_effect=[(True, []), (True, [])]),
+    ):
+        mock_llm.side_effect = lambda **_: mock_stream(["essay"])
+        async for _ in agent.run(_aw_session(mode), "Write an essay", trace_id="trace-aw"):
+            pass
+
+    assert mock_llm.await_count >= 1
+    for call in mock_llm.await_args_list:
+        metadata = call.kwargs["metadata"]
+        assert metadata["trace_id"] == "trace-aw"
+        assert metadata["prompt_version"] == version
+
+
+@pytest.mark.asyncio
+async def test_aw_solve_passes_trace_id_to_the_style_critic():
+    agent = AWAgent(model_config_path="config/model_config.dev.yaml")
+
+    with (
+        patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm,
+        patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]),
+        patch.object(agent, "_check_citations", return_value=(True, [])),
+        patch.object(
+            agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")
+        ) as critic,
+    ):
+        mock_llm.return_value = mock_stream(["essay"])
+        async for _ in agent.run(_aw_session(Mode.solve), "Write an essay", trace_id="trace-aw"):
+            pass
+
+    critic.assert_awaited_once_with("essay", "trace-aw")
+
+
+@pytest.mark.asyncio
+async def test_style_critic_llm_call_carries_trace_metadata():
+    response = MagicMock()
+    response.choices = [MagicMock()]
+    response.choices[0].message.content = "PASS"
+
+    with patch("litellm.acompletion", new_callable=AsyncMock, return_value=response) as mock_llm:
+        passed, _ = await run_style_critic(
+            "An essay.", "config/model_config.dev.yaml", trace_id="trace-sc"
+        )
+
+    assert passed is True
+    metadata = mock_llm.call_args.kwargs["metadata"]
+    assert metadata["trace_id"] == "trace-sc"
+    assert metadata["prompt_version"]

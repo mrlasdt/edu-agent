@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import codecs
+import logging
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -12,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from services.agent.src.agent.bootstrap import build_registry
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
-from services.gateway.src.gateway.guardrails.input import check_content_safety
+from services.gateway.src.gateway.guardrails.input import check_completeness, check_content_safety
 from services.gateway.src.gateway.guardrails.output import check_answer_leak
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
 from services.gateway.src.gateway.guardrails.stream import (
@@ -30,6 +31,8 @@ from shared.src.shared.config import get_settings
 from shared.src.shared.models import Message, MessageRole, Mode, Session
 from shared.src.shared.observability import setup_observability
 
+_log = logging.getLogger(__name__)
+
 app = FastAPI(title="Gateway Service")
 
 setup_observability()
@@ -38,6 +41,9 @@ setup_observability()
 # service uses, so routing decisions here match what /generate will accept.
 _orchestrator = Orchestrator(registry=build_registry())
 _rate_limiter = RateLimiter()
+
+
+_DEFAULT_CLARIFICATION = "Could you share the full question so I can help?"
 
 
 class HistoryItem(BaseModel):
@@ -85,7 +91,7 @@ async def _stream_from_agent(
 async def chat(req: ChatRequest) -> StreamingResponse:
     """
     Single turn: rate limit → PII redaction → content-safety guardrail →
-    orchestrator route → stream the agent's answer through the reply guard
+    completeness check → orchestrator route → stream the agent's answer through the reply guard
     (answer leak, citation check, PII redaction). Clarifications, refusals and
     every guardrail decision are streamed as plain text so the response shape is
     uniform regardless of outcome.
@@ -115,6 +121,17 @@ async def chat(req: ChatRequest) -> StreamingResponse:
         safe, reason = await check_content_safety(message, trace_id)
         if not safe:
             yield f"I can't help with that request ({reason}).".encode()
+            return
+
+        # Fail open: a broken completeness check must not block a turn that the other
+        # guardrails already passed, same as the LLM stage of the answer-leak check.
+        try:
+            complete, clarification = await check_completeness(message, session, trace_id)
+        except Exception:
+            _log.warning("completeness check failed; skipping", exc_info=True)
+            complete, clarification = True, ""
+        if not complete:
+            yield (clarification or _DEFAULT_CLARIFICATION).encode("utf-8")
             return
 
         result = await _orchestrator.process(session, message)

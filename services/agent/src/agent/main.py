@@ -66,7 +66,7 @@ async def generate(req: GenerateRequest) -> StreamingResponse:
         personal_style_enabled=req.personal_style_enabled,
     )
 
-    items = agent.run(session, req.message)
+    items = agent.run(session, req.message, trace_id=req.trace_id)
     # Agents that retrieve sources report the count first; surface it as a header so the
     # gateway can check citations against it.
     headers: dict[str, str] = {}
