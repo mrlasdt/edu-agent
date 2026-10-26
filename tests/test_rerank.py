@@ -3,12 +3,13 @@ Tests for the cross-encoder rerank step in search_corpus (ADR-0004).
 
 Behaviors under test:
   1. With rerank enabled, the fused top candidates are reordered by reranker score
-  2. Only the top RERANK_CANDIDATES fused hits are sent to the reranker
+  2. Only the top 20 fused hits (or top_k, if larger) are sent to the reranker
   3. Fail open: a reranker error returns the RRF order and logs a warning
-  4. Rerank is off when no reranker URL is configured, and RERANK_ENABLED=false wins
+  4. Rerank is off when no reranker URL is configured
   5. ACL ids never leak from reranked results; exact reranker ties still prefer the
      more specific tier
-  6. The TEI /rerank client maps scores back to input order
+  6. The TEI /rerank client maps scores back to input order and uses a short
+     timeout, so fail-open fires well inside the agent's 10s /corpus/retrieve budget
 """
 
 import json
@@ -62,6 +63,11 @@ def _client(dense_points, sparse_points):
     return client
 
 
+def _many_client(n):
+    # dense-only hits in descending score order; sparse channel returns nothing
+    return _client([_point(f"p{i}", 1.0 - i / 100, _payload(f"T{i}")) for i in range(n)], [])
+
+
 def _abc_client():
     # RRF order: B (both channels), then A, then C
     return _client(
@@ -97,14 +103,15 @@ async def test_rerank_reorders_fused_candidates(mock_embed, mock_factory, mock_s
 @patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
 async def test_rerank_only_sends_top_candidates(mock_embed, mock_factory, mock_settings, mock_rr):
     mock_embed.return_value = [0.1]
-    mock_settings.return_value = _settings(rerank_candidates=2)
-    mock_factory.return_value = _abc_client()
-    mock_rr.return_value = [0.2, 0.8]
+    mock_settings.return_value = _settings()
+    mock_factory.return_value = _many_client(25)
+    # reverse the fused order inside the 20-hit window
+    mock_rr.return_value = [float(i) for i in range(20)]
 
-    out = await search_corpus("q", "c1", "s1", "gre", top_k=1)
+    out = await search_corpus("q", "c1", "s1", "gre", top_k=2)
 
-    assert mock_rr.await_args.args[1] == ["B", "A"]
-    assert [r["text"] for r in out] == ["A"]
+    assert mock_rr.await_args.args[1] == [f"T{i}" for i in range(20)]
+    assert [r["text"] for r in out] == ["T19", "T18"]
 
 
 @patch("services.corpus.src.corpus.main.rerank_texts", new_callable=AsyncMock)
@@ -115,14 +122,14 @@ async def test_rerank_candidates_never_below_top_k(
     mock_embed, mock_factory, mock_settings, mock_rr
 ):
     mock_embed.return_value = [0.1]
-    mock_settings.return_value = _settings(rerank_candidates=1)
-    mock_factory.return_value = _abc_client()
-    mock_rr.return_value = [0.1, 0.9]
+    mock_settings.return_value = _settings()
+    mock_factory.return_value = _many_client(25)
+    mock_rr.return_value = [float(i) for i in range(22)]
 
-    out = await search_corpus("q", "c1", "s1", "gre", top_k=2)
+    out = await search_corpus("q", "c1", "s1", "gre", top_k=22)
 
-    assert mock_rr.await_args.args[1] == ["B", "A"]
-    assert [r["text"] for r in out] == ["A", "B"]
+    assert mock_rr.await_args.args[1] == [f"T{i}" for i in range(22)]
+    assert [r["text"] for r in out] == [f"T{i}" for i in reversed(range(22))]
 
 
 @pytest.mark.parametrize(
@@ -170,36 +177,21 @@ async def test_rerank_fails_open_on_wrong_score_count(
     assert [r["text"] for r in out] == ["B", "A", "C"]
 
 
-@pytest.mark.parametrize(
-    "overrides",
-    [
-        {"tei_reranker_url": ""},
-        {"rerank_enabled": False},
-    ],
-)
 @patch("services.corpus.src.corpus.main.rerank_texts", new_callable=AsyncMock)
 @patch("services.corpus.src.corpus.main.get_settings")
 @patch("services.corpus.src.corpus.main.get_qdrant_client")
 @patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
-async def test_rerank_skipped_when_unconfigured_or_disabled(
-    mock_embed, mock_factory, mock_settings, mock_rr, overrides
+async def test_rerank_skipped_without_reranker_url(
+    mock_embed, mock_factory, mock_settings, mock_rr
 ):
     mock_embed.return_value = [0.1]
-    mock_settings.return_value = _settings(**overrides)
+    mock_settings.return_value = _settings(tei_reranker_url="")
     mock_factory.return_value = _abc_client()
 
     out = await search_corpus("q", "c1", "s1", "gre", top_k=3)
 
     mock_rr.assert_not_awaited()
     assert [r["text"] for r in out] == ["B", "A", "C"]
-
-
-def test_rerank_default_follows_reranker_url():
-    assert Settings(tei_reranker_url="").rerank_active is False
-    assert Settings(tei_reranker_url=RERANKER_URL).rerank_active is True
-    assert Settings(tei_reranker_url=RERANKER_URL, rerank_enabled=False).rerank_active is False
-    # explicitly enabled but no service configured: nothing to call
-    assert Settings(tei_reranker_url="", rerank_enabled=True).rerank_active is False
 
 
 @patch("services.corpus.src.corpus.main.rerank_texts", new_callable=AsyncMock)
@@ -254,3 +246,14 @@ async def test_rerank_texts_raises_on_http_error():
     respx.post("http://tei/rerank").mock(return_value=httpx.Response(503))
     with pytest.raises(httpx.HTTPStatusError):
         await rerank_texts("q", ["t"], url="http://tei")
+
+
+@respx.mock
+async def test_rerank_texts_times_out_well_inside_caller_budget():
+    route = respx.post("http://tei/rerank").mock(
+        return_value=httpx.Response(200, json=[{"index": 0, "score": 0.5}])
+    )
+    await rerank_texts("q", ["t"], url="http://tei")
+    timeouts = route.calls.last.request.extensions["timeout"]
+    # agent callers give /corpus/retrieve 10s in total, embed + Qdrant included
+    assert all(t is not None and t <= 2.0 for t in timeouts.values())

@@ -13,14 +13,15 @@ from shared.src.shared.config import get_settings
 
 
 async def rerank_texts(
-    query: str, texts: list[str], *, url: str | None = None, timeout: float = 10.0
+    query: str, texts: list[str], *, url: str | None = None, timeout: float = 2.0
 ) -> list[float]:
     """
     Score each text against the query via the TEI server's /rerank endpoint.
     Returns one relevance score per input, in input order (TEI sorts its response
     by score, so scores are mapped back through each result's `index`). Empty
     input → empty list. Raises httpx.HTTPError on transport/status failures and
-    ValueError/KeyError on a malformed or incomplete body.
+    ValueError/KeyError on a malformed or incomplete body. The short default
+    timeout keeps the corpus fail-open well inside callers' /corpus/retrieve budget.
     """
     if not texts:
         return []

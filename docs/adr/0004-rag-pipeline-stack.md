@@ -4,7 +4,7 @@ The literature side of the agent retrieves from the three-tier corpus (ADR-0001)
 
 ## Status
 
-Accepted. Hybrid RRF retrieval and the BGE-reranker-v2-m3 rerank step (TEI `/rerank`, behind `TEI_RERANKER_URL` / `RERANK_ENABLED`, failing open to the RRF order) are implemented in the corpus service; retrieval quality with the reranker is not yet evaluated. The full trade-space (alternatives considered for every sub-decision) is captured in `docs/design-log/0001-rag-pipeline-trade-space.md` for future deep-dive.
+Accepted. Hybrid RRF retrieval and the BGE-reranker-v2-m3 rerank step (TEI `/rerank`, on when `TEI_RERANKER_URL` is set, failing open to the RRF order) are implemented in the corpus service; retrieval quality with the reranker is not yet evaluated. The full trade-space (alternatives considered for every sub-decision) is captured in `docs/design-log/0001-rag-pipeline-trade-space.md` for future deep-dive.
 
 ## Considered options (high-level only — see design log for detail)
 

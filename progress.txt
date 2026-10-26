@@ -43,7 +43,7 @@ needs the gateway and OPENAI_API_KEY (content safety calls the OpenAI Moderation
   (--suite ielts_writing: within-0.5, QWK, per-criterion, always with tier and n)
 
 ### Current counts
-- Python tests: 487 passing (uv run pytest tests/ -q)
+- Python tests: 486 passing (uv run pytest tests/ -q)
 - Frontend (Vitest) tests: 55 passing (cd web && npm test)
 - Browser smoke test (mocked /chat): cd web && npm run test:e2e (Playwright)
 - CI checks: ruff, mypy (strict), pytest, web typecheck + vitest + vite build + Playwright

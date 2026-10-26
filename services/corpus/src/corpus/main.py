@@ -32,6 +32,10 @@ from shared.src.shared.vectorstore import (
 
 logger = logging.getLogger(__name__)
 
+# Fused hits reranked by the cross-encoder (ADR-0004: top-20 -> top-5); also the
+# per-channel Qdrant over-fetch, so the window is always filled when hits exist.
+RERANK_CANDIDATES = 20
+
 
 def _is_transient(exc: Exception) -> bool:
     """
@@ -82,7 +86,8 @@ class ChunkResult(BaseModel):
     into a retrieval response; adds the retrieval score.
 
     `score` is only meaningful for ordering, and its scale depends on the
-    request: the RRF fused score (about 0.03 at best) in hybrid mode, cosine
+    request: the reranker's relevance score after a successful rerank, otherwise
+    the RRF fused score (about 0.03 at best) in hybrid mode, or cosine
     similarity when dense-only or when the sparse query fell back to dense.
     """
 
@@ -127,14 +132,12 @@ async def retrieve(request: RetrieveRequest) -> list[dict[str, Any]]:
     return results
 
 
-async def _rerank(
-    query: str, ranked: list[dict[str, Any]], top_k: int, candidates: int
-) -> list[dict[str, Any]]:
+async def _rerank(query: str, ranked: list[dict[str, Any]], top_k: int) -> list[dict[str, Any]]:
     """
     Reorder the top candidates by cross-encoder score; hits beyond the candidate
     window keep their place after them. Fails open to the incoming order.
     """
-    window = ranked[: max(top_k, candidates)]
+    window = ranked[: max(top_k, RERANK_CANDIDATES)]
     if not window:
         return ranked
     try:
@@ -169,7 +172,7 @@ async def search_corpus(
       3. Tier tiebreak (candidate > school > global on near-ties: within 5% of
          the cosine score dense-only, exact RRF-score ties when fused)
       4. Cross-encoder rerank (BGE-reranker-v2-m3 via TEI) of the top
-         RERANK_CANDIDATES (at least top_k), when a reranker is configured; exact
+         RERANK_CANDIDATES (at least top_k), when TEI_RERANKER_URL is set; exact
          reranker-score ties again prefer the more specific tier
       5. Project the top_k into citation-facing ChunkResults
 
@@ -197,7 +200,7 @@ async def search_corpus(
     sparse_response: Any
     try:
         search_filter = build_search_filter(candidate_id, school_id, test_type)
-        limit = max(top_k, 20)  # over-fetch so fusion and the tiebreak have room
+        limit = max(top_k, RERANK_CANDIDATES)  # over-fetch for fusion, tiebreak and rerank
         client = get_qdrant_client()
         try:
             if not await client.collection_exists(COLLECTION):
@@ -253,7 +256,7 @@ async def search_corpus(
     else:
         fused = _rrf_merge(_hits(dense_response), _hits(sparse_response))
         ranked = _tier_tiebreak(fused, threshold=RRF_TIE_THRESHOLD)
-    if settings.rerank_active:
-        ranked = await _rerank(query, ranked, top_k, settings.rerank_candidates)
+    if settings.tei_reranker_url:
+        ranked = await _rerank(query, ranked, top_k)
     ranked = ranked[:top_k]
     return [to_chunk_result(h["payload"], h["score"]).model_dump() for h in ranked]
