@@ -164,7 +164,10 @@ class AWAgent(BaseAgent):
 
         # Attempt 1
         response = await litellm.acompletion(
-            model=model, messages=messages, temperature=temperature, stream=True,
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            stream=True,
             **(obs_meta or {}),
         )
         tokens, full_text = await _collect_stream(response)
@@ -187,7 +190,10 @@ class AWAgent(BaseAgent):
             }
         ]
         response = await litellm.acompletion(
-            model=model, messages=retry_messages, temperature=temperature, stream=True,
+            model=model,
+            messages=retry_messages,
+            temperature=temperature,
+            stream=True,
             **(obs_meta or {}),
         )
         tokens, full_text = await _collect_stream(response)
@@ -228,7 +234,10 @@ class AWAgent(BaseAgent):
 
         # Generate essay
         response = await litellm.acompletion(
-            model=model, messages=messages, temperature=temperature, stream=True,
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            stream=True,
             **(obs_meta or {}),
         )
         tokens, full_text = await _collect_stream(response)
@@ -247,7 +256,10 @@ class AWAgent(BaseAgent):
                 },
             ]
             response = await litellm.acompletion(
-                model=model, messages=rewrite_messages, temperature=temperature, stream=True,
+                model=model,
+                messages=rewrite_messages,
+                temperature=temperature,
+                stream=True,
                 **(obs_meta or {}),
             )
             tokens, full_text = await _collect_stream(response)
@@ -265,7 +277,10 @@ class AWAgent(BaseAgent):
                 }
             ]
             response = await litellm.acompletion(
-                model=model, messages=retry_messages, temperature=temperature, stream=True,
+                model=model,
+                messages=retry_messages,
+                temperature=temperature,
+                stream=True,
                 **(obs_meta or {}),
             )
             tokens, full_text = await _collect_stream(response)

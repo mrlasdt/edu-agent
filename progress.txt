@@ -53,9 +53,9 @@ needs the gateway and OPENAI_API_KEY (content safety calls the OpenAI Moderation
   not wired into it, and /chat has only been exercised with a mocked stream.
 - RAG has no reranker. Hybrid (dense + sparse, RRF) retrieval is wired in search_corpus;
   ADR-0004's BGE reranker is not.
-- Orchestrator enrichment and complexity classification are stubs. Gateway /chat applies
-  rate limit, PII redaction, content safety, answer-leak and citation guardrails; output
-  content safety is not applied.
+- Orchestrator complexity classification is a stub. Gateway /chat applies rate limit, PII
+  redaction, content safety, completeness (enrichment), answer-leak and citation guardrails;
+  output content safety is not applied.
 - /generate streams text only; verifier_fail / citation_stripped metadata is dropped,
   so SourcesPanel has nothing to show.
 - Evals are small (5 Quant and 2 AW golden items). evals/agent_eval runs the real QuantAgent
