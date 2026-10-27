@@ -148,7 +148,7 @@ Then open http://localhost:5173. To start over with an empty corpus, run `docker
 | math-verifier | http://localhost:8090 | sympy verification MCP server (SSE) |
 | tei-embedder | http://localhost:8080 | BGE-M3 embeddings (needed by retrieval and the seed job) |
 | qdrant | 6333 | Vector store |
-| seed | - | One-shot job: ingests `seed/gre-quant/*.txt` when the corpus is empty |
+| seed | - | One-shot job: ingests any `seed/gre-quant/*.txt` note not yet indexed |
 
 Opt-in extras, each behind a compose profile:
 
