@@ -4,7 +4,7 @@ The literature side of the agent retrieves from the three-tier corpus (ADR-0001)
 
 ## Status
 
-Accepted. The full trade-space (alternatives considered for every sub-decision) is captured in `docs/design-log/0001-rag-pipeline-trade-space.md` for future deep-dive.
+Accepted. Hybrid RRF retrieval and the BGE-reranker-v2-m3 rerank step (TEI `/rerank`, on when `TEI_RERANKER_URL` is set, failing open to the RRF order) are implemented in the corpus service; retrieval quality with the reranker is not yet evaluated. The full trade-space (alternatives considered for every sub-decision) is captured in `docs/design-log/0001-rag-pipeline-trade-space.md` for future deep-dive.
 
 ## Considered options (high-level only — see design log for detail)
 
@@ -20,4 +20,4 @@ Accepted. The full trade-space (alternatives considered for every sub-decision) 
 - **Multilingual is free for the cost of v1.** BGE-M3 is multilingual; the choice was made under ADR-0003. Adding a language in v2 doesn't require re-indexing.
 - **No OCR in v1** means scanned PDFs, photos of handwriting, and image uploads are explicitly rejected at the ingestion API with a clear error. Surface this in the UI so users don't waste time uploading.
 - **Async ingestion has a sync fast-path** for student uploads under 1MB so the student-upload UX feels responsive. Larger uploads go to the queue and a "processing" state.
-- **Reranker hop adds ~100-200ms** at retrieval time. Acceptable inside a turn already costing ~2s of LLM time. Watch the budget if Sonnet turns get faster.
+- **Reranker hop adds ~100-200ms** at retrieval time. Acceptable inside a turn already costing ~2s of LLM time. Watch the budget if Sonnet turns get faster. This budget assumes native hardware: on Apple Silicon the emulated amd64 TEI image takes about 20s for the top-20, so locally the reranker hits its 2s timeout and search uses the RRF order. Measuring real rerank latency needs native hardware (an arm64 CPU TEI build or a native amd64/GPU host).

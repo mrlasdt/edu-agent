@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     # rollback to the old collection layout: both modes need the named
     # dense/sparse vectors, so a legacy collection must be recreated and re-ingested.
     hybrid_retrieval_enabled: bool = True
+    # BGE-reranker-v2-m3 cross-encoder over the RRF top candidates (ADR-0004).
+    # Empty URL = no rerank.
+    tei_reranker_url: str = ""
     corpus_service_url: str = "http://localhost:8001"
     agent_service_url: str = "http://localhost:8002"
     ingestion_service_url: str = "http://localhost:8003"
