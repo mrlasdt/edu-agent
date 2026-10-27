@@ -1,0 +1,15 @@
+# Percent change
+
+Percent change = (new - old) / old x 100. The denominator is always the original value. A price that rises from 80 to 100 is a 25 percent increase, but a fall from 100 back to 80 is a 20 percent decrease, because the base changed. Successive percent changes multiply rather than add: a 10 percent increase followed by a 10 percent decrease leaves 1.1 x 0.9 = 0.99 of the original, a net 1 percent decrease.
+
+# Percent of and percent more than
+
+"x percent of y" means (x/100) x y. "x is p percent of y" means x = (p/100) y. "A is p percent more than B" means A = B x (1 + p/100). Translate the sentence into an equation before computing; most mistakes come from using the wrong quantity as the base.
+
+# Ratios and proportions
+
+A ratio of 3 : 5 means the parts are 3k and 5k for some positive k, and the whole is 8k. If the whole is 96, then k = 12 and the parts are 36 and 60. To compare two ratios, write them as fractions and cross-multiply. When two quantities are directly proportional, y/x stays constant; when they are inversely proportional, xy stays constant.
+
+# Mixtures and weighted averages
+
+A mixture problem is a weighted average. If 2 liters of a 10 percent solution are mixed with 3 liters of a 20 percent solution, the result is (2 x 10 + 3 x 20) / 5 = 16 percent. The mixture always lands between the two starting concentrations, closer to the one with the larger volume.

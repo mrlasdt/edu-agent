@@ -1,6 +1,6 @@
-import { Fragment } from "react";
 import type { Message } from "../types";
 import { ESSAY_DISCLAIMER } from "../types";
+import { renderMarkdown } from "../markdown";
 
 interface Props {
   message: Message;
@@ -17,28 +17,18 @@ function renderContentWithCitations(
   const mainContent = parts[0];
   const hasDisclaimer = parts.length > 1;
 
-  // Parse [N] citation markers in the main content
-  const tokens = mainContent.split(/(\[\d+\])/g);
-
   return (
     <>
-      {tokens.map((token, i) => {
-        const match = token.match(/^\[(\d+)\]$/);
-        if (match) {
-          const idx = parseInt(match[1], 10);
-          return (
-            <button
-              key={i}
-              className="citation-marker"
-              aria-label={`[${idx}]`}
-              onClick={() => onCitationClick?.(idx)}
-            >
-              [{idx}]
-            </button>
-          );
-        }
-        return <Fragment key={i}>{token}</Fragment>;
-      })}
+      {renderMarkdown(mainContent, (idx, key) => (
+        <button
+          key={key}
+          className="citation-marker"
+          aria-label={`[${idx}]`}
+          onClick={() => onCitationClick?.(idx)}
+        >
+          [{idx}]
+        </button>
+      ))}
       {hasDisclaimer && (
         <aside
           data-testid="essay-disclaimer"

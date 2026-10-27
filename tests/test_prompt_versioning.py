@@ -7,6 +7,7 @@ Behaviors under test:
   3. QuantAgent loads the prompt file for the configured version
   4. QuantAgent reports the configured version to Langfuse metadata
   5. AWAgent loads the prompt file for the configured version
+  6. Every prompt version in the dev config resolves to a loadable prompt
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -53,7 +54,7 @@ def test_dev_config_declares_prompt_versions():
 
     cfg = load_model_config("config/model_config.dev.yaml")
     # dev config must declare an active version for the shipped agents/modes
-    assert cfg.prompt_version("quant_agent", "tutor") == "v1"
+    assert cfg.prompt_version("quant_agent", "tutor") == "v2"
     assert cfg.prompt_version("aw_agent", "tutor") == "v1"
 
 
@@ -123,3 +124,17 @@ async def test_aw_agent_loads_configured_prompt_version():
             pass
 
     mock_load.assert_called_with(Mode.tutor, "v5")
+
+
+
+# ── 6. Every configured version resolves to a prompt the agent can load ──────
+
+
+@pytest.mark.parametrize("mode", [Mode.tutor, Mode.solve])
+def test_dev_config_prompt_versions_load(mode):
+    from services.agent.src.agent.agents import aw, quant
+    from shared.src.shared.config import load_model_config
+
+    cfg = load_model_config("config/model_config.dev.yaml")
+    assert quant._load_prompt(mode, cfg.prompt_version("quant_agent", mode.value))
+    assert aw._load_prompt(mode, cfg.prompt_version("aw_agent", mode.value))

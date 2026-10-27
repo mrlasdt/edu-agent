@@ -1,0 +1,15 @@
+# Triangles
+
+The angles of a triangle sum to 180 degrees. Area = (1/2) x base x height, where the height is measured perpendicular to the base. The third side of any triangle must be greater than the difference and less than the sum of the other two sides. In an isosceles triangle, the angles opposite equal sides are equal.
+
+# Right triangles
+
+The Pythagorean theorem states a^2 + b^2 = c^2, where c is the hypotenuse. Common triples are 3-4-5, 5-12-13 and 8-15-17, and their multiples (6-8-10, for example). Two special triangles appear often: a 45-45-90 triangle has sides in the ratio 1 : 1 : sqrt(2), and a 30-60-90 triangle has sides in the ratio 1 : sqrt(3) : 2, with the shortest side opposite the 30 degree angle.
+
+# Circles
+
+For a circle of radius r, the circumference is 2 pi r and the area is pi r^2. A central angle of n degrees cuts off an arc of length (n/360) x 2 pi r and a sector of area (n/360) x pi r^2. An angle inscribed in a circle is half of the central angle that cuts off the same arc, and an angle inscribed in a semicircle is a right angle.
+
+# Rectangles and general advice
+
+A rectangle with sides l and w has area lw and perimeter 2(l + w). The diagonal of a rectangle is the hypotenuse of a right triangle, so it equals sqrt(l^2 + w^2). GRE figures are not always drawn to scale, so rely on the given information, not on how the picture looks.

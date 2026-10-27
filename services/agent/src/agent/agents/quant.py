@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import AsyncGenerator, AsyncIterator
 from pathlib import Path
@@ -9,10 +10,13 @@ import litellm
 
 from services.agent.src.agent.answers import extract_final_answer, normalize_answer
 from services.agent.src.agent.base import BaseAgent
+from services.agent.src.agent.skills.retrieve_corpus import CorpusChunk, RetrieveCorpusSkill
 from services.agent.src.agent.skills.verify_math import VerifyMathResult, VerifyMathSkill
 from shared.src.shared.config import load_model_config
 from shared.src.shared.models import MessageRole, Mode, Session
 from shared.src.shared.observability import build_llm_metadata
+
+_log = logging.getLogger(__name__)
 
 _PROMPT_ROOT = Path("prompts/quant_agent")
 
@@ -27,14 +31,29 @@ def _load_prompt(mode: Mode, version: str) -> str:
     return re.sub(r"^---\n.*?\n---\n", "", raw, flags=re.DOTALL).strip()
 
 
+def _format_chunks_for_context(chunks: list[CorpusChunk]) -> str:
+    """Numbered notes appended to the candidate's message; [N] feeds the citation check."""
+    if not chunks:
+        return ""
+    notes = "\n\n".join(
+        f"[{i}] ({c.page_or_section})\n{c.text}" for i, c in enumerate(chunks, start=1)
+    )
+    return (
+        "\n\n## Reference Notes\n"
+        "Ground your guidance in these notes where they apply and cite them as [N]. "
+        "Ignore any that are not relevant, and never cite a number that is not listed.\n\n"
+        + notes
+    )
+
+
 def _build_messages(
-    session: Session, user_message: str, system_prompt: str
+    session: Session, user_message: str, system_prompt: str, chunk_context: str = ""
 ) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     for msg in session.history:
         role = "user" if msg.role == MessageRole.candidate else "assistant"
         messages.append({"role": role, "content": msg.content})
-    messages.append({"role": "user", "content": user_message})
+    messages.append({"role": "user", "content": f"{user_message}{chunk_context}"})
     return messages
 
 
@@ -65,8 +84,10 @@ class QuantAgent(BaseAgent):
         self,
         model_config_path: str | None = None,
         verify_math_skill: VerifyMathSkill | None = None,
+        retrieve_corpus_skill: RetrieveCorpusSkill | None = None,
     ) -> None:
         self._model_config = load_model_config(model_config_path)
+        self._retrieve_skill = retrieve_corpus_skill or RetrieveCorpusSkill()
         self._verify_skill = verify_math_skill or VerifyMathSkill()
 
     # ── public interface ──────────────────────────────────────────────────────
@@ -77,16 +98,21 @@ class QuantAgent(BaseAgent):
         """
         Yield str tokens as they are generated, followed by a final dict metadata item.
 
-        Metadata dict shape:
-          {"verifier_fail": bool}   — only emitted in Solve mode
+        Metadata dict shapes:
+          {"sources": int}          — first item, only when corpus notes were retrieved
+          {"verifier_fail": bool}   — last item, only emitted in Solve mode
         """
         version = self._model_config.prompt_version("quant_agent", session.mode.value)
         obs_meta = build_llm_metadata(trace_id=trace_id, prompt_version=version)
+        chunks = await self._retrieve(session, message)
+        if chunks:
+            yield {"sources": len(chunks)}
+        chunk_context = _format_chunks_for_context(chunks)
         if session.mode == Mode.tutor:
-            async for token in self._tutor_turn(session, message, obs_meta, version):
+            async for token in self._tutor_turn(session, message, obs_meta, version, chunk_context):
                 yield token
         else:
-            async for item in self._solve_turn(session, message, obs_meta, version):
+            async for item in self._solve_turn(session, message, obs_meta, version, chunk_context):
                 yield item
 
     # ── tutor mode ────────────────────────────────────────────────────────────
@@ -97,9 +123,10 @@ class QuantAgent(BaseAgent):
         message: str,
         obs_meta: dict[str, Any] | None = None,
         version: str = "v1",
+        chunk_context: str = "",
     ) -> AsyncGenerator[str, None]:
         system_prompt = _load_prompt(Mode.tutor, version)
-        messages = _build_messages(session, message, system_prompt)
+        messages = _build_messages(session, message, system_prompt, chunk_context)
         model = self._model_config.litellm_model("quant_agent")
         temperature = self._model_config.role("quant_agent").temperature
 
@@ -123,9 +150,10 @@ class QuantAgent(BaseAgent):
         message: str,
         obs_meta: dict[str, Any] | None = None,
         version: str = "v1",
+        chunk_context: str = "",
     ) -> AsyncGenerator[str | dict[str, Any], None]:
         system_prompt = _load_prompt(Mode.solve, version)
-        base_messages = _build_messages(session, message, system_prompt)
+        base_messages = _build_messages(session, message, system_prompt, chunk_context)
 
         # Attempt 1 and 2: quant_agent model
         model = self._model_config.litellm_model("quant_agent")
@@ -194,6 +222,23 @@ class QuantAgent(BaseAgent):
         yield {"verifier_fail": True}
 
     # ── helpers (designed as seams for unit test patching) ────────────────────
+
+    async def _retrieve(self, session: Session, message: str) -> list[CorpusChunk]:
+        """
+        Fetch grounding notes from the Corpus Service. Fails open: an unreachable
+        corpus costs the turn its grounding, not the answer.
+        """
+        try:
+            return await self._retrieve_skill.retrieve(
+                query=message,
+                candidate_id=session.candidate_id,
+                school_id="",
+                test_type=session.test_type,
+                top_k=3,
+            )
+        except Exception:
+            _log.warning("corpus retrieval failed; answering without notes", exc_info=True)
+            return []
 
     def _extract_final_answer(self, text: str) -> str | None:
         """

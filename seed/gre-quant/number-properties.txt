@@ -1,0 +1,15 @@
+# Primes, factors and multiples
+
+A prime number has exactly two positive factors, 1 and itself; 2 is the only even prime and 1 is not prime. Every integer greater than 1 has a unique prime factorization, so 360 = 2^3 x 3^2 x 5. The number of positive factors is found by adding 1 to each exponent and multiplying: 360 has (3 + 1)(2 + 1)(1 + 1) = 24 factors. The greatest common divisor uses the lowest power of each shared prime, and the least common multiple uses the highest power of each prime present.
+
+# Divisibility tests
+
+A number is divisible by 2 if it ends in an even digit, by 3 if its digit sum is divisible by 3, by 4 if its last two digits are, by 5 if it ends in 0 or 5, and by 9 if its digit sum is divisible by 9. Divisibility by 6 needs both 2 and 3.
+
+# Remainders and parity
+
+If n leaves remainder r when divided by d, then n = dq + r for some integer q with 0 <= r < d. Remainders add and multiply: if a leaves 2 and b leaves 3 when divided by 5, then a + b leaves 0 and ab leaves 1. For parity, even + even = even, odd + odd = even, even x anything = even, and odd x odd = odd.
+
+# Consecutive integers
+
+The product of any two consecutive integers is even, and the product of three consecutive integers is divisible by 6. The sum of n consecutive integers is n times their average, which equals the middle value when n is odd.

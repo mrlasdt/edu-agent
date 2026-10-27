@@ -1,0 +1,11 @@
+# Distance, rate and time
+
+Distance = rate x time. Keep units consistent: convert minutes to hours before multiplying by a speed in miles per hour. Average speed is total distance divided by total time, not the average of the two speeds. If you drive 60 miles at 30 mph and then 60 miles at 60 mph, the time is 2 + 1 = 3 hours, so the average speed is 120 / 3 = 40 mph, not 45.
+
+# Relative speed
+
+Two objects moving toward each other close the gap at the sum of their speeds; moving in the same direction, at the difference of their speeds. If two trains start 300 miles apart and head toward each other at 40 mph and 60 mph, they meet after 300 / 100 = 3 hours.
+
+# Work problems
+
+Treat each worker as a rate in jobs per hour. If A finishes a job in 6 hours and B in 3 hours, their rates are 1/6 and 1/3 per hour, so together they do 1/6 + 1/3 = 1/2 of the job per hour and finish in 2 hours. For two workers with individual times a and b, the combined time is ab / (a + b).

@@ -1,0 +1,15 @@
+# Mean, median and mode
+
+The mean is the sum of the values divided by how many there are, so sum = mean x count. The median is the middle value of the ordered list, or the average of the two middle values when the count is even. The mode is the most frequent value. A few very large values pull the mean up but barely change the median, which is why the mean is greater than the median for right-skewed data.
+
+# Range and standard deviation
+
+The range is the largest value minus the smallest. Standard deviation measures typical distance from the mean. You rarely compute it on the GRE; instead you compare spread. Adding the same constant to every value leaves the standard deviation unchanged; multiplying every value by k multiplies it by |k|. A set whose values cluster tightly around the mean has a smaller standard deviation than one with the same mean and widely spread values.
+
+# Weighted averages and changing the data
+
+When a new value joins a list, the mean moves toward that value. If five numbers have a mean of 10 (sum 50) and a sixth number 16 is added, the new mean is 66 / 6 = 11. To find a missing value for a target mean, set up sum = target mean x count and subtract the known values.
+
+# Reading graphs and tables
+
+Read the title, axis labels and units first. Percent change in a bar chart is computed from the bar heights, not from the visual gap. If a question mixes percents of different totals, convert each to actual counts before comparing.

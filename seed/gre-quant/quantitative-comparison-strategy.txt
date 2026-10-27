@@ -1,0 +1,15 @@
+# What Quantitative Comparison asks
+
+Two quantities, A and B, are given and you choose whether A is greater, B is greater, they are equal, or the relationship cannot be determined from the information given. The answer is "cannot be determined" only if you can find two valid cases that give different relationships.
+
+# Strategy: test values
+
+When variables are involved, try a typical positive integer, then try zero, a negative number, a fraction between 0 and 1, and a large number. If two of these tests disagree (A > B for one, A < B for another), the answer is "cannot be determined" and you can stop. If every test agrees, look for an algebraic reason the relationship must always hold.
+
+# Strategy: simplify like an inequality
+
+You may add or subtract the same quantity from both columns, and multiply or divide both columns by a positive number, without changing the comparison. Never multiply or divide by an expression whose sign you do not know, and reverse the inequality when multiplying by a negative number. Do not cancel a variable that could be zero.
+
+# Strategy: compare instead of compute
+
+Many problems are designed so that a precise calculation is unnecessary. Estimate whether a fraction is near 1/2 or whether a product is larger or smaller than 100, then decide. Spending time on exact arithmetic is the most common way to run out of time.
