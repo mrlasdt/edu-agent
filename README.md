@@ -161,7 +161,7 @@ docker compose -f infra/docker-compose.yml --profile observability up -d
 docker compose -f infra/docker-compose.yml --profile reranker up -d
 ```
 
-The app services bind-mount the repo source and run `uvicorn --reload`, so code edits apply live with no rebuild. Rebuild only when dependencies (`pyproject.toml`) change:
+The app services bind-mount the repo source and run `uvicorn --reload`, so code edits apply live with no rebuild. The Python images install from `uv.lock` (`uv sync --frozen`), so after changing dependencies in `pyproject.toml` run `uv lock` and rebuild:
 
 ```bash
 docker compose -f infra/docker-compose.yml build
