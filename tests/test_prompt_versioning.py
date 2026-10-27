@@ -123,3 +123,33 @@ async def test_aw_agent_loads_configured_prompt_version():
             pass
 
     mock_load.assert_called_with(Mode.tutor, "v5")
+
+
+# ── 6. Config path comes from settings ────────────────────────────────────────
+
+
+def test_load_model_config_defaults_to_the_configured_path(monkeypatch):
+    from shared.src.shared import config
+
+    monkeypatch.setenv("MODEL_CONFIG_PATH", "config/model_config.mvp.yaml")
+    config.get_settings.cache_clear()
+    config.load_model_config.cache_clear()
+    try:
+        cfg = config.load_model_config()
+        assert cfg.litellm_model("quant_agent") == "openai/gpt-4o-mini"
+    finally:
+        config.get_settings.cache_clear()
+        config.load_model_config.cache_clear()
+
+
+def test_mvp_config_points_at_existing_prompt_files():
+    from pathlib import Path
+
+    from shared.src.shared.config import load_model_config
+
+    cfg = load_model_config("config/model_config.mvp.yaml")
+    for agent, modes in cfg.prompts.items():
+        if agent == "question_pipeline":
+            continue
+        for mode, version in modes.items():
+            assert Path(f"prompts/{agent}/{mode}/{version}.md").exists(), (agent, mode, version)

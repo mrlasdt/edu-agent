@@ -70,7 +70,10 @@ async def _call_enrichment_llm(text: str, session: Session, trace_id: str) -> di
         f"You are checking if the latest candidate message in a GRE {session.section.upper()} "
         "session is complete enough to answer. Judge it in the context of the earlier "
         "conversation: a follow-up, clarification or next-step request that refers to earlier "
-        "turns is complete. "
+        "turns is complete. A message that states a problem or asks about a topic is complete, "
+        "even if it asks for a hint or does not say which method to use. Mark it incomplete "
+        "only when it refers to material it does not contain (for example 'this problem' or "
+        "'the figure' with nothing attached). "
         'Reply with JSON: {"complete": true/false, '
         '"clarification": "<question to ask if incomplete>"}'
     )

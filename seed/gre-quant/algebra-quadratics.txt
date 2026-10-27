@@ -1,0 +1,11 @@
+# Factoring quadratics
+
+To solve x^2 + bx + c = 0, look for two numbers that multiply to c and add to b. For x^2 - 5x + 6 = 0 the numbers are -2 and -3, so the equation factors as (x - 2)(x - 3) = 0 and the roots are x = 2 and x = 3. Always move every term to one side before factoring; a product equal to a nonzero number tells you nothing about the factors.
+
+# Quadratic formula and the discriminant
+
+For ax^2 + bx + c = 0, the roots are x = (-b +/- sqrt(b^2 - 4ac)) / 2a. The discriminant b^2 - 4ac tells you how many real roots exist: positive means two distinct roots, zero means one repeated root, negative means no real roots. The sum of the roots is -b/a and the product is c/a, which is often faster than solving for each root.
+
+# Common GRE patterns
+
+Memorize the three special products: (x + y)^2 = x^2 + 2xy + y^2, (x - y)^2 = x^2 - 2xy + y^2, and x^2 - y^2 = (x - y)(x + y). Many GRE problems are built so the difference of squares collapses an expression, for example 101^2 - 99^2 = (101 - 99)(101 + 99) = 2 x 200 = 400. When a problem gives an expression like x^2 + 1/x^2, try squaring (x + 1/x) instead of solving for x.

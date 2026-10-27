@@ -133,3 +133,63 @@ async def test_solve_mode_uses_different_system_prompt():
     tutor_system = tutor_messages[0]["content"]
     solve_system = solve_messages[0]["content"]
     assert tutor_system != solve_system, "Tutor and Solve must use different system prompts"
+
+
+# ── 5. Corpus grounding ───────────────────────────────────────────────────────
+
+def make_chunks():
+    from services.agent.src.agent.skills.retrieve_corpus import CorpusChunk
+
+    return [
+        CorpusChunk(
+            text="Factor x^2 - 5x + 6 as (x - 2)(x - 3).",
+            tier="global",
+            source_uri="algebra-quadratics.txt",
+            page_or_section="Factoring quadratics",
+            score=0.9,
+        ),
+        CorpusChunk(
+            text="The discriminant is b^2 - 4ac.",
+            tier="global",
+            source_uri="algebra-quadratics.txt",
+            page_or_section="Quadratic formula and the discriminant",
+            score=0.8,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_retrieved_notes_are_reported_and_injected_into_the_prompt():
+    skill = MagicMock()
+    skill.retrieve = AsyncMock(return_value=make_chunks())
+    agent = QuantAgent(
+        model_config_path="config/model_config.dev.yaml", retrieve_corpus_skill=skill
+    )
+
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = mock_litellm_stream(["hint"])
+        items = [item async for item in agent.run(make_session(), "Solve x^2 - 5x + 6 = 0")]
+
+    assert items == [{"sources": 2}, "hint"]
+    skill.retrieve.assert_awaited_once()
+    assert skill.retrieve.call_args.kwargs["test_type"] == "gre"
+    user_message = mock_llm.call_args.kwargs["messages"][-1]["content"]
+    assert user_message.startswith("Solve x^2 - 5x + 6 = 0")
+    assert "[1] (Factoring quadratics)" in user_message
+    assert "[2] (Quadratic formula and the discriminant)" in user_message
+
+
+@pytest.mark.asyncio
+async def test_unreachable_corpus_degrades_to_an_ungrounded_answer():
+    skill = MagicMock()
+    skill.retrieve = AsyncMock(side_effect=ConnectionError("corpus down"))
+    agent = QuantAgent(
+        model_config_path="config/model_config.dev.yaml", retrieve_corpus_skill=skill
+    )
+
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = mock_litellm_stream(["hint"])
+        items = [item async for item in agent.run(make_session(), "A problem")]
+
+    assert items == ["hint"]
+    assert mock_llm.call_args.kwargs["messages"][-1]["content"] == "A problem"

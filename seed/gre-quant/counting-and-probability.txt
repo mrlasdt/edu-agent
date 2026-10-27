@@ -1,0 +1,11 @@
+# Counting principles
+
+If one choice can be made in m ways and an independent second choice in n ways, there are m x n combined outcomes. The number of ways to arrange n distinct items in a row is n! = n x (n-1) x ... x 1. To arrange r items chosen from n, use n! / (n - r)!, and when order does not matter, use combinations: C(n, r) = n! / (r! (n - r)!). For example, choosing a 3-person committee from 6 people gives C(6, 3) = 20 different committees.
+
+# Arrangements with repeats
+
+Arranging n items where some are identical divides out the repeats: the letters of "LEVEL" can be ordered in 5! / (2! x 2!) = 30 ways, since L appears twice and E appears twice. When a problem says certain items must sit together, treat that group as a single item first, then multiply by the ways to arrange the group internally.
+
+# Probability
+
+Probability = favorable outcomes / total equally likely outcomes, always between 0 and 1. For independent events, P(A and B) = P(A) x P(B). For mutually exclusive events, P(A or B) = P(A) + P(B); in general, P(A or B) = P(A) + P(B) - P(A and B). When "at least one" appears, compute the complement: P(at least one) = 1 - P(none). For two fair coin flips, P(at least one head) = 1 - 1/4 = 3/4.

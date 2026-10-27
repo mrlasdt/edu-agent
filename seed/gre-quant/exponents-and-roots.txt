@@ -1,0 +1,11 @@
+# Exponent rules
+
+For the same base: x^a x x^b = x^(a+b), x^a / x^b = x^(a-b), and (x^a)^b = x^(ab). Also x^0 = 1 for x not equal to 0, and x^(-n) = 1 / x^n. These rules apply only when the bases match, so rewrite numbers in a common base first: 4^3 x 2^5 = 2^6 x 2^5 = 2^11.
+
+# Roots and fractional exponents
+
+The square root of x is x^(1/2), and the nth root is x^(1/n). sqrt(a) x sqrt(b) = sqrt(ab), and sqrt(a/b) = sqrt(a) / sqrt(b), but sqrt(a + b) is not sqrt(a) + sqrt(b). Simplify by pulling out perfect squares: sqrt(72) = sqrt(36 x 2) = 6 sqrt(2). The square root symbol always means the nonnegative root, so sqrt(9) = 3, while the equation x^2 = 9 has two solutions, 3 and -3.
+
+# Signs and comparisons
+
+An even power of any nonzero number is positive; an odd power keeps the sign of the base. For 0 < x < 1, higher powers make the number smaller (0.5^3 < 0.5^2) and the square root makes it larger (sqrt(0.25) = 0.5). For x > 1 the opposite holds. Test values in each region (negative, between 0 and 1, greater than 1) when a Quantitative Comparison involves powers.

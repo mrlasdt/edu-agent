@@ -4,15 +4,27 @@ A GRE test-prep tutor built as a reference implementation of agentic AI engineer
 
 ## Status
 
-The backend services are built and covered by 488 Python tests (mocked LLM and Qdrant) plus 55 frontend unit tests. It is **not usable end to end yet**:
+**Working end to end locally (MVP).** One command starts the whole chat path; open http://localhost:5173, pick Quant, ask a GRE Quant question and get a tutored answer streamed from a real model, grounded in a small seeded corpus:
 
-- **The web app shell is minimal.** `web/` renders a subject picker, a tutor/solve mode switch and a chat that streams `POST /chat` into message bubbles. Chatting for real still needs the gateway and `OPENAI_API_KEY`; the browser smoke test (`npm run test:e2e`) mocks `/chat`. Sources, feedback, preferences and upload are not wired into the shell yet.
+```bash
+export OPENAI_API_KEY=sk-...   # or put it in .env (cp .env.example .env)
+docker compose -f infra/docker-compose.yml up -d --build
+```
+
+That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.mvp.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 495 Python tests (mocked LLM and Qdrant) plus 55 frontend unit tests, and `npm run test:e2e` is a browser smoke test with `/chat` mocked.
+
+A recorded live check (screenshot and streamed transcript) is in [docs/mvp-demo](docs/mvp-demo/README.md).
+
+What is still missing:
+
+- **The web app is a thin shell.** Subject picker, tutor/solve switch and a chat that streams `POST /chat` into message bubbles. There is no sources panel, feedback, preferences or upload in the UI (components exist but are not wired), no markdown or math rendering, and no conversation persistence.
+- **The corpus is tiny and Quant only.** Nine short notes written for this repo; the AW agent has no corpus (no ETS material is checked in). More documents go in through the ingestion API (see "Ingest more documents").
 - **The RAG reranker is optional.** Retrieval is hybrid (dense + a locally hashed sparse vector, fused with RRF; `HYBRID_RETRIEVAL_ENABLED=false` for dense-only). When `TEI_RERANKER_URL` is set, the top 20 fused hits are reranked by BGE-reranker-v2-m3 (leave it unset to turn reranking off); if the reranker is down or slow, retrieval logs a warning and keeps the RRF order. Retrieval quality with the reranker has not been evaluated.
 - **The Orchestrator's complexity step is a stub.** `/chat` applies the rate-limit, PII, content-safety, completeness, answer-leak and citation guardrails (see "Guardrails"), but not output content safety.
 - **Agent metadata is dropped.** `/generate` streams text only, apart from an `X-Source-Count` header the gateway uses for the citation check, so sources and verifier events never reach a UI.
 - **Evals are small and CI never scores a real model.** 5 Quant and 2 AW golden GRE items, plus 33 SAT Math, 41 IELTS Reading and 8 IELTS Writing prompt items (see "IELTS and SAT golden sets"); the IELTS Writing target needs third-party data downloaded locally and CI has none. The agent-in-the-loop harness (below) runs the real Quant agent, but CI only runs it offline against a fake model; real runs are manual and there is no measured baseline checked in.
 - **The question-generation pipeline is a library plus an eval target.** It is not exposed over HTTP, has no UI, and has only been run for real on a handful of items on free models (see "Question-generation pipeline").
-- **No corpus is checked in**, and the k8s manifests have never been applied to a cluster.
+- **Local only.** The k8s manifests have never been applied to a cluster, and Langfuse is opt-in (`--profile observability`).
 
 The sections below describe the intended design; see `progress.txt` for the current state of each piece.
 
@@ -24,7 +36,7 @@ A Candidate submits a GRE Quant or Analytical Writing question. The system:
 - **Solves on request** — returns a fully worked solution (Quant) or a scored sample essay (AW)
 - **Verifies math** — every Quant answer is checked by a sympy sandbox before emission; wrong answers retry → escalate → degrade gracefully
 - **Generates practice questions** - a LangGraph pipeline plans, routes to a generator expert, verifies the key with sympy, critiques the wording and revises within a bounded retry budget (library only, see below)
-- **Cites sources** — AW responses reference numbered passages from a curated ETS corpus; uncited claims are blocked or stripped (the corpus must be ingested first; none is checked in)
+- **Cites sources** — responses reference numbered passages from the corpus; uncited claims are blocked or stripped (Quant is grounded in the seeded notes; the AW corpus must be ingested first, no ETS material is checked in)
 - **Matches your style** — opt-in personal style feature biases essay voice toward the Candidate's own writing while preserving ETS structural rubric
 
 ## Architecture
@@ -65,7 +77,8 @@ A Candidate submits a GRE Quant or Analytical Writing question. The system:
 | `ingestion` | 8003 | Async document pipeline (parse → chunk → embed → index) |
 | `math-verifier` | 8090 | FastMCP server wrapping sympy sandbox |
 | `tei-embedder` | 8080 | BGE-M3 text embeddings (Hugging Face TEI) |
-| `tei-reranker` | 8081 | BGE-reranker-v2-m3 `/rerank` (Hugging Face TEI, same `embeddings` profile) |
+| `web` | 5173 | React app behind nginx, proxies `/chat` to the gateway |
+| `tei-reranker` | 8081 | BGE-reranker-v2-m3 `/rerank` (Hugging Face TEI, opt-in `reranker` profile) |
 
 ### Three-tier corpus
 
@@ -111,27 +124,43 @@ cd web && npm install && cd ..
 
 ```bash
 cp .env.example .env
-# Fill in OPENAI_API_KEY at minimum; all other values have localhost defaults
+# Fill in OPENAI_API_KEY at minimum; all other values have localhost defaults.
+# Alternatively export OPENAI_API_KEY in your shell: compose passes it through.
 ```
 
 ### 3. Start the stack
 
-One command builds and starts everything — infrastructure **and** the four app services:
+One command builds and starts everything: infrastructure, the four app services and the web app. It also seeds the corpus on first start and blocks until that is done.
 
 ```bash
 docker compose -f infra/docker-compose.yml up -d --build
-docker compose -f infra/docker-compose.yml ps   # services should report healthy
+docker compose -f infra/docker-compose.yml ps   # services should report healthy; seed exits 0
 ```
+
+Then open http://localhost:5173. To start over with an empty corpus, run `docker compose -f infra/docker-compose.yml down -v`.
 
 | Service | URL | Role |
 | --- | --- | --- |
+| web | http://localhost:5173 | React app behind nginx; proxies `/chat` to the gateway |
 | gateway | http://localhost:8000 | External API, orchestrator, guardrails |
 | corpus | http://localhost:8001 | Qdrant retrieval (3-tier ACL) |
 | agent | http://localhost:8002 | QuantAgent + AWAgent, skills, critics |
 | ingestion | http://localhost:8003 | Document pipeline (parse → chunk → embed → index) |
 | math-verifier | http://localhost:8090 | sympy verification MCP server (SSE) |
-| langfuse | http://localhost:3000 | LLM observability |
-| postgres / qdrant | 5432 / 6333 | Datastores |
+| tei-embedder | http://localhost:8080 | BGE-M3 embeddings (needed by retrieval and the seed job) |
+| qdrant | 6333 | Vector store |
+| seed | - | One-shot job: ingests `seed/gre-quant/*.txt` when the corpus is empty |
+
+Opt-in extras, each behind a compose profile:
+
+```bash
+# Langfuse LLM observability (http://localhost:3000, plus Postgres). Also needs the
+# LANGFUSE_* keys in .env.
+docker compose -f infra/docker-compose.yml --profile observability up -d
+
+# BGE reranker (also set TEI_RERANKER_URL=http://tei-reranker:8080 in .env)
+docker compose -f infra/docker-compose.yml --profile reranker up -d
+```
 
 The app services bind-mount the repo source and run `uvicorn --reload`, so code edits apply live with no rebuild. Rebuild only when dependencies (`pyproject.toml`) change:
 
@@ -139,18 +168,16 @@ The app services bind-mount the repo source and run `uvicorn --reload`, so code 
 docker compose -f infra/docker-compose.yml build
 ```
 
-The BGE-M3 embedder and BGE reranker are opt-in (amd64-only, emulated on Apple Silicon). To use the reranker, also set `TEI_RERANKER_URL` in `.env` (see `.env.example`):
+The web image is a static build, so rebuild it after frontend edits (`docker compose -f infra/docker-compose.yml up -d --build web`), or use the Vite dev server below.
 
-On Apple Silicon the emulated amd64 TEI image is too slow for the reranker's 2s timeout (about 20s for the 20-candidate window), so locally the reranker times out and search uses the RRF order. Real rerank latency needs native hardware, for example an arm64 CPU TEI build or a native amd64/GPU host.
+The BGE-M3 embedder and BGE reranker are amd64-only, so on Apple Silicon they run under emulation. On Apple Silicon the emulated reranker is too slow for its 2s timeout (about 20s for the 20-candidate window), so locally it times out and search uses the RRF order. Real rerank latency needs native hardware, for example an arm64 CPU TEI build or a native amd64/GPU host.
 
-```bash
-docker compose -f infra/docker-compose.yml --profile embeddings up -d
-```
+By default every role runs on `gpt-4o-mini` (`MODEL_CONFIG_PATH=config/model_config.mvp.yaml`, set in the compose file). To use another model or provider (for example OpenRouter via `OPENROUTER_API_KEY`), edit that file; the tiered production-shaped config is `config/model_config.dev.yaml`.
 
 ### 4. Run tests
 
 ```bash
-# Python tests (488)
+# Python tests (495)
 uv run pytest tests/ -q
 
 # Frontend tests (55)
@@ -162,11 +189,10 @@ uv run python -m evals.agent_eval --mode offline
 
 ### 5. Frontend & local overrides (optional)
 
-The app services already run inside the stack (step 3). The two things you may still run on the host:
+The app services and the web app already run inside the stack (step 3). For frontend work with hot reload, run the Vite dev server on the host instead:
 
 ```bash
-# Web UI dev server (not containerized). /chat is proxied to the gateway at
-# http://localhost:8000 (override with GATEWAY_URL).
+# /chat is proxied to the gateway at http://localhost:8000 (override with GATEWAY_URL).
 cd web && npm run dev
 ```
 
@@ -177,11 +203,13 @@ docker compose -f infra/docker-compose.yml stop agent
 uv run uvicorn services.agent.src.agent.main:app --port 8002 --reload
 ```
 
-### 6. Ingest the sample corpus
+### 6. Ingest more documents
+
+The sample corpus is seeded automatically (step 3). To add your own:
 
 ```bash
 # Via Admin MCP server (Claude Desktop) or curl:
-curl -F "file=@path/to/ets-guide.pdf" \
+curl -F "file=@path/to/notes.txt" \
      -F "test_type=gre" -F "tier=global" \
      http://localhost:8003/admin/documents
 ```
@@ -394,7 +422,8 @@ edu-agent/
 │   └── math_verifier/    # FastMCP — sympy sandbox MCP server
 ├── shared/               # Pydantic models, config loader, observability
 ├── mcp_servers/          # Candidate + Admin MCP servers
-├── web/                  # Vite + React app shell, components, unit tests and a Playwright smoke test
+├── web/                  # Vite + React app shell, nginx image, unit tests and a Playwright smoke test
+├── seed/                 # Self-written GRE Quant notes ingested on first start
 ├── evals/                # Eval harness, golden sets, judges, regression check
 ├── prompts/              # Versioned system prompts (quant_agent, aw_agent)
 ├── config/               # model_config.{dev,staging,prod}.yaml

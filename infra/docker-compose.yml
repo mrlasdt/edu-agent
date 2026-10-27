@@ -3,7 +3,9 @@
 # localhost values from ../.env) and bind-mount host source read-only so
 # `uvicorn --reload` picks up edits with no image rebuild.
 x-env-file: &env-file
-  - ../.env
+  # Optional: provider keys can instead be exported in the shell (see x-app-env).
+  - path: ../.env
+    required: false
 x-app-env: &app-env
   # cryptography's bundled OpenSSL (pulled in by litellm) uses SVE2 instructions
   # that SIGILL inside Docker Desktop's Apple-Virtualization VM, even though the
@@ -17,15 +19,25 @@ x-app-env: &app-env
   QDRANT_URL: http://qdrant:6333
   TEI_EMBEDDER_URL: http://tei-embedder:8080
   LANGFUSE_HOST: http://langfuse:3000
+  # The local MVP runs every role on one cheap model (see that file's header).
+  MODEL_CONFIG_PATH: config/model_config.mvp.yaml
+  # Bare names pass through from the shell when exported and stay unset otherwise,
+  # so they never blank out a key from ../.env.
+  OPENAI_API_KEY:
+  OPENROUTER_API_KEY:
 x-app-src: &app-src
   - ../services:/app/services:ro
   - ../shared:/app/shared:ro
   - ../config:/app/config:ro
   - ../prompts:/app/prompts:ro
+  - ../seed:/app/seed:ro
 
 services:
+  # Postgres exists only for Langfuse, so both are opt-in (the chat path does not
+  # need them): docker compose --profile observability up -d
   postgres:
     image: postgres:16-alpine
+    profiles: [observability]
     environment:
       POSTGRES_USER: edu
       POSTGRES_PASSWORD: edu
@@ -54,6 +66,7 @@ services:
 
   langfuse:
     image: langfuse/langfuse:2
+    profiles: [observability]
     environment:
       DATABASE_URL: postgresql://edu:edu@postgres:5432/edu_agent
       NEXTAUTH_SECRET: dev-secret-changeme
@@ -75,21 +88,19 @@ services:
       timeout: 5s
       retries: 15
 
-  # BGE-M3 embedder via Hugging Face Text Embeddings Inference.
-  #
-  # Opt-in: behind the "embeddings" profile, so the default `docker compose up -d`
-  # brings up only the arm64-native core stack. Start it explicitly with:
-  #   docker compose --profile embeddings up -d
+  # BGE-M3 embedder via Hugging Face Text Embeddings Inference. Needed on the chat
+  # path: the corpus service embeds every query and the seed job embeds the notes.
   #
   # The TEI CPU image is published amd64-only (no arm64 build on any tag), so on
-  # Apple Silicon it runs under emulation via `platform: linux/amd64`. It is only
-  # needed once the corpus/ingestion services call the real embedding path — the
-  # Phase 1 stubs do not, so it can stay down during early development.
+  # Apple Silicon it runs under emulation via `platform: linux/amd64`. The first
+  # start downloads the ~2GB model into the tei_cache volume, hence the long
+  # start_period; later starts reuse the cache.
   tei-embedder:
-    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.4
+    # cpu-1.9, not 1.4: 1.4's hf-hub client can no longer download models from an
+    # empty cache ("relative URL without a base"), see the reranker below.
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
     platform: linux/amd64
-    profiles: [embeddings]
-    command: --model-id BAAI/bge-m3 --port 8080
+    command: --model-id BAAI/bge-m3 --port 8080 --max-batch-tokens 2048
     ports:
       - "8080:8080"
     volumes:
@@ -99,9 +110,10 @@ services:
       interval: 10s
       timeout: 10s
       retries: 20
+      start_period: 900s
 
   # BGE-reranker-v2-m3 cross-encoder via Hugging Face Text Embeddings Inference,
-  # exposing /rerank. Same platform and "embeddings" profile as the embedder
+  # exposing /rerank. Opt-in ("reranker" profile) and same platform as the embedder
   # (amd64-only, emulated on Apple Silicon). The corpus service only calls it
   # when TEI_RERANKER_URL is set (in ../.env: http://tei-reranker:8080 for
   # containers, http://localhost:8081 for a host-run corpus); if the service is
@@ -114,7 +126,7 @@ services:
   tei-reranker:
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
     platform: linux/amd64
-    profiles: [embeddings]
+    profiles: [reranker]
     command: --model-id BAAI/bge-reranker-v2-m3 --port 8080 --max-batch-tokens 2048
     ports:
       - "8081:8080"
@@ -136,6 +148,8 @@ services:
     ports:
       - "8090:8090"
     environment:
+      # Same SIGILL workaround as the app services (see x-app-env).
+      OPENSSL_armcap: "0"
       MATH_VERIFIER_PORT: "8090"
     # FastMCP serves SSE at /sse (no /health route) and the python:3.12-slim base
     # has no curl — so probe the listening port with python, which is in the image.
@@ -196,6 +210,26 @@ services:
         condition: service_healthy
     command: ["uvicorn", "services.agent.src.agent.main:app", "--host", "0.0.0.0", "--port", "8002", "--reload", "--reload-dir", "/app/services", "--reload-dir", "/app/shared"]
 
+  # One-shot job: ingests seed/gre-quant/*.txt into the global corpus on first start
+  # (no-op once the corpus holds points). `docker compose up` waits for it, so the
+  # web app only comes up once there is something to retrieve.
+  seed:
+    build:
+      context: ..
+      dockerfile: services/ingestion/Dockerfile
+    env_file: *env-file
+    environment:
+      <<: *app-env
+      SEED_DIR: /app/seed
+    volumes: *app-src
+    restart: "no"
+    depends_on:
+      ingestion:
+        condition: service_healthy
+      tei-embedder:
+        condition: service_healthy
+    command: ["python", "-m", "services.ingestion.src.ingestion.seed"]
+
   gateway:
     build:
       context: ..
@@ -211,6 +245,20 @@ services:
       corpus:
         condition: service_healthy
     command: ["uvicorn", "services.gateway.src.gateway.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/services", "--reload-dir", "/app/shared"]
+
+  # Static React build behind nginx, which proxies /chat to the gateway with
+  # buffering off so the answer streams token by token.
+  web:
+    build:
+      context: ..
+      dockerfile: web/Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      gateway:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:

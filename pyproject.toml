@@ -24,7 +24,7 @@ dependencies = [
     # Vector store
     "qdrant-client>=1.9.0",
     # MCP
-    "mcp>=1.0.0",
+    "mcp>=1.0.0,<2",
     # Observability
     "langfuse>=2.30.0,<3",
     # Math verification
