@@ -40,7 +40,7 @@ class ModelConfig(BaseModel):
 
 @lru_cache
 def load_model_config(path: str | None = None) -> ModelConfig:
-    resolved = Path(path or get_settings().model_config_path)
+    resolved = Path(path) if path else Path("config/model_config.dev.yaml")
     raw: dict[str, Any] = yaml.safe_load(resolved.read_text())
     return ModelConfig(**raw)
 

@@ -10,9 +10,11 @@ Behaviors under test (from issue 05 acceptance criteria):
   6. Tutor mode does NOT call verifier
 """
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import yaml
 
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.skills.verify_math import VerifyMathResult
@@ -90,8 +92,13 @@ async def test_solve_retries_on_verifier_mismatch():
 # ── 3. Escalation after max retries ──────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_solve_escalates_to_stronger_model_after_retries():
-    agent = QuantAgent(model_config_path="config/model_config.dev.yaml")
+async def test_solve_escalates_to_stronger_model_after_retries(tmp_path):
+    # The dev config runs every role on one model; give escalation its own to observe it.
+    raw = yaml.safe_load(Path("config/model_config.dev.yaml").read_text())
+    raw["roles"]["math_escalation"]["model"] = "o1"
+    config_path = tmp_path / "model_config.yaml"
+    config_path.write_text(yaml.safe_dump(raw))
+    agent = QuantAgent(model_config_path=str(config_path))
 
     models_used = []
 
@@ -108,7 +115,6 @@ async def test_solve_escalates_to_stronger_model_after_retries():
         async for _ in agent.run(make_session(Mode.solve), "Solve x^2-5x+6=0"):
             pass
 
-    # Should have used the escalation model (o1) in at least one call
     escalation_model = "openai/o1"
     assert any(escalation_model in m for m in models_used), \
         f"Expected escalation to {escalation_model}, models used: {models_used}"

@@ -1,4 +1,6 @@
-# Model configuration for the dev environment.
+# Model configuration for the dev environment and the local MVP stack.
+# Every role runs on gpt-4o-mini to keep spend low (a tutoring turn costs a fraction of
+# a cent); a production setup would tier this (e.g. gpt-4o main, o1 math escalation).
 # Each role specifies provider, model, and generation params.
 # To swap a role to Anthropic: change provider to "anthropic" and model to e.g. "claude-sonnet-4-6".
 # LiteLLM resolves provider+model at runtime.
@@ -13,25 +15,25 @@ roles:
   # Main agents
   quant_agent:
     provider: openai
-    model: gpt-4o
+    model: gpt-4o-mini
     temperature: 0.2
 
   aw_agent:
     provider: openai
-    model: gpt-4o
+    model: gpt-4o-mini
     temperature: 0.5
 
   # Math verifier retry — same model as quant_agent
   math_retry:
     provider: openai
-    model: gpt-4o
+    model: gpt-4o-mini
     temperature: 0.2
 
-  # Math verifier escalation — reasoning-tier model, ~1% of Quant turns
+  # Math verifier escalation — ~1% of Quant turns; point at a reasoning-tier model when cost allows
   math_escalation:
     provider: openai
-    model: o1
-    temperature: 1  # o1 ignores temperature, but required by schema
+    model: gpt-4o-mini
+    temperature: 1  # above math_retry so the last attempt is not a repeat of the failed ones
 
   # Post-generation critics
   style_critic:
@@ -42,7 +44,7 @@ roles:
   # AW eval judges
   aw_judge_nightly:
     provider: openai
-    model: gpt-4o
+    model: gpt-4o-mini
     temperature: 0
 
   aw_judge_pr:
@@ -59,7 +61,7 @@ roles:
 
   question_generator:
     provider: openai
-    model: gpt-4o
+    model: gpt-4o-mini
     temperature: 0.4
 
   question_critic:
@@ -78,8 +80,8 @@ roles:
 # To roll a prompt forward or A/B it: add prompts/<agent>/<mode>/vN.md and point here.
 prompts:
   quant_agent:
-    tutor: v1
-    solve: v1
+    tutor: v2  # v1 plus "plain-text math": the web app does not render LaTeX
+    solve: v2
   aw_agent:
     tutor: v1
     solve: v1

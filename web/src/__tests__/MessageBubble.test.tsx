@@ -13,6 +13,71 @@ describe("MessageBubble — plain content", () => {
   });
 });
 
+describe("MessageBubble — markdown", () => {
+  const renderAgent = (content: string) =>
+    render(<MessageBubble message={{ ...baseMsg, content }} onCitationClick={vi.fn()} />);
+
+  it("renders headings and bold without literal markers", () => {
+    const { container } = renderAgent("### Step 1\nFactor **carefully** first.");
+    expect(screen.getByRole("heading", { name: "Step 1" })).toBeInTheDocument();
+    expect(container.querySelector("strong")).toHaveTextContent("carefully");
+    expect(container.textContent).not.toContain("###");
+    expect(container.textContent).not.toContain("**");
+  });
+
+  it("renders lists, italics and code", () => {
+    const { container } = renderAgent(
+      "1. *First* step\n2. Use `x^2`\n\n- a\n- b\n\n```\nx = 2\n```"
+    );
+    expect(container.querySelectorAll("ol > li")).toHaveLength(2);
+    expect(container.querySelectorAll("ul > li")).toHaveLength(2);
+    expect(container.querySelector("em")).toHaveTextContent("First");
+    expect(container.querySelector("li code")).toHaveTextContent("x^2");
+    expect(container.querySelector("pre code")).toHaveTextContent("x = 2");
+  });
+
+  it("keeps multiplication asterisks literal", () => {
+    const { container } = renderAgent("So 2*3*4 = 24 and 2 * 3 = 6.");
+    expect(container.querySelector("em")).toBeNull();
+    expect(container.textContent).toBe("So 2*3*4 = 24 and 2 * 3 = 6.");
+  });
+
+  it("renders HTML in the text as inert text", () => {
+    const { container } = renderAgent(
+      "<script>alert(1)</script>\n\n**<img src=x onerror=alert(1)>**"
+    );
+    expect(container.querySelector("script")).toBeNull();
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.textContent).toContain("<script>alert(1)</script>");
+    expect(container.textContent).toContain("<img src=x onerror=alert(1)>");
+  });
+
+  it("tolerates unfinished markup while streaming", () => {
+    const { container, rerender } = renderAgent("Start **bol");
+    expect(container.textContent).toBe("Start **bol");
+    rerender(<MessageBubble message={{ ...baseMsg, content: "Start **bold**\n```\ncode" }} />);
+    expect(container.querySelector("strong")).toHaveTextContent("bold");
+    expect(container.querySelector("pre code")).toHaveTextContent("code");
+  });
+
+  it("keeps citation markers clickable inside formatted text", async () => {
+    const onCitationClick = vi.fn();
+    render(
+      <MessageBubble
+        message={{ ...baseMsg, content: "- **See [2]** for the rule" }}
+        onCitationClick={onCitationClick}
+      />
+    );
+    await userEvent.click(screen.getByRole("button", { name: "[2]" }));
+    expect(onCitationClick).toHaveBeenCalledWith(2);
+  });
+
+  it("renders the answer line as bold text", () => {
+    const { container } = renderAgent("Work shown.\n\n**Answer: 6**");
+    expect(container.querySelector("strong")).toHaveTextContent("Answer: 6");
+  });
+});
+
 describe("MessageBubble — citations", () => {
   it("renders [N] as a clickable citation span", () => {
     const msg = { ...baseMsg, content: "See reference [1] for details." };

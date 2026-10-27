@@ -7,17 +7,17 @@ A GRE test-prep tutor built as a reference implementation of agentic AI engineer
 **Working end to end locally (MVP).** One command starts the whole chat path; open http://localhost:5173, pick Quant, ask a GRE Quant question and get a tutored answer streamed from a real model, grounded in a small seeded corpus:
 
 ```bash
-export OPENAI_API_KEY=sk-...   # or put it in .env (cp .env.example .env)
+cp .env.example .env   # then fill in OPENAI_API_KEY
 docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.mvp.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 495 Python tests (mocked LLM and Qdrant) plus 55 frontend unit tests, and `npm run test:e2e` is a browser smoke test with `/chat` mocked.
+That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 498 Python tests (mocked LLM and Qdrant) plus 62 frontend unit tests, and `npm run test:e2e` is a browser smoke test with `/chat` mocked.
 
 A recorded live check (screenshot and streamed transcript) is in [docs/mvp-demo](docs/mvp-demo/README.md).
 
 What is still missing:
 
-- **The web app is a thin shell.** Subject picker, tutor/solve switch and a chat that streams `POST /chat` into message bubbles. There is no sources panel, feedback, preferences or upload in the UI (components exist but are not wired), no markdown or math rendering, and no conversation persistence.
+- **The web app is a thin shell.** Subject picker, tutor/solve switch and a chat that streams `POST /chat` into message bubbles. There is no sources panel, feedback, preferences or upload in the UI (components exist but are not wired), no math rendering (answers render basic Markdown; math is plain text), and no conversation persistence.
 - **The corpus is tiny and Quant only.** Nine short notes written for this repo; the AW agent has no corpus (no ETS material is checked in). More documents go in through the ingestion API (see "Ingest more documents").
 - **The RAG reranker is optional.** Retrieval is hybrid (dense + a locally hashed sparse vector, fused with RRF; `HYBRID_RETRIEVAL_ENABLED=false` for dense-only). When `TEI_RERANKER_URL` is set, the top 20 fused hits are reranked by BGE-reranker-v2-m3 (leave it unset to turn reranking off); if the reranker is down or slow, retrieval logs a warning and keeps the RRF order. Retrieval quality with the reranker has not been evaluated.
 - **The Orchestrator's complexity step is a stub.** `/chat` applies the rate-limit, PII, content-safety, completeness, answer-leak and citation guardrails (see "Guardrails"), but not output content safety.
@@ -49,9 +49,9 @@ A Candidate submits a GRE Quant or Analytical Writing question. The system:
                                  │              │
                     ┌────────────▼───┐   ┌──────▼──────────┐
                     │  Quant Agent   │   │    AW Agent      │
-                    │  gpt-4o main   │   │  gpt-4o main     │
-                    │  o1 escalation │   │  gpt-4o-mini     │
-                    └────┬───────────┘   │  style critic    │
+                    │  gpt-4o-mini   │   │  gpt-4o-mini     │
+                    │  + escalation  │   │  + style critic  │
+                    └────┬───────────┘   │                  │
                          │               └──────┬───────────┘
                          │                      │
                ┌─────────▼──────┐    ┌──────────▼──────────┐
@@ -95,11 +95,11 @@ Candidate corpus ← Candidate uploads (private notes)         visible to owner 
 | Role | Default model | Swap to Anthropic |
 |---|---|---|
 | Orchestrator (enrich/classify) | `gpt-4o-mini` | `claude-haiku-4-5` |
-| Quant / AW agents | `gpt-4o` | `claude-sonnet-4-6` |
-| Math escalation | `o1` | `claude-opus-4-7` |
+| Quant / AW agents | `gpt-4o-mini` | `claude-sonnet-4-6` |
+| Math escalation | `gpt-4o-mini` | `claude-opus-4-7` |
 | Style critic, per-PR judge | `gpt-4o-mini` | `claude-haiku-4-5` |
 
-Every role is one config-line change. LiteLLM routes to the correct provider.
+Every role defaults to `gpt-4o-mini` to keep spend low; a production setup would tier the main agents (e.g. `gpt-4o`) and the math escalation (e.g. `o1`). Every role is one config-line change. LiteLLM routes to the correct provider.
 
 ## Quickstart (Phase 1 — localhost)
 
@@ -125,7 +125,6 @@ cd web && npm install && cd ..
 ```bash
 cp .env.example .env
 # Fill in OPENAI_API_KEY at minimum; all other values have localhost defaults.
-# Alternatively export OPENAI_API_KEY in your shell: compose passes it through.
 ```
 
 ### 3. Start the stack
@@ -172,15 +171,15 @@ The web image is a static build, so rebuild it after frontend edits (`docker com
 
 The BGE-M3 embedder and BGE reranker are amd64-only, so on Apple Silicon they run under emulation. On Apple Silicon the emulated reranker is too slow for its 2s timeout (about 20s for the 20-candidate window), so locally it times out and search uses the RRF order. Real rerank latency needs native hardware, for example an arm64 CPU TEI build or a native amd64/GPU host.
 
-By default every role runs on `gpt-4o-mini` (`MODEL_CONFIG_PATH=config/model_config.mvp.yaml`, set in the compose file). To use another model or provider (for example OpenRouter via `OPENROUTER_API_KEY`), edit that file; the tiered production-shaped config is `config/model_config.dev.yaml`.
+Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`). To use another model or provider (for example OpenRouter: add `OPENROUTER_API_KEY` to `.env`), edit that file.
 
 ### 4. Run tests
 
 ```bash
-# Python tests (495)
+# Python tests (498)
 uv run pytest tests/ -q
 
-# Frontend tests (55)
+# Frontend tests (62)
 cd web && npm test
 
 # Eval pipeline check (offline fake model, no network, no keys); includes the generation suite

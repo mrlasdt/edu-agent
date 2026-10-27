@@ -79,7 +79,7 @@ async def test_tutor_calls_litellm_with_configured_model():
 
     call_kwargs = mock_llm.call_args.kwargs
     # Should use the model from config, not a hardcoded string
-    assert call_kwargs["model"] == "openai/gpt-4o"
+    assert call_kwargs["model"] == "openai/gpt-4o-mini"
     assert call_kwargs["stream"] is True
 
 

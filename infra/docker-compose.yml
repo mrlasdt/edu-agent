@@ -3,9 +3,7 @@
 # localhost values from ../.env) and bind-mount host source read-only so
 # `uvicorn --reload` picks up edits with no image rebuild.
 x-env-file: &env-file
-  # Optional: provider keys can instead be exported in the shell (see x-app-env).
-  - path: ../.env
-    required: false
+  - ../.env
 x-app-env: &app-env
   # cryptography's bundled OpenSSL (pulled in by litellm) uses SVE2 instructions
   # that SIGILL inside Docker Desktop's Apple-Virtualization VM, even though the
@@ -19,12 +17,6 @@ x-app-env: &app-env
   QDRANT_URL: http://qdrant:6333
   TEI_EMBEDDER_URL: http://tei-embedder:8080
   LANGFUSE_HOST: http://langfuse:3000
-  # The local MVP runs every role on one cheap model (see that file's header).
-  MODEL_CONFIG_PATH: config/model_config.mvp.yaml
-  # Bare names pass through from the shell when exported and stay unset otherwise,
-  # so they never blank out a key from ../.env.
-  OPENAI_API_KEY:
-  OPENROUTER_API_KEY:
 x-app-src: &app-src
   - ../services:/app/services:ro
   - ../shared:/app/shared:ro
@@ -211,7 +203,7 @@ services:
     command: ["uvicorn", "services.agent.src.agent.main:app", "--host", "0.0.0.0", "--port", "8002", "--reload", "--reload-dir", "/app/services", "--reload-dir", "/app/shared"]
 
   # One-shot job: ingests seed/gre-quant/*.txt into the global corpus on first start
-  # (no-op once the corpus holds points). `docker compose up` waits for it, so the
+  # (skips notes already indexed). `docker compose up` waits for it, so the
   # web app only comes up once there is something to retrieve.
   seed:
     build:
