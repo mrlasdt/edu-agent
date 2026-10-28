@@ -182,7 +182,7 @@ class MeteredTransport:
             p_tok = int(getattr(usage, "prompt_tokens", 0) or prompt_tokens)
             c_tok = int(getattr(usage, "completion_tokens", 0) or estimate_tokens(text))
             self._record(candidate, p_tok, c_tok, latency)
-            if self.cache:
+            if self.cache and text:  # an empty reply (a reasoning model out of tokens) is no answer
                 self.cache.put(key, {"text": text})
             return self._wrap(text, stream)
         raise AllModelsFailedError("; ".join(errors))

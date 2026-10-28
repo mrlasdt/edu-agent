@@ -6,6 +6,7 @@ Agent-in-the-loop eval CLI.
   python -m evals.agent_eval --mode live --suite generation   # LangGraph pipeline vs baseline
   python -m evals.agent_eval --mode live --provider free
   python -m evals.agent_eval --mode live --suite ielts_writing --max-items 6   # needs local data
+  python -m evals.agent_eval --mode live --suite ielts_report --suite ielts_adversarial
 
 Live runs need keys in the environment (OPENROUTER_API_KEY and/or OPENAI_API_KEY); the CLI
 only checks that they are set and never prints or stores them. Cumulative spend across runs is
@@ -43,6 +44,7 @@ from evals.exam_set.schema import ExamItem
 from evals.loader import load_exam_items, load_golden_set
 from evals.regression import check_regression
 from services.agent.src.agent.agents.quant import QuantAgent
+from services.agent.src.agent.ielts import llm
 from services.agent.src.agent.pipeline.factory import build_baseline, build_pipeline
 from services.agent.src.agent.pipeline.schema import GenerationRequest
 
@@ -116,19 +118,30 @@ def plan(args: argparse.Namespace, chain: list[str], ledger: Ledger) -> dict[str
     )
     agent_calls = n_quant * 5  # 2 tutor probes + up to 3 solve attempts
     agent_calls += n_gen * (1 + 7)  # baseline 1; pipeline planner + 3 x (generate + critic)
-    n_ielts = 0
-    if "ielts_writing" in args.suite:
+    n_ielts = n_report = n_adversarial = 0
+    if {"ielts_writing", "ielts_report"} & set(args.suite):
         _, picked, _ = ielts_writing.select_items(
             _ielts_items(args), args.ielts_tier, args.max_items, SEED
         )
-        n_ielts = len(picked)
-    judge_calls = n_quant * 7 + n_aw * 3 + n_gen * 2 + n_ielts  # one verdict per emitted item
+        n_ielts = len(picked) if "ielts_writing" in args.suite else 0
+        if "ielts_report" in args.suite:
+            n_report = min(len(picked), ielts_writing.REPORT_CHECK_ITEMS)
+    if "ielts_adversarial" in args.suite:
+        n_adversarial = sum(
+            1 for i in _ielts_items(args) if i.task_type == "adversarial_response"
+        )
+    # one verdict per emitted item; an IELTS essay costs `samples` grader calls (+1 feedback)
+    judge_calls = n_quant * 7 + n_aw * 3 + n_gen * 2 + n_ielts * args.samples
+    judge_calls += (n_report + n_adversarial) * (args.samples + 1)
     per_call = estimate_cost(chain[0], 2000, 800)
     return {
         "mode": "dry-run",
         "model_chain": chain,
         "judge": args.judge,
-        "items": {"quant": n_quant, "aw": n_aw, "generation": n_gen, "ielts_writing": n_ielts},
+        "items": {
+            "quant": n_quant, "aw": n_aw, "generation": n_gen, "ielts_writing": n_ielts,
+            "ielts_report": n_report, "ielts_adversarial": n_adversarial,
+        },
         "max_agent_calls": agent_calls,
         "max_judge_calls": judge_calls,
         "worst_case_usd_first_model": per_call * (agent_calls + judge_calls),
@@ -187,15 +200,30 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 report["suites"]["generation"] = await _run_generation(
                     args.max_items, model, judge, transport
                 )
+            ielts_model = args.judge_model or chain[0]
+            completer: llm.Completer = (
+                ielts_writing.OfflineCompleter() if offline
+                else ielts_writing.EvalCompleter(ielts_model)
+            )
             if "ielts_writing" in args.suite:
                 grader: ielts_writing.IeltsGrader = (
                     ielts_writing.offline_grader()
                     if offline
-                    else ielts_writing.LLMIeltsGrader(args.judge_model or chain[0])
+                    else ielts_writing.LLMIeltsGrader(ielts_model, args.samples)
                 )
                 report["suites"]["ielts_writing"] = await ielts_writing.run_ielts_writing(
                     _ielts_items(args), grader, tier=args.ielts_tier,
                     max_items=args.max_items, seed=SEED,
+                )
+            if "ielts_report" in args.suite:
+                report["suites"]["ielts_report"] = await ielts_writing.run_ielts_report(
+                    _ielts_items(args), completer, tier=args.ielts_tier,
+                    max_items=min(args.max_items, ielts_writing.REPORT_CHECK_ITEMS), seed=SEED,
+                    samples=args.samples,
+                )
+            if "ielts_adversarial" in args.suite:
+                report["suites"]["ielts_adversarial"] = await ielts_writing.run_ielts_adversarial(
+                    _ielts_items(args), completer, samples=args.samples
                 )
         except (BudgetExceededError, AllModelsFailedError) as exc:
             report["aborted"] = f"{type(exc).__name__}: {exc}"
@@ -262,6 +290,12 @@ def regression_metrics(report: dict[str, Any]) -> dict[str, float]:
         out[f"ielts_overall_within_half_band__{ielts['label_tier']}"] = ielts["overall"][
             "within_tolerance"
         ]
+    adversarial = report["suites"].get("ielts_adversarial")
+    if adversarial and adversarial["n_cases"]:
+        out["ielts_adversarial_pass_rate"] = adversarial["passed"] / adversarial["n_cases"]
+    reports = report["suites"].get("ielts_report")
+    if reports and reports["n_items"]:
+        out["ielts_report_sound_rate"] = 1 - reports["reports_with_problems"] / reports["n_items"]
     gen = report["suites"].get("generation")
     if gen:
         pipe = gen["targets"].get("pipeline", {})
@@ -289,7 +323,10 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Agent-in-the-loop eval")
     p.add_argument("--mode", choices=["dry-run", "offline", "live"], default="dry-run")
     p.add_argument("--suite", action="append", default=[],
-                   choices=["quant", "aw", "generation", "ielts_writing"])
+                   choices=["quant", "aw", "generation", "ielts_writing", "ielts_report",
+                            "ielts_adversarial"])
+    p.add_argument("--samples", type=int, default=ielts_writing.DEFAULT_SAMPLES,
+                   help="grader samples per essay in the IELTS suites (per-criterion median)")
     p.add_argument("--provider", choices=["free", "free+openai", "openai"], default="free")
     p.add_argument("--judge", choices=["llm", "jev"], default="llm")
     p.add_argument("--judge-model", default=None, help="litellm model string for the llm judge")

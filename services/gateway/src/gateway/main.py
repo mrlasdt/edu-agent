@@ -22,6 +22,7 @@ from services.gateway.src.gateway.guardrails.stream import (
     ReplyGuard,
     redact_input,
 )
+from services.gateway.src.gateway.ielts_api import router as ielts_router
 from services.gateway.src.gateway.orchestrator import (
     ClarificationTurn,
     Orchestrator,
@@ -34,6 +35,7 @@ from shared.src.shared.observability import setup_observability
 _log = logging.getLogger(__name__)
 
 app = FastAPI(title="Gateway Service")
+app.include_router(ielts_router)
 
 setup_observability()
 

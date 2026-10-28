@@ -1,0 +1,7 @@
+{
+  "decision_gate_passed": false,
+  "n": 19,
+  "tier": "teacher_graded",
+  "within_half_band": 0.842,
+  "note": "Checked on 19 instructor-graded essays (84% within half a band, bias -0.03), but it compresses very high and very low bands and no examiner-scored set has passed the gate yet (ADR-0014)."
+}

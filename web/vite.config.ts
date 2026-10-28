@@ -10,6 +10,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/chat": gateway,
+      "/ielts/": gateway, // trailing slash: the page itself is /ielts-mock
     },
   },
   test: {

@@ -1,29 +1,29 @@
 """
-IELTS Writing Task 2 rubric grader as an eval target.
+IELTS Writing Task 2 grader as an eval target. It measures the shipped code: the same
+sampled rubric grader, deterministic checks, feedback generator and report builder the
+`/ielts` API uses (`services/agent/src/agent/ielts/`), driven through the metered transport.
 
-A model scores an essay on the four public criteria (Task Response, Coherence and Cohesion,
-Lexical Resource, Grammatical Range and Accuracy) with an original rubric written for this
-repository (it does not reproduce the official band descriptors). The overall band is
-computed in code from the four criterion bands, never taken from the model.
-
-The target reports agreement with the best label tier available among the loaded items
-(examiner, then captain_blind, then site_or_model_weak) and always prints that tier and the
-sample size. Agreement with a weak tier is a calibration signal against noisy labels, not
-agreement with an examiner, and the report says so.
+Three suites:
+  ielts_writing      agreement with the best label tier available (examiner, then
+                     teacher_graded, captain_blind, site_or_model_weak) plus the calibration
+                     gates of ADR-0014. Always prints the tier and the sample size: agreement
+                     with a weak tier is a signal against noisy labels, not against an examiner.
+  ielts_report       full report on a few essays, run through the mechanical report checks.
+  ielts_adversarial  injection, off-topic, copied-prompt and junk responses must be flagged and
+                     must not receive a high band.
 """
 from __future__ import annotations
 
 import json
-import math
 import random
-import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import litellm
 
-from evals.agent_eval.agreement import agreement_report
+from evals.agent_eval.agreement import agreement_report, quadratic_weighted_kappa
 from evals.agent_eval.judges import JudgeError
 from evals.agent_eval.transport import AllModelsFailedError, gather_limited, tagged
 from evals.exam_set.schema import (
@@ -35,113 +35,77 @@ from evals.exam_set.schema import (
     LabelTier,
     best_label_tier,
 )
+from services.agent.src.agent.ielts import llm
+from services.agent.src.agent.ielts.gate import gate_report
+from services.agent.src.agent.ielts.grading import GradingError, grade_essay
+from services.agent.src.agent.ielts.marking import mark_essay
+from services.agent.src.agent.ielts.models import Calibration
+from services.agent.src.agent.ielts.report_checks import check_report
+from services.agent.src.agent.ielts.scoring import (  # noqa: F401 - re-exported for the CLI/tests
+    GradeParseError,
+    parse_grade,
+    round_overall,
+    snap_band,
+)
 
 TOLERANCE = 0.5
-MAX_ESSAY_WORDS = 700
+DEFAULT_SAMPLES = 3
+REPORT_CHECK_ITEMS = 5
 
-RUBRIC = """You are an experienced IELTS Writing examiner scoring a Task 2 essay.
-Score each of four criteria on the IELTS 0-9 scale in half-band steps. Judge only what is on
-the page and ignore the essay's length unless it is clearly under the 250-word minimum.
 
-Task Response (TR): does the essay answer every part of the question, take and hold a clear
-  position, and support its points with relevant, developed ideas?
-  4 = partial or confused answer, ideas thin or repetitive; 5 = covers the task unevenly,
-  position unclear in places, ideas underdeveloped; 6 = addresses all parts, position
-  present, some ideas weakly supported; 7 = clear position throughout, ideas well extended;
-  8 = full, well-developed response with rare lapses; 9 = fully developed and fully relevant.
-Coherence and Cohesion (CC): is the essay easy to follow, with logical paragraphs and
-  linking that helps rather than gets in the way?
-  4 = ideas hard to follow, linking mechanical or faulty; 5 = some organisation, linking
-  inaccurate or overused; 6 = clear overall progression, cohesion sometimes faulty or
-  mechanical; 7 = logical progression, a range of linking used mostly well; 8 = ideas
-  sequenced so the reader notices nothing awkward; 9 = effortless flow.
-Lexical Resource (LR): range, precision and naturalness of vocabulary, including spelling
-  and word formation.
-  4 = very limited, frequent errors that strain meaning; 5 = limited range, noticeable
-  errors; 6 = adequate range, some imprecision, errors rarely impede meaning; 7 = good range
-  with some less common items, occasional slips; 8 = wide, precise, natural; 9 = full
-  flexibility and precision.
-Grammatical Range and Accuracy (GRA): variety of sentence structures and how accurate
-  they are, including punctuation.
-  4 = mostly simple sentences, frequent errors; 5 = limited range of complex forms, errors
-  frequent but meaning mostly clear; 6 = mix of simple and complex forms, errors that rarely
-  impede communication; 7 = frequent error-free sentences, good control of varied
-  structures; 8 = most sentences error-free; 9 = full range, virtually no errors.
+@dataclass
+class EvalGrade:
+    """What the target needs from a grader: final criterion bands and the sample spread."""
 
-Be calibrated: most real candidate essays fall between bands 4.5 and 7.5; use 8 and above
-only for essays that are clearly excellent.
-Reply with only a JSON object:
-{"TR": <band>, "CC": <band>, "LR": <band>, "GRA": <band>, "rationale": "<one or two sentences>"}
-"""
+    criteria: dict[str, float]
+    spread: float | None = None
+    samples: list[dict[str, float]] = field(default_factory=list)
+    flags: list[str] = field(default_factory=list)
 
 
 class IeltsGrader(Protocol):
     name: str
 
-    async def grade(self, prompt: str, essay: str, item: ExamItem) -> dict[str, float]:
-        """Criterion bands keyed TR, CC, LR, GRA."""
-        ...
+    async def grade(self, prompt: str, essay: str, item: ExamItem) -> EvalGrade: ...
 
 
-def round_overall(criteria: dict[str, float]) -> float:
-    """Mean of the four criteria rounded to the nearest half band (a quarter rounds up)."""
-    mean = sum(criteria[c] for c in CRITERIA) / len(CRITERIA)
-    return math.floor(mean * 2 + 0.5) / 2
+class EvalCompleter:
+    """Calls `litellm.acompletion` so the metered transport (budget, fallbacks) is underneath."""
 
+    def __init__(self, model: str) -> None:
+        self.model = model
 
-def snap_band(value: float) -> float:
-    return min(9.0, max(0.0, math.floor(value * 2 + 0.5) / 2))
-
-
-def truncate_words(text: str, limit: int = MAX_ESSAY_WORDS) -> str:
-    words = text.split()
-    return text if len(words) <= limit else " ".join(words[:limit])
-
-
-def parse_grade(text: str) -> dict[str, float]:
-    """Pull the four criterion bands out of a model reply; raises JudgeError if any is missing."""
-    match = re.search(r"\{.*\}", text, re.S)
-    if not match:
-        raise JudgeError(f"no JSON object in grader reply: {text[:60]!r}")
-    try:
-        raw = json.loads(match.group(0))
-    except json.JSONDecodeError as exc:
-        raise JudgeError(f"grader reply is not valid JSON: {text[:60]!r}") from exc
-    out: dict[str, float] = {}
-    for crit in CRITERIA:
-        try:
-            out[crit] = snap_band(float(raw[crit]))
-        except (KeyError, TypeError, ValueError) as exc:
-            raise JudgeError(f"grader reply missing a numeric {crit}") from exc
-    return out
-
-
-def grade_request(prompt: str, essay: str) -> list[dict[str, str]]:
-    return [
-        {"role": "system", "content": RUBRIC},
-        {
-            "role": "user",
-            "content": f"## Task prompt\n{prompt}\n\n## Candidate essay\n{truncate_words(essay)}",
-        },
-    ]
+    async def __call__(
+        self, role: str, messages: list[dict[str, str]], *, temperature: float, max_tokens: int,
+        trace_id: str = "", prompt_version: str = "",
+    ) -> str:
+        with tagged("judge" if role == llm.GRADER_ROLE else "feedback"):
+            try:
+                response = await litellm.acompletion(
+                    model=self.model, messages=messages, temperature=temperature,
+                    max_tokens=max_tokens, stream=False,
+                )
+            except AllModelsFailedError as exc:
+                raise llm.ModelUnavailableError(str(exc)) from exc
+        return str(response.choices[0].message.content or "")
 
 
 class LLMIeltsGrader:
-    """Any litellm chat model (through the eval transport, so budget and fallbacks apply)."""
+    """The production sampled grader behind any litellm chat model."""
 
-    def __init__(self, model: str) -> None:
-        self.name = f"llm:{model}"
-        self._model = model
+    def __init__(self, model: str, samples: int = DEFAULT_SAMPLES) -> None:
+        self.name = f"llm:{model}x{samples}"
+        self._completer = EvalCompleter(model)
+        self._samples = samples
 
-    async def grade(self, prompt: str, essay: str, item: ExamItem) -> dict[str, float]:
-        with tagged("judge"):
-            response = await litellm.acompletion(
-                model=self._model,
-                messages=grade_request(prompt, essay),
-                temperature=0,
-                stream=False,
-            )
-        return parse_grade(str(response.choices[0].message.content or ""))
+    async def grade(self, prompt: str, essay: str, item: ExamItem) -> EvalGrade:
+        outcome = await grade_essay(
+            prompt, essay, completer=self._completer, samples=self._samples, trace_id=item.id
+        )
+        return EvalGrade(
+            criteria=outcome.criteria, spread=outcome.spread, samples=outcome.samples,
+            flags=[f.code for f in outcome.flags],
+        )
 
 
 class HeuristicIeltsGrader:
@@ -152,8 +116,8 @@ class HeuristicIeltsGrader:
     def __init__(self, score: Callable[[ExamItem], dict[str, float]]) -> None:
         self._score = score
 
-    async def grade(self, prompt: str, essay: str, item: ExamItem) -> dict[str, float]:
-        return self._score(item)
+    async def grade(self, prompt: str, essay: str, item: ExamItem) -> EvalGrade:
+        return EvalGrade(criteria=self._score(item))
 
 
 def offline_grader() -> HeuristicIeltsGrader:
@@ -165,6 +129,38 @@ def offline_grader() -> HeuristicIeltsGrader:
         return {c: item.labels.criteria.get(c, overall) for c in CRITERIA}
 
     return HeuristicIeltsGrader(echo)
+
+
+def _between(text: str, start: str, end: str) -> str:
+    a = text.find(start)
+    b = text.find(end, a + len(start)) if a >= 0 else -1
+    return text[a + len(start):b] if a >= 0 and b >= 0 else ""
+
+
+class OfflineCompleter:
+    """
+    A deterministic stand-in for the marker that is deliberately over-generous: it scores every
+    criterion 9 and quotes the essay's first words. The adversarial suite and the report checks
+    use it offline, so only the code's own caps and validation keep the result honest.
+    """
+
+    async def __call__(
+        self, role: str, messages: list[dict[str, str]], *, temperature: float, max_tokens: int,
+        trace_id: str = "", prompt_version: str = "",
+    ) -> str:
+        user = messages[-1]["content"]
+        if role == llm.GRADER_ROLE:
+            return '{"TR": 9, "CC": 9, "LR": 9, "GRA": 9, "off_topic": false, "rationale": "x"}'
+        essay = _between(user, "<<<ESSAY ", "<<<END ESSAY").split(">>>", 1)[-1].strip()
+        lines = [x for x in essay.split("\n") if x.strip() and not x.startswith("Paragraph ")]
+        quote = " ".join((lines[0] if lines else "").split()[:8])
+        evidence = [{"quote": quote, "effect": "supports"}, {"quote": "not in the essay at all",
+                                                             "effect": "weakens"}]
+        crit = {"verdict": "ok", "evidence": evidence, "holding_back": "h",
+                "to_reach_next_band": "n", "actions": [{"do": "d", "why": "w"}]}
+        return json.dumps({
+            "criteria": {c: crit for c in CRITERIA}, "errors": [], "checks": {},
+        })
 
 
 def stratified_sample(items: list[ExamItem], k: int, seed: int) -> list[ExamItem]:
@@ -229,14 +225,18 @@ async def run_ielts_writing(
     async def one(item: ExamItem) -> dict[str, Any] | None:
         assert item.response is not None
         try:
-            scores = await grader.grade(item.prompt, item.response, item)
-        except JudgeError as exc:
+            graded = await grader.grade(item.prompt, item.response, item)
+        except (JudgeError, GradingError) as exc:
             errors.append(str(exc))
             return None
         except AllModelsFailedError as exc:
             unavailable.append(str(exc))
             return None
-        return {"item_id": item.id, "pred": scores, "pred_overall": round_overall(scores)}
+        return {
+            "item_id": item.id, "pred": graded.criteria,
+            "pred_overall": round_overall(graded.criteria), "spread": graded.spread,
+            "samples": graded.samples, "flags": graded.flags,
+        }
 
     results = await gather_limited([one(i) for i in picked])
     rows = [(i, r) for i, r in zip(picked, results, strict=True) if r is not None]
@@ -247,6 +247,7 @@ async def run_ielts_writing(
         overall_pairs.append((row["pred_overall"], item.labels.overall))
         for crit, gold in item.labels.criteria.items():
             per_criterion[crit].append((row["pred"][crit], gold))
+    spreads = [r["spread"] for _, r in rows if r["spread"] is not None]
     return {
         **base,
         "n_items": len(rows),
@@ -255,14 +256,101 @@ async def run_ielts_writing(
             CRITERION_NAMES[c]: agreement_report(pairs, TOLERANCE)
             for c, pairs in per_criterion.items()
         },
+        "calibration_gate": gate_report(
+            overall_pairs, per_criterion, tier=chosen.value,
+            qwk=quadratic_weighted_kappa(overall_pairs), spreads=spreads or None,
+        ),
         "errors": len(errors),
         "units_total": len(results),
         "units_dropped_model_unavailable": len(unavailable),
         "rows": {
             "grade": [
                 {"item_id": r["item_id"], "pred": r["pred"], "pred_overall": r["pred_overall"],
-                 "gold_overall": i.labels.overall if i.labels else None}
+                 "gold_overall": i.labels.overall if i.labels else None,
+                 "spread": r["spread"], "samples": r["samples"], "flags": r["flags"]}
                 for i, r in rows
             ]
         },
+    }
+
+
+_UNCALIBRATED = Calibration(status="uncalibrated", label="Uncalibrated estimate")
+
+
+async def run_ielts_report(
+    items: list[ExamItem], completer: llm.Completer, *, tier: str = "best",
+    max_items: int = REPORT_CHECK_ITEMS, seed: int = 42, samples: int = DEFAULT_SAMPLES,
+) -> dict[str, Any]:
+    """Full report (grade plus feedback) on a few essays, run through the mechanical checks."""
+    chosen, picked, _ = select_items(items, tier, max_items, seed)
+    unavailable: list[str] = []
+
+    async def one(item: ExamItem) -> dict[str, Any] | None:
+        assert item.response is not None
+        try:
+            report = await mark_essay(
+                item.prompt, item.response, completer=completer, samples=samples,
+                trace_id=item.id, calibration=_UNCALIBRATED,
+            )
+        except (GradingError, AllModelsFailedError) as exc:
+            unavailable.append(str(exc))
+            return None
+        return {
+            "item_id": item.id, "problems": check_report(report, item.response),
+            "feedback_status": report.feedback_status, "status": report.status,
+            "evidence_quotes": sum(len(c.evidence) for c in report.criteria),
+            "error_spans": len(report.error_spans),
+        }
+
+    results = await gather_limited([one(i) for i in picked])
+    done = [r for r in results if r is not None]
+    return {
+        "label_tier": chosen.value if chosen else None,
+        "n_items": len(done),
+        "units_total": len(results),
+        "units_dropped_model_unavailable": len(unavailable),
+        "reports_with_problems": sum(1 for r in done if r["problems"]),
+        "problems": [p for r in done for p in r["problems"]],
+        "feedback_status": dict(Counter(r["feedback_status"] for r in done)),
+        "rows": {"report": done},
+    }
+
+
+async def run_ielts_adversarial(
+    items: list[ExamItem], completer: llm.Completer, *, samples: int = DEFAULT_SAMPLES,
+) -> dict[str, Any]:
+    """Each case must raise its flags and stay at or under its band ceiling."""
+    cases = [i for i in items if i.task_type == "adversarial_response"]
+    unavailable: list[str] = []
+
+    async def one(item: ExamItem) -> dict[str, Any] | None:
+        assert item.response is not None
+        try:
+            report = await mark_essay(
+                item.prompt, item.response, completer=completer, samples=samples,
+                trace_id=item.id, calibration=_UNCALIBRATED,
+            )
+        except (GradingError, AllModelsFailedError) as exc:
+            unavailable.append(str(exc))
+            return None
+        raised = {f.code for f in report.flags}
+        overall = report.estimated_band.overall if report.estimated_band else None
+        missing = [f for f in item.extras["expect_flags"] if f not in raised]
+        too_high = overall is not None and overall > item.extras["max_overall"]
+        return {
+            "case": item.extras["case"], "overall": overall, "flags": sorted(raised),
+            "missing_flags": missing, "too_high": too_high, "passed": not missing and not too_high,
+        }
+
+    results = await gather_limited([one(i) for i in cases])
+    done = [r for r in results if r is not None]
+    return {
+        "n_cases": len(done),
+        "units_total": len(results),
+        "units_dropped_model_unavailable": len(unavailable),
+        "passed": sum(1 for r in done if r["passed"]),
+        "failed_cases": [r["case"] for r in done if not r["passed"]],
+        "max_band_given": max((r["overall"] for r in done if r["overall"] is not None),
+                              default=None),
+        "rows": {"adversarial": done},
     }

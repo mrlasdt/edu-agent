@@ -18,6 +18,7 @@ from evals.agent_eval.agreement import (
 )
 from evals.agent_eval.judges import JudgeError
 from evals.agent_eval.transport import AllModelsFailedError
+from evals.exam_set import ielts_writing_adversarial as adversarial
 from evals.exam_set.local_store import register_source
 from evals.exam_set.schema import (
     Design,
@@ -27,6 +28,10 @@ from evals.exam_set.schema import (
     LabelTier,
     Source,
 )
+from evals.loader import load_exam_items
+from services.agent.src.agent.ielts import llm
+from services.agent.src.agent.ielts.grading import grade_request
+from services.agent.src.agent.ielts.scoring import GradeParseError
 
 # ── metrics ──────────────────────────────────────────────────────────────────
 
@@ -101,25 +106,28 @@ def test_parse_grade_snaps_to_half_bands_and_clamps():
     ["no json here", '{"TR": 6, "CC": 6, "LR": 6}', '{"TR": "high", "CC": 1}', "{bad json}"],
 )
 def test_parse_grade_rejects_unusable_replies(reply: str):
-    with pytest.raises(JudgeError):
+    with pytest.raises(GradeParseError):
         ielts_writing.parse_grade(reply)
 
 
-def test_rubric_names_the_four_criteria_and_is_original():
+def test_rubric_names_the_four_criteria_and_treats_the_essay_as_data():
+    rubric = llm.load_prompt("ielts_grader", "writing_t2", "v1")
     for name in ("Task Response", "Coherence and Cohesion", "Lexical Resource",
                  "Grammatical Range and Accuracy"):
-        assert name in ielts_writing.RUBRIC
-    assert "JSON" in ielts_writing.RUBRIC
+        assert name in rubric
+    assert "JSON" in rubric and "addressed_to_marker" in rubric
 
 
-def test_long_essays_are_truncated_before_grading():
+def test_long_essays_are_sent_whole_not_truncated():
     essay = " ".join(["word"] * 2000)
-    messages = ielts_writing.grade_request("Prompt?", essay)
-    assert messages[1]["content"].count("word") == ielts_writing.MAX_ESSAY_WORDS
+    messages = grade_request("Prompt?", essay, "system")
+    assert messages[1]["content"].count("word") == 2000
 
 
 async def test_llm_grader_goes_through_litellm(monkeypatch: pytest.MonkeyPatch):
     seen: list[dict[str, Any]] = []
+    essay = adversarial.generate_all()[0].response
+    assert essay is not None
 
     async def fake(**kw: Any) -> Any:
         seen.append(kw)
@@ -127,10 +135,11 @@ async def test_llm_grader_goes_through_litellm(monkeypatch: pytest.MonkeyPatch):
         return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
 
     monkeypatch.setattr("litellm.acompletion", fake)
-    grader = ielts_writing.LLMIeltsGrader("m")
-    scores = await grader.grade("P", "E", essay_item("x", 6.0))
-    assert scores == {"TR": 6.0, "CC": 6.5, "LR": 6.0, "GRA": 5.5}
-    assert seen[0]["model"] == "m" and seen[0]["temperature"] == 0
+    grader = ielts_writing.LLMIeltsGrader("m", samples=3)
+    graded = await grader.grade(adversarial.PROMPT, essay, essay_item("x", 6.0))
+    assert graded.criteria["CC"] == 6.5 and graded.criteria["GRA"] == 5.5
+    assert len(seen) == 3 and graded.spread == 0.0
+    assert seen[0]["model"] == "m" and seen[0]["temperature"] == 0.3
     assert "Candidate essay" in seen[0]["messages"][1]["content"]
 
 
@@ -242,13 +251,13 @@ async def test_run_counts_judge_errors_and_unavailable_models():
         def __init__(self) -> None:
             self.calls = 0
 
-        async def grade(self, prompt: str, essay: str, item: ExamItem) -> dict[str, float]:
+        async def grade(self, prompt: str, essay: str, item: ExamItem) -> ielts_writing.EvalGrade:
             self.calls += 1
             if self.calls == 1:
                 raise JudgeError("unparseable")
             if self.calls == 2:
                 raise AllModelsFailedError("down")
-            return {c: 6.0 for c in ielts_writing.CRITERIA}
+            return ielts_writing.EvalGrade(criteria={c: 6.0 for c in ielts_writing.CRITERIA})
 
     items = [essay_item(f"s{i}", 6.0) for i in range(3)]
     report = await ielts_writing.run_ielts_writing(items, Flaky(), max_items=3)
@@ -314,7 +323,8 @@ def test_dry_run_plan_counts_ielts_items(
         "--ledger", str(tmp_path / "l.json"),
     ]) == 0
     plan = json.loads(capsys.readouterr().out)
-    assert plan["items"]["ielts_writing"] == 3 and plan["max_judge_calls"] == 3
+    assert plan["items"]["ielts_writing"] == 3
+    assert plan["max_judge_calls"] == 9  # 3 essays x 3 samples
 
 
 def test_offline_cli_run_without_local_data_is_a_clean_empty_suite(
@@ -338,3 +348,53 @@ def test_ielts_writing_is_opt_in(
     monkeypatch.chdir(Path(__file__).resolve().parents[1])
     assert cli.main(["--local-dir", str(local), "--ledger", str(tmp_path / "l.json")]) == 0
     assert json.loads(capsys.readouterr().out)["items"]["ielts_writing"] == 0
+
+
+# ── gate, report and adversarial suites ──────────────────────────────────────
+
+
+async def test_run_includes_the_calibration_gate_with_spreads():
+    items = [essay_item(f"s{i}", b) for i, b in enumerate([4.0, 5.0, 6.0, 7.0, 8.0])]
+    report = await ielts_writing.run_ielts_writing(items, offset_grader(0.0), max_items=5)
+    gate = report["calibration_gate"]
+    assert gate["n"] == 5 and gate["tier"] == "site_or_model_weak"
+    assert gate["development_gate"]["passed"] is True
+    assert gate["decision_gate"]["passed"] is False  # n < 60 and a weak tier cannot certify
+    assert "test-retest spread <= 0.5" in gate["decision_gate"]["unmeasured"]
+
+
+async def test_adversarial_suite_holds_even_when_the_model_scores_everything_a_9():
+    items = load_exam_items(exam="ielts", skill="writing_t2")
+    report = await ielts_writing.run_ielts_adversarial(
+        items, ielts_writing.OfflineCompleter(), samples=1
+    )
+    assert report["n_cases"] >= 10 and report["failed_cases"] == []
+    assert report["max_band_given"] is not None and report["max_band_given"] < 9
+
+
+async def test_report_suite_runs_the_mechanical_checks_on_a_full_offline_report():
+    long_essay = " ".join(["Schools should teach cooking and budgeting to every student."] * 30)
+    items = [essay_item(f"r{i}", 6.0) for i in range(2)]
+    for item in items:
+        item.response = long_essay
+        item.prompt = adversarial.PROMPT
+    report = await ielts_writing.run_ielts_report(
+        items, ielts_writing.OfflineCompleter(), samples=1
+    )
+    assert report["n_items"] == 2 and report["reports_with_problems"] == 0
+    assert report["feedback_status"] == {"complete": 2}
+
+
+def test_offline_cli_runs_the_adversarial_and_report_suites(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    _block_network(monkeypatch)
+    local = _seed_local(tmp_path)
+    monkeypatch.chdir(Path(__file__).resolve().parents[1])
+    code = cli.main([
+        "--mode", "offline", "--suite", "ielts_adversarial", "--samples", "1",
+        "--local-dir", str(local), "--ledger", str(tmp_path / "l.json"),
+        "--out-dir", str(tmp_path / "runs"),
+    ])
+    out = json.loads(capsys.readouterr().out)
+    assert code == 0 and out["regression_metrics"] == {"ielts_adversarial_pass_rate": 1.0}
