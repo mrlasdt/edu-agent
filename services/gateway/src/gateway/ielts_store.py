@@ -164,7 +164,10 @@ class AttemptStore:
         return self.get(attempt_id)
 
     def submit(self, attempt_id: str, text: str) -> Attempt:
-        """Final text; idempotent once submitted. Past deadline + grace it is marked late."""
+        """
+        Final text; idempotent once submitted. Past deadline + grace it is marked late and the
+        text is the last autosave, so nothing written after time was up is marked.
+        """
         attempt = self.get(attempt_id)
         if attempt.status != "in_progress":
             if attempt.final_text is not None:
@@ -172,11 +175,14 @@ class AttemptStore:
             raise AttemptStateError(f"attempt is {attempt.status}, not in progress")
         assert attempt.deadline_at is not None
         now = self.clock()
+        late = now > attempt.deadline_at + GRACE_S
+        if late:
+            text = attempt.draft_text
         with self._connect() as db:
             db.execute(
                 "UPDATE attempts SET status = 'submitted', final_text = ?, draft_text = ?, "
                 "submitted_at = ?, late = ? WHERE id = ? AND status = 'in_progress'",
-                (text, text, now, int(now > attempt.deadline_at + GRACE_S), attempt_id),
+                (text, text, now, int(late), attempt_id),
             )
         return self.get(attempt_id)
 

@@ -149,6 +149,11 @@ def _build_blind_pool(args: argparse.Namespace, directory: Path) -> int:
     if not (os.environ.get("OPENAI_API_KEY") or os.environ.get("OPENROUTER_API_KEY")):
         print("ERROR: set OPENAI_API_KEY or OPENROUTER_API_KEY (names only)", file=sys.stderr)
         return 2
+    try:
+        blind_pool.ensure_unscored(Path(args.blind_dir))
+    except blind_pool.PoolAlreadyScoredError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     prompts = [
         (i.id, i.prompt) for i in load_exam_items(exam="ielts", skill="writing_t2")
         if i.task_type == "essay_prompt"

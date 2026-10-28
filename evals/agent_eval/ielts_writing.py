@@ -24,6 +24,7 @@ from typing import Any, Protocol
 import litellm
 
 from evals.agent_eval.agreement import agreement_report, quadratic_weighted_kappa
+from evals.agent_eval.cache import cache_key
 from evals.agent_eval.judges import JudgeError
 from evals.agent_eval.transport import AllModelsFailedError, gather_limited, tagged
 from evals.exam_set.schema import (
@@ -70,20 +71,28 @@ class IeltsGrader(Protocol):
 
 
 class EvalCompleter:
-    """Calls `litellm.acompletion` so the metered transport (budget, fallbacks) is underneath."""
+    """
+    Calls `litellm.acompletion` so the metered transport (budget, fallbacks, cache) is underneath.
+    Repeats of one request (grader samples, retries) each get their own cache slot, so a rerun
+    replays independent samples instead of one reply copied into all of them.
+    """
 
     def __init__(self, model: str) -> None:
         self.model = model
+        self._repeats: Counter[str] = Counter()
 
     async def __call__(
         self, role: str, messages: list[dict[str, str]], *, temperature: float, max_tokens: int,
         trace_id: str = "", prompt_version: str = "",
     ) -> str:
+        request = cache_key(messages=messages, temperature=temperature, max_tokens=max_tokens)
+        slot = self._repeats[request]
+        self._repeats[request] += 1
         with tagged("judge" if role == llm.GRADER_ROLE else "feedback"):
             try:
                 response = await litellm.acompletion(
                     model=self.model, messages=messages, temperature=temperature,
-                    max_tokens=max_tokens, stream=False,
+                    max_tokens=max_tokens, stream=False, cache_slot=slot,
                 )
             except AllModelsFailedError as exc:
                 raise llm.ModelUnavailableError(str(exc)) from exc

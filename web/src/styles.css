@@ -100,7 +100,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .ielts-prompt-card:hover:not(:disabled), .ielts-history button:hover { border-color: var(--accent); }
 .ielts-prompt-text { line-height: 1.45; }
 .ielts-history button { flex-direction: row; align-items: baseline; gap: 12px; }
-.ielts-history-band { font-weight: 700; min-width: 2.2em; }
+.ielts-history-band { font-weight: 700; white-space: nowrap; }
 .ielts-history-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .ielts-ready, .ielts-marking { padding-top: 12px; }

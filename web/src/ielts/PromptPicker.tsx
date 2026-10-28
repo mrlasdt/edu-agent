@@ -1,4 +1,5 @@
 import { band } from "./format";
+import { DISCLAIMER } from "./types";
 import type { Attempt, WritingPrompt } from "./types";
 
 interface Props {
@@ -43,12 +44,13 @@ export function PromptPicker({ prompts, history, busy, onPick, onOpen }: Props) 
       {history.length > 0 && (
         <section aria-label="Earlier attempts">
           <h3>Earlier attempts</h3>
+          <p className="ielts-disclaimer">{DISCLAIMER}</p>
           <ul className="ielts-history">
             {history.map((a) => (
               <li key={a.id}>
                 <button onClick={() => onOpen(a)}>
                   <span className="ielts-history-band">
-                    {a.overall !== null ? band(a.overall) : "-"}
+                    {a.overall !== null ? `Estimated band ${band(a.overall)}` : "-"}
                   </span>
                   <span className="ielts-history-text">{a.prompt}</span>
                   <span className="ielts-hint">{STATUS_TEXT[a.status]}</span>

@@ -72,7 +72,8 @@ roles:
   # IELTS-style Writing mock: rubric grader (sampled three times, median per criterion) and the
   # examiner-style feedback writer. Both are gpt-4.1-mini: it is the model the development gate
   # in ADR-0014 was measured with, and gpt-4o-mini flagged correct text as errors in the
-  # feedback. A mock costs a few cents. IELTS_MODEL_CHAIN overrides both roles.
+  # feedback. A mock costs a few cents. Change the model here (or point MODEL_CONFIG_PATH at
+  # another config) to mark with a different one.
   ielts_grader:
     provider: openai
     model: gpt-4.1-mini

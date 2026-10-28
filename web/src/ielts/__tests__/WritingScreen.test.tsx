@@ -44,6 +44,14 @@ describe("WritingScreen", () => {
     expect(screen.getByLabelText("Word count")).toHaveTextContent("250 minimum");
   });
 
+  it("counts words the way the marker does", () => {
+    render(<WritingScreen attempt={attempt()} initialText="" onSubmitted={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Your essay"), {
+      target: { value: "Prices rose 2.5% in the U.S. - e.g. food & rent, don't they?" },
+    });
+    expect(screen.getByLabelText("Word count")).toHaveTextContent("14 words");
+  });
+
   it("autosaves changed text about every ten seconds, and not when nothing changed", async () => {
     render(<WritingScreen attempt={attempt()} initialText="" onSubmitted={vi.fn()} />);
     fireEvent.change(screen.getByLabelText("Your essay"), { target: { value: "My draft" } });

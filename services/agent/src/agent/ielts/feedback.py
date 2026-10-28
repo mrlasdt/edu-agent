@@ -36,6 +36,7 @@ ERROR_TYPES = (
     "linking", "word_form", "other",
 )
 _EDGE = re.compile(r"^[\s\"'“”‘’.…]+|[\s\"'“”‘’.…]+$")
+_BARE_NUMBER = re.compile(r"(?:band\s*)?[\d.,/+\-–\s]+", re.I)
 
 
 @dataclass
@@ -53,7 +54,7 @@ class Feedback:
     criteria: dict[str, CriterionFeedback]
     errors: list[ErrorSpan]
     checks: dict[str, bool | None]
-    dropped_quotes: int
+    unverifiable: int  # quotes not found in one paragraph of the essay, bare-number verdicts
 
 
 def locate_quote(text: str, quote: str, taken: list[tuple[int, int]] | None = None) -> (
@@ -61,21 +62,32 @@ def locate_quote(text: str, quote: str, taken: list[tuple[int, int]] | None = No
 ):
     """
     Span of `quote` in `text`, tolerant of whitespace and surrounding quote marks. Returns None
-    when the words are not in the text. `taken` spans are skipped so repeated quotes map to
-    different occurrences where they exist.
+    when the words are not in one paragraph of the text. `taken` spans are skipped so repeated
+    quotes map to different occurrences where they exist.
     """
     tokens = _EDGE.sub("", quote).split()[:MAX_QUOTE_WORDS]
     if not tokens:
         return None
     pattern = re.compile(r"\s+".join(re.escape(t) for t in tokens))
+    paragraphs = paragraph_spans(text)
     first: tuple[int, int] | None = None
     for m in pattern.finditer(text):
         span = (m.start(), m.end())
+        if not within_paragraph(paragraphs, *span):
+            continue
         if first is None:
             first = span
         if not taken or all(span[1] <= a or span[0] >= b for a, b in taken):
             return span
     return first
+
+
+def within_paragraph(paragraphs: list[tuple[int, int]], start: int, end: int) -> bool:
+    return any(a <= start and end <= b for a, b in paragraphs)
+
+
+def is_bare_number(verdict: str) -> bool:
+    return _BARE_NUMBER.fullmatch(verdict) is not None
 
 
 def paragraph_of(text: str, start: int) -> int:
@@ -111,7 +123,7 @@ def _text(value: Any, limit: int = 500) -> str:
 
 
 def build_feedback(raw: dict[str, Any], essay: str) -> Feedback:
-    """Validate a parsed model reply against the essay; unlocatable quotes are dropped."""
+    """Validate a parsed model reply against the essay; unverifiable parts are dropped."""
     dropped = 0
     criteria: dict[str, CriterionFeedback] = {}
     raw_criteria = raw.get("criteria")
@@ -151,8 +163,12 @@ def build_feedback(raw: dict[str, Any], essay: str) -> Feedback:
             for p in (item.get("paragraph_map") or [])
             if isinstance(p, dict) and str(p.get("para", "")).isdigit()
         ] if crit == "CC" else []
+        verdict = _text(item.get("verdict"))
+        if verdict and is_bare_number(verdict):
+            verdict = ""
+            dropped += 1
         criteria[crit] = CriterionFeedback(
-            verdict=_text(item.get("verdict")), evidence=evidence,
+            verdict=verdict, evidence=evidence,
             holding_back=_text(item.get("holding_back")),
             to_reach_next_band=_text(item.get("to_reach_next_band")),
             actions=actions, paragraph_map=paragraph_map,
@@ -164,8 +180,10 @@ def build_feedback(raw: dict[str, Any], essay: str) -> Feedback:
         if not isinstance(err, dict) or len(errors) >= MAX_ERRORS:
             continue
         span = locate_quote(essay, str(err.get("quote", "")), taken_errors)
-        if span is None or len(essay[span[0]:span[1]].split()) > MAX_ERROR_WORDS:
+        if span is None:
             dropped += 1
+            continue
+        if len(essay[span[0]:span[1]].split()) > MAX_ERROR_WORDS:
             continue
         taken_errors.append(span)
         kind = str(err.get("type", "other")).strip().lower()
@@ -183,7 +201,7 @@ def build_feedback(raw: dict[str, Any], essay: str) -> Feedback:
         key: raw_checks[key] if isinstance(raw_checks.get(key), bool) else None
         for key in ("addresses_all_parts", "position_in_introduction", "position_in_conclusion")
     }
-    return Feedback(criteria=criteria, errors=errors, checks=checks, dropped_quotes=dropped)
+    return Feedback(criteria=criteria, errors=errors, checks=checks, unverifiable=dropped)
 
 
 async def generate_feedback(

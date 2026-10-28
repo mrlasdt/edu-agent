@@ -52,7 +52,10 @@ def grade_reply(tr: float, cc: float, lr: float, gra: float, **extra: object) ->
     return json.dumps({"TR": tr, "CC": cc, "LR": lr, "GRA": gra, "rationale": "r", **extra})
 
 
-def feedback_reply(quotes: dict[str, list[str]] | None = None) -> str:
+def feedback_reply(
+    quotes: dict[str, list[str]] | None = None, invented_error: bool = True,
+    verdicts: dict[str, str] | None = None,
+) -> str:
     quotes = quotes or {
         "TR": ["Learning to cook at school is useful"],
         "CC": ["However, the timetable is already full"],
@@ -61,7 +64,7 @@ def feedback_reply(quotes: dict[str, list[str]] | None = None) -> str:
     }
     crit = {
         c: {
-            "verdict": f"{c} verdict",
+            "verdict": (verdicts or {}).get(c, f"{c} verdict"),
             "evidence": [{"quote": q, "effect": "supports"} for q in qs],
             "holding_back": "h", "to_reach_next_band": "n",
             "actions": [{"do": f"fix {c}", "why": "because"}],
@@ -74,7 +77,8 @@ def feedback_reply(quotes: dict[str, list[str]] | None = None) -> str:
         "errors": [
             {"quote": "monthly costs", "type": "collocation", "note": "n", "suggestion": "s"},
             {"quote": "Another problem is", "type": "linking", "note": "n", "suggestion": "s"},
-            {"quote": "words that are not there", "type": "tense", "note": "n", "suggestion": "s"},
+            *([{"quote": "words that are not there", "type": "tense", "note": "n",
+                "suggestion": "s"}] if invented_error else []),
         ],
         "checks": {"addresses_all_parts": True, "position_in_introduction": False,
                    "position_in_conclusion": True},
@@ -129,6 +133,14 @@ async def test_a_compromised_grader_cannot_lift_a_flagged_essay():
     assert outcome.overall < 9
 
 
+async def test_text_aimed_at_the_marker_seen_by_most_samples_caps_task_response():
+    completer = Scripted([grade_reply(7, 7, 7, 7, addressed_to_marker=True)] * 2
+                         + [grade_reply(7, 7, 7, 7)])
+    outcome = await grade_essay(PROMPT, ESSAY, completer=completer, samples=3)
+    assert outcome.criteria["TR"] == 5.0 and outcome.criteria["CC"] == 7.0
+    assert any(f.code == "addressed_to_marker" for f in outcome.flags)
+
+
 async def test_model_flags_are_applied_when_most_samples_agree():
     completer = Scripted([grade_reply(7, 7, 7, 7, off_topic=True)] * 2
                          + [grade_reply(7, 7, 7, 7)])
@@ -181,9 +193,49 @@ def test_feedback_keeps_only_quotes_found_in_the_essay_and_computes_offsets():
             assert ESSAY[ev.start:ev.end] == ev.quote
     assert fb.criteria["CC"].evidence[0].para == 2
     assert [e.type for e in fb.errors] == ["collocation", "linking"]
-    assert fb.dropped_quotes == 1  # the invented error quote
+    assert fb.unverifiable == 1  # the invented error quote
     assert paragraph_of(ESSAY, ESSAY.index("Another problem")) == 3
     assert fb.checks["position_in_introduction"] is False
+
+
+def test_a_quote_spanning_a_paragraph_break_is_not_a_quote():
+    text = "The first paragraph ends here.\n\nThe second one starts here."
+    assert locate_quote(text, "ends here. The second one") is None
+    assert locate_quote(text, "The second one") == (text.index("The second"),
+                                                    text.index(" starts"))
+
+
+def test_bare_number_verdicts_are_dropped_as_unverifiable():
+    reply = feedback_reply(invented_error=False, verdicts={"TR": "6.5", "CC": "Band 6"})
+    fb = build_feedback(json.loads(reply), ESSAY)
+    assert fb.criteria["TR"].verdict == "" and fb.criteria["CC"].verdict == ""
+    assert fb.criteria["LR"].verdict == "LR verdict" and fb.unverifiable == 2
+
+
+@pytest.mark.parametrize(
+    "feedback",
+    [feedback_reply(), feedback_reply(invented_error=False, verdicts={"GRA": "5.5"})],
+    ids=["invented quote", "bare-number verdict"],
+)
+async def test_a_report_with_unverifiable_feedback_is_partial(feedback: str):
+    completer = Scripted([grade_reply(6, 6, 6, 6)], feedback)
+    report = await mark_essay(PROMPT, ESSAY, completer=completer, samples=1, calibration=UNCAL)
+    assert all(c.evidence for c in report.criteria)
+    assert report.feedback_status == "partial" and check_report(report, ESSAY) == []
+
+
+async def test_the_mechanical_checks_catch_cross_paragraph_quotes_and_bare_verdicts():
+    completer = Scripted([grade_reply(6, 6, 6, 6)], feedback_reply(invented_error=False))
+    report = await mark_essay(PROMPT, ESSAY, completer=completer, samples=1, calibration=UNCAL)
+    assert check_report(report, ESSAY) == []
+    ev = report.criteria[0].evidence[0]
+    brk = ESSAY.index("\n\n")
+    ev.start, ev.end = brk - 12, brk + 8
+    ev.quote, ev.para = ESSAY[ev.start:ev.end], paragraph_of(ESSAY, ev.start)
+    report.criteria[1].verdict = "6"
+    problems = check_report(report, ESSAY)
+    assert any("not within its paragraph" in p for p in problems)
+    assert any("bare number" in p for p in problems)
 
 
 async def test_feedback_retries_once_when_a_criterion_has_no_verified_evidence():
@@ -204,7 +256,7 @@ async def test_feedback_retries_once_when_a_criterion_has_no_verified_evidence()
 
 async def test_full_report_passes_the_mechanical_checks():
     completer = Scripted([grade_reply(6, 6.5, 5.5, 5.5), grade_reply(6.5, 6.5, 5.5, 5.5),
-                          grade_reply(6, 6, 6, 5.5)])
+                          grade_reply(6, 6, 6, 5.5)], feedback_reply(invented_error=False))
     report = await mark_essay(
         PROMPT, ESSAY, completer=completer, samples=3, calibration=UNCAL,
         timing=Timing(allowed_s=2400, used_s=2000, late=False),

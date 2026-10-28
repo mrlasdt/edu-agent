@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { IeltsMock } from "../IeltsMock";
 import { ApiError } from "../api";
 import { attempt, report } from "./fixtures";
@@ -34,6 +34,21 @@ describe("IeltsMock", () => {
     api.saveDraft.mockResolvedValue(attempt());
   });
   afterEach(() => vi.clearAllMocks());
+
+  it("frames every earlier band as an estimate under the fixed disclaimer", async () => {
+    api.listAttempts.mockResolvedValue([
+      attempt({ id: "a1", status: "graded", overall: 6.5 }),
+      attempt({ id: "a2", status: "graded", overall: 5.0 }),
+    ]);
+    render(<IeltsMock />);
+    await settle();
+    const history = screen.getByRole("region", { name: "Earlier attempts" });
+    expect(history).toHaveTextContent("Estimated band, not an official IELTS score.");
+    expect(within(history).getAllByText(/^Estimated band \d\.\d$/).map((e) => e.textContent)).toEqual([
+      "Estimated band 6.5",
+      "Estimated band 5.0",
+    ]);
+  });
 
   it("offers the eight questions with their essay types", async () => {
     render(<IeltsMock />);

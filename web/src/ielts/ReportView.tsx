@@ -176,7 +176,8 @@ export function ReportView({ report, essay, onAnother }: Props) {
 
       {report.vs_previous_attempt && (
         <p className="ielts-delta">
-          Compared with your last marked attempt: overall {signed(report.vs_previous_attempt.overall_delta)}
+          Change in estimated band since your last marked attempt: overall{" "}
+          {signed(report.vs_previous_attempt.overall_delta)}
           {Object.entries(report.vs_previous_attempt.criteria_deltas).map(([k, v]) => (
             <span key={k}>
               {" "}

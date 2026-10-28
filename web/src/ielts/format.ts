@@ -1,5 +1,5 @@
 export function countWords(text: string): number {
-  return text.match(/\S+/g)?.length ?? 0;
+  return text.match(/[A-Za-z0-9][A-Za-z0-9'’-]*/g)?.length ?? 0;
 }
 
 export function clock(seconds: number): string {

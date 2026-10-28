@@ -67,13 +67,33 @@ async def test_pool_is_shuffled_blind_and_the_key_is_separate(tmp_path: Path):
     assert [k["origin"] for k in key] != ["llm_draft"] * 9 + ["teacher_graded"] * 2
 
 
-def test_rebuilding_never_overwrites_the_owners_scores(tmp_path: Path):
+async def test_rebuilding_a_scored_pool_is_refused_and_changes_nothing(tmp_path: Path):
+    blind_pool.build_pool(tmp_path, [], [teacher(1), teacher(2)])
+    fill(tmp_path, {0: ("6", "6", "6", "6")})
+    before = {p.name: p.read_text() for p in tmp_path.iterdir()}
+
+    async def other_essay(messages: list[dict[str, str]]) -> str:
+        return "A different drafted essay on the question. " * 20
+
+    drafts = await blind_pool.draft_essays(PROMPTS, 2, other_essay)
+    with pytest.raises(blind_pool.PoolAlreadyScoredError):
+        blind_pool.build_pool(tmp_path, drafts, [teacher(1), teacher(2)])
+    assert {p.name: p.read_text() for p in tmp_path.iterdir()} == before
+    items, _ = blind_pool.import_scores(tmp_path, "d")
+    essays = {json.loads(x)["id"]: json.loads(x)["essay"]
+              for x in (tmp_path / blind_pool.ESSAYS_JSONL).read_text().splitlines()}
+    assert [i.response for i in items] == [essays[i.id.removeprefix("ielts_blind_")]
+                                           for i in items]
+    assert len(items) == 1 and str(items[0].response).startswith("Teacher essay")
+
+
+def test_rebuilding_an_unscored_pool_gives_a_sheet_for_the_new_essays(tmp_path: Path):
     blind_pool.build_pool(tmp_path, [], [teacher(1)])
-    sheet = tmp_path / blind_pool.SCORE_SHEET
-    sheet.write_text(sheet.read_text().replace(",,,,", ",6,6,6,6", 1))
-    before = sheet.read_text()
-    blind_pool.build_pool(tmp_path, [], [teacher(1)])
-    assert sheet.read_text() == before
+    blind_pool.build_pool(tmp_path, [], [teacher(i) for i in range(3)])
+    sheet_ids = [r["id"] for r in csv.DictReader((tmp_path / blind_pool.SCORE_SHEET).open())]
+    pool_ids = [json.loads(x)["id"] for x in (tmp_path / blind_pool.ESSAYS_JSONL).read_text()
+                .splitlines()]
+    assert sheet_ids == pool_ids and len(pool_ids) == 3
 
 
 def fill(tmp_path: Path, scores: dict[int, tuple[str, str, str, str]]) -> None:

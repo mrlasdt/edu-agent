@@ -50,7 +50,9 @@ describe("ReportView", () => {
       "State your position early"
     );
     expect(screen.getByText(/well under the 250-word minimum/)).toBeInTheDocument();
-    expect(screen.getByText(/overall \+0.5/)).toBeInTheDocument();
+    expect(screen.getByText(/overall \+0.5/)).toHaveTextContent(
+      "Change in estimated band since your last marked attempt: overall +0.5",
+    );
     expect(screen.getByText("at least 250 words")).toBeInTheDocument();
     expect(screen.getByText(/not assessed/)).toBeInTheDocument();
   });

@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from services.agent.src.agent.ielts import llm
+from services.agent.src.agent.ielts.checks import words
 from services.gateway.src.gateway import ielts_api
 from services.gateway.src.gateway.ielts_store import (
     ALLOWED_S,
@@ -92,8 +93,10 @@ def test_submit_is_idempotent_and_late_after_the_grace_window(store: AttemptStor
     assert store.submit(on_time.id, "changed").final_text == "essay"
 
     late = store.start(store.create("p1", "P").id)
+    store.save_draft(late.id, "saved words")
     clock.now += ALLOWED_S + GRACE_S + 1
-    assert store.submit(late.id, "late essay").late
+    submitted = store.submit(late.id, "saved words and words written after time was up")
+    assert submitted.late and submitted.final_text == "saved words"
 
 
 def test_a_created_attempt_cannot_be_saved_or_submitted(store: AttemptStore):
@@ -156,16 +159,20 @@ def test_full_flow_start_autosave_resume_submit_report(
     assert report["criteria"][0]["evidence"][0]["quote"] in ESSAY
 
 
-def test_a_late_submission_is_accepted_marked_late_and_reported_as_such(
+def test_a_late_submission_marks_the_last_autosave_and_is_reported_as_late(
     client: TestClient, clock: Clock
 ):
     attempt_id = new_attempt(client)
     client.post(f"/ielts/attempts/{attempt_id}/start")
+    client.put(f"/ielts/attempts/{attempt_id}/draft", json={"text": ESSAY})
     clock.now += ALLOWED_S + GRACE_S + 5
     assert client.put(f"/ielts/attempts/{attempt_id}/draft", json={"text": "x"}).status_code == 409
-    client.post(f"/ielts/attempts/{attempt_id}/submit", json={"text": ESSAY})
+    late_text = ESSAY + "\n\nA paragraph written after time was up."
+    submitted = client.post(f"/ielts/attempts/{attempt_id}/submit", json={"text": late_text})
+    assert submitted.json()["draft"] == ESSAY
     report = client.get(f"/ielts/attempts/{attempt_id}/report").json()
     assert report["timing"]["late"] is True
+    assert report["word_count"] == len(words(ESSAY))
 
 
 def test_submitting_twice_marks_once(client: TestClient, completer: Scripted):

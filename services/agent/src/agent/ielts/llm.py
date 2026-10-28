@@ -1,9 +1,10 @@
 """
 Model access for the IELTS mock, behind one seam.
 
-`Completer` is what the grader and the feedback generator call. The production completer walks
-a model chain through litellm; the eval harness passes its own that calls `litellm.acompletion`
-directly so the metered transport (budget ledger, fallbacks, cache) sits underneath unchanged.
+`Completer` is what the grader and the feedback generator call. The production completer calls
+the role's model from the model config through litellm; the eval harness passes its own that
+calls `litellm.acompletion` directly so the metered transport (budget ledger, fallbacks, cache)
+sits underneath unchanged.
 """
 from __future__ import annotations
 
@@ -24,7 +25,7 @@ _SECRET = re.compile(r"(sk-[\w-]{8,}|Bearer\s+\S+)", re.I)
 
 
 class ModelUnavailableError(RuntimeError):
-    """Every model in the chain failed for a call."""
+    """The model failed or returned nothing for a call."""
 
 
 class Completer(Protocol):
@@ -47,37 +48,30 @@ def role_temperature(role: str) -> float:
     return load_model_config(get_settings().model_config_path).role(role).temperature
 
 
-def model_chain(role: str) -> list[str]:
-    """`IELTS_MODEL_CHAIN` (comma separated litellm strings) overrides the role's model."""
-    override = [m.strip() for m in get_settings().ielts_model_chain.split(",") if m.strip()]
-    if override:
-        return override
-    return [load_model_config(get_settings().model_config_path).litellm_model(role)]
+def role_model(role: str) -> str:
+    return load_model_config(get_settings().model_config_path).litellm_model(role)
 
 
 class LiteLLMCompleter:
-    """Try each model of the role's chain in order; the first non-empty reply wins."""
+    """Call the role's model; a provider failure or an empty reply is `ModelUnavailableError`."""
 
     async def __call__(
         self, role: str, messages: list[dict[str, str]], *, temperature: float, max_tokens: int,
         trace_id: str = "", prompt_version: str = "",
     ) -> str:
-        failures: list[str] = []
+        model = role_model(role)
         extra: dict[str, Any] = (
             build_llm_metadata(trace_id, prompt_version or "v1") if trace_id else {}
         )
-        for model in model_chain(role):
-            try:
-                response = await litellm.acompletion(
-                    model=model, messages=messages, temperature=temperature,
-                    max_tokens=max_tokens, stream=False, **extra,
-                )
-                text = str(response.choices[0].message.content or "")
-            except Exception as exc:  # noqa: BLE001 - any provider failure moves to the next model
-                reason = _SECRET.sub("[redacted]", " ".join(str(exc).split()))[:120]
-                failures.append(f"{model}: {type(exc).__name__}: {reason}")
-                continue
-            if text.strip():
-                return text
-            failures.append(f"{model}: empty reply")
-        raise ModelUnavailableError("; ".join(failures))
+        try:
+            response = await litellm.acompletion(
+                model=model, messages=messages, temperature=temperature,
+                max_tokens=max_tokens, stream=False, **extra,
+            )
+            text = str(response.choices[0].message.content or "")
+        except Exception as exc:  # noqa: BLE001 - any provider failure is an unavailable model
+            reason = _SECRET.sub("[redacted]", " ".join(str(exc).split()))[:120]
+            raise ModelUnavailableError(f"{model}: {type(exc).__name__}: {reason}") from exc
+        if not text.strip():
+            raise ModelUnavailableError(f"{model}: empty reply")
+        return text

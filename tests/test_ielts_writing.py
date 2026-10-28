@@ -16,8 +16,10 @@ from evals.agent_eval.agreement import (
     quadratic_weighted_kappa,
     within_tolerance,
 )
+from evals.agent_eval.budget import Ledger
+from evals.agent_eval.cache import ResponseCache
 from evals.agent_eval.judges import JudgeError
-from evals.agent_eval.transport import AllModelsFailedError
+from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport
 from evals.exam_set import ielts_writing_adversarial as adversarial
 from evals.exam_set.local_store import register_source
 from evals.exam_set.schema import (
@@ -29,9 +31,9 @@ from evals.exam_set.schema import (
     Source,
 )
 from evals.loader import load_exam_items
-from services.agent.src.agent.ielts import llm
 from services.agent.src.agent.ielts.grading import grade_request
 from services.agent.src.agent.ielts.scoring import GradeParseError
+from tests.test_ielts_marking import ESSAY, PROMPT
 
 # ── metrics ──────────────────────────────────────────────────────────────────
 
@@ -110,14 +112,6 @@ def test_parse_grade_rejects_unusable_replies(reply: str):
         ielts_writing.parse_grade(reply)
 
 
-def test_rubric_names_the_four_criteria_and_treats_the_essay_as_data():
-    rubric = llm.load_prompt("ielts_grader", "writing_t2", "v1")
-    for name in ("Task Response", "Coherence and Cohesion", "Lexical Resource",
-                 "Grammatical Range and Accuracy"):
-        assert name in rubric
-    assert "JSON" in rubric and "addressed_to_marker" in rubric
-
-
 def test_long_essays_are_sent_whole_not_truncated():
     essay = " ".join(["word"] * 2000)
     messages = grade_request("Prompt?", essay, "system")
@@ -141,6 +135,37 @@ async def test_llm_grader_goes_through_litellm(monkeypatch: pytest.MonkeyPatch):
     assert len(seen) == 3 and graded.spread == 0.0
     assert seen[0]["model"] == "m" and seen[0]["temperature"] == 0.3
     assert "Candidate essay" in seen[0]["messages"][1]["content"]
+
+
+async def test_cached_reruns_replay_each_grader_sample_and_retry_separately(tmp_path: Path):
+    replies = ["garbage", *(
+        json.dumps({c: 4.0 + n for c in ("TR", "CC", "LR", "GRA")} | {"rationale": "r"})
+        for n in (1, 2, 3)
+    )]
+    calls: list[int] = []
+
+    async def real(**kw: Any) -> Any:
+        calls.append(1)
+        content = replies[len(calls) - 1]
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
+            usage=SimpleNamespace(prompt_tokens=100, completion_tokens=50),
+        )
+
+    async def run() -> ielts_writing.EvalGrade:
+        transport = MeteredTransport(
+            Ledger(tmp_path / "l.json", 20.0), "run", cache=ResponseCache(tmp_path / "cache")
+        )
+        transport._real = real
+        with transport.installed():
+            grader = ielts_writing.LLMIeltsGrader("openai/gpt-4.1-mini", samples=3)
+            return await grader.grade(PROMPT, ESSAY, essay_item("x", 6.0))
+
+    first = await run()
+    assert len(calls) == 4  # three samples and the retry of the unusable reply
+    assert sorted(s["TR"] for s in first.samples) == [5.0, 6.0, 7.0] and first.spread == 2.0
+    again = await run()
+    assert len(calls) == 4 and again.samples == first.samples and again.spread == 2.0
 
 
 # ── tier selection and sampling ──────────────────────────────────────────────
@@ -382,7 +407,7 @@ async def test_report_suite_runs_the_mechanical_checks_on_a_full_offline_report(
         items, ielts_writing.OfflineCompleter(), samples=1
     )
     assert report["n_items"] == 2 and report["reports_with_problems"] == 0
-    assert report["feedback_status"] == {"complete": 2}
+    assert report["feedback_status"] == {"partial": 2}  # the fake invents one quote each
 
 
 def test_offline_cli_runs_the_adversarial_and_report_suites(

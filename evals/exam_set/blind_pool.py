@@ -120,10 +120,29 @@ def _opaque_id(seed: str, index: int) -> str:
     return "b" + hashlib.sha256(f"{seed}:{index}".encode()).hexdigest()[:7]
 
 
+class PoolAlreadyScoredError(RuntimeError):
+    pass
+
+
+def ensure_unscored(out_dir: Path) -> None:
+    """A rebuild reuses ids for new essays, so it must never happen once scoring has begun."""
+    sheet = out_dir / SCORE_SHEET
+    if not sheet.exists():
+        return
+    with sheet.open(newline="") as f:
+        if any(any((v or "").strip() for k, v in row.items() if k != "id")
+               for row in csv.DictReader(f)):
+            raise PoolAlreadyScoredError(
+                f"{sheet} already has scores; rebuilding would pair them with new essays."
+                " Import them first, then move the folder aside to build a new pool."
+            )
+
+
 def build_pool(
     out_dir: Path, drafts: Sequence[Draft], teacher_items: Sequence[ExamItem], *, seed: int = 42
 ) -> dict[str, int]:
     """Write the shuffled blind pool: essays (md + jsonl), the key, and an empty score sheet."""
+    ensure_unscored(out_dir)
     entries: list[tuple[str, str, dict[str, object]]] = []
     for d in drafts:
         entries.append((d.prompt, d.essay, {
@@ -142,12 +161,10 @@ def build_pool(
     (out_dir / KEY_FILE).write_text("".join(
         json.dumps({"id": i, **k}) + "\n" for i, _, _, k in rows))
     (out_dir / ESSAYS_MD).write_text(_render_markdown(rows))
-    sheet = out_dir / SCORE_SHEET
-    if not sheet.exists():  # never overwrite the owner's scores
-        with sheet.open("w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["id", *CRITERIA, "notes"])
-            writer.writerows([[i, "", "", "", "", ""] for i, *_ in rows])
+    with (out_dir / SCORE_SHEET).open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["id", *CRITERIA, "notes"])
+        writer.writerows([[i, "", "", "", "", ""] for i, *_ in rows])
     return {"essays": len(rows), "llm_drafts": len(drafts), "teacher_graded": len(teacher_items)}
 
 

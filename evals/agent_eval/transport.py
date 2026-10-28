@@ -39,7 +39,7 @@ current_tag: contextvars.ContextVar[str] = contextvars.ContextVar("eval_tag", de
 
 DEFAULT_MAX_TOKENS = 800
 _RATE_LIMIT_RETRIES = 3
-_DROPPED_KWARGS = ("stream_options", "max_tokens")
+_DROPPED_KWARGS = ("stream_options", "max_tokens", "cache_slot")
 _RATE_LIMIT_BACKOFF_S = 15.0
 _REASON_MAX_CHARS = 200
 # A provider quota that resets on a calendar boundary (e.g. OpenRouter's
@@ -136,11 +136,13 @@ class MeteredTransport:
                 errors.append(f"{candidate}: skipped (daily quota exhausted earlier in this run)")
                 continue
             max_tokens = kw.get("max_tokens", self.max_tokens)
+            slot = kw.get("cache_slot", 0)
             key = cache_key(
                 model=candidate,
                 messages=messages,
                 temperature=kw.get("temperature"),
                 max_tokens=max_tokens,
+                **({"slot": slot} if slot else {}),
             )
             hit = self.cache.get(key) if self.cache else None
             if hit is not None:

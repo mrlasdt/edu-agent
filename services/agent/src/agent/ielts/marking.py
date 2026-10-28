@@ -117,7 +117,8 @@ def _task_checks(outcome: GradeOutcome, feedback: Feedback | None) -> list[TaskC
 def _feedback_status(feedback: Feedback | None) -> str:
     if feedback is None:
         return "unavailable"
-    return "complete" if all(c.evidence for c in feedback.criteria.values()) else "partial"
+    complete = not feedback.unverifiable and all(c.evidence for c in feedback.criteria.values())
+    return "complete" if complete else "partial"
 
 
 def ungraded_report(
@@ -170,7 +171,7 @@ async def mark_essay(
         feedback_status=_feedback_status(feedback),  # type: ignore[arg-type]
         vs_previous_attempt=delta,
         prompt_versions=ModelInfo(
-            grader_models=llm.model_chain(llm.GRADER_ROLE),
+            grader_models=[llm.role_model(llm.GRADER_ROLE)],
             grader_prompt=llm.prompt_version(llm.GRADER_ROLE),
             feedback_prompt=llm.prompt_version(llm.FEEDBACK_ROLE),
         ),
