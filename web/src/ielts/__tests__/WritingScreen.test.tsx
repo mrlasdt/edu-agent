@@ -31,6 +31,13 @@ describe("WritingScreen", () => {
     expect(screen.getByRole("timer")).toHaveTextContent("08:59");
   });
 
+  it("stops accepting keystrokes once time is up", async () => {
+    render(<WritingScreen attempt={attempt({ remaining_s: 3 })} initialText="" onSubmitted={vi.fn()} />);
+    expect(screen.getByLabelText("Your essay")).not.toHaveAttribute("readonly");
+    await act(async () => void vi.advanceTimersByTime(3_100));
+    expect(screen.getByLabelText("Your essay")).toHaveAttribute("readonly");
+  });
+
   it("warns in the last five minutes", () => {
     render(<WritingScreen attempt={attempt({ remaining_s: 240 })} initialText="" onSubmitted={vi.fn()} />);
     expect(screen.getByRole("timer")).toHaveTextContent("wrap up");

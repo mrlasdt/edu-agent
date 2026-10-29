@@ -17,6 +17,7 @@ import csv
 import hashlib
 import json
 import random
+import secrets
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -116,8 +117,8 @@ async def draft_essays(
     return drafts
 
 
-def _opaque_id(seed: str, index: int) -> str:
-    return "b" + hashlib.sha256(f"{seed}:{index}".encode()).hexdigest()[:7]
+def _opaque_id(pool_id: str, index: int) -> str:
+    return "b" + hashlib.sha256(f"{pool_id}:{index}".encode()).hexdigest()[:9]
 
 
 class PoolAlreadyScoredError(RuntimeError):
@@ -139,9 +140,19 @@ def ensure_unscored(out_dir: Path) -> None:
 
 
 def build_pool(
-    out_dir: Path, drafts: Sequence[Draft], teacher_items: Sequence[ExamItem], *, seed: int = 42
+    out_dir: Path,
+    drafts: Sequence[Draft],
+    teacher_items: Sequence[ExamItem],
+    *,
+    seed: int = 42,
+    pool_id: str | None = None,
 ) -> dict[str, int]:
-    """Write the shuffled blind pool: essays (md + jsonl), the key, and an empty score sheet."""
+    """
+    Write the shuffled blind pool: essays (md + jsonl), the key, and an empty score sheet.
+
+    Ids are unique per pool (`pool_id` defaults to a fresh random token), so scores imported
+    from an earlier pool are never overwritten or mispaired by a later one.
+    """
     ensure_unscored(out_dir)
     entries: list[tuple[str, str, dict[str, object]]] = []
     for d in drafts:
@@ -155,7 +166,8 @@ def build_pool(
     random.Random(seed).shuffle(entries)
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    rows = [(_opaque_id(str(seed), i), p, e, k) for i, (p, e, k) in enumerate(entries)]
+    pool_id = pool_id or secrets.token_hex(4)
+    rows = [(_opaque_id(pool_id, i), p, e, k) for i, (p, e, k) in enumerate(entries)]
     (out_dir / ESSAYS_JSONL).write_text("".join(
         json.dumps({"id": i, "prompt": p, "essay": e}) + "\n" for i, p, e, _ in rows))
     (out_dir / KEY_FILE).write_text("".join(

@@ -117,7 +117,7 @@ export function WritingScreen({ attempt, initialText, onSubmitted, autosaveMs }:
         aria-label="Your essay"
         value={text}
         onChange={(e) => setText(e.target.value)}
-        readOnly={submitting}
+        readOnly={submitting || countdown.left <= 0}
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"

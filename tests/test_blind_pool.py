@@ -130,3 +130,30 @@ def test_import_rejects_partial_rows_and_non_half_bands(tmp_path: Path):
     fill(tmp_path, {0: ("6", "ten", "6", "6")})
     with pytest.raises(blind_pool.ScoreSheetError, match="not a number"):
         blind_pool.import_scores(tmp_path, "d")
+
+
+def test_two_pools_never_share_ids_even_with_the_same_seed(tmp_path: Path):
+    first, second = tmp_path / "a", tmp_path / "b"
+    blind_pool.build_pool(first, [], [teacher(i) for i in range(5)])
+    blind_pool.build_pool(second, [], [teacher(i) for i in range(5)])
+
+    def ids(d: Path) -> set[str]:
+        return {json.loads(x)["id"] for x in (d / blind_pool.ESSAYS_JSONL).read_text()
+                .splitlines()}
+
+    assert not ids(first) & ids(second)
+
+
+def test_importing_a_second_pool_keeps_the_first_pools_scores(tmp_path: Path, capsys):
+    from evals.exam_set.__main__ import main
+    from evals.exam_set.local_store import read_items
+
+    local = tmp_path / "local"
+    argv = ["--local-dir", str(local), "import-blind-scores"]
+    for name in ("one", "two"):
+        pool = tmp_path / name
+        blind_pool.build_pool(pool, [], [teacher(1)])
+        fill(pool, {0: ("6", "6", "6", "6")})
+        assert main([*argv, "--blind-dir", str(pool)]) == 0
+    imported = read_items(local / blind_pool.IMPORTED_FILE)
+    assert len(imported) == 2 and len({i.id for i in imported}) == 2

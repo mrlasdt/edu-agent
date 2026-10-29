@@ -35,7 +35,7 @@ from evals.exam_set import (
     sat_math,
 )
 from evals.exam_set.importers import cambridge, ieltsbuddy, writing9
-from evals.exam_set.local_store import load_manifest, local_dir, write_items
+from evals.exam_set.local_store import load_manifest, local_dir, read_items, write_items
 from evals.loader import load_exam_items
 
 GOLDEN_DIR = Path(__file__).resolve().parents[1] / "golden"
@@ -120,8 +120,12 @@ def main(argv: list[str] | None = None) -> int:
         except blind_pool.ScoreSheetError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
-        write_items(directory / blind_pool.IMPORTED_FILE, scored)
-        print(json.dumps({"scored": len(scored), "still_empty": empty,
+        imported = directory / blind_pool.IMPORTED_FILE
+        fresh = {i.id for i in scored}
+        kept = [i for i in read_items(imported) if i.id not in fresh] if imported.exists() else []
+        write_items(imported, [*kept, *scored])
+        print(json.dumps({"scored": len(scored), "kept_from_earlier_pools": len(kept),
+                          "still_empty": empty,
                           "file": str(directory / blind_pool.IMPORTED_FILE)}))
     elif args.cmd == "manifest":
         print(json.dumps(load_manifest(directory), indent=2))
