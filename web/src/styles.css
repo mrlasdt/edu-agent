@@ -101,7 +101,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .ielts-prompt-text { line-height: 1.45; }
 .ielts-history button { flex-direction: row; align-items: baseline; gap: 12px; }
 .ielts-history-band { font-weight: 700; white-space: nowrap; }
-.ielts-history-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ielts-history { grid-template-columns: minmax(0, 1fr); }
+.ielts-history-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .ielts-ready, .ielts-marking { padding-top: 12px; }
 .ielts-prompt-quote { margin: 0 0 16px; padding: 12px 16px; border-left: 4px solid var(--accent); background: var(--surface); border-radius: 0 8px 8px 0; line-height: 1.5; }

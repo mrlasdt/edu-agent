@@ -186,3 +186,27 @@ test("time running out submits the essay by itself", async ({ page }) => {
   await expect.poll(() => server.status).not.toBe("in_progress");
   expect(server.draft).toBe(`${ESSAY} More words.`);
 });
+
+test("a long prompt in Earlier attempts is truncated, not scrolled sideways", async ({ page }) => {
+  await mockGateway(page);
+  const earlier = {
+    id: "att0",
+    prompt_id: PROMPTS[1].id,
+    prompt: "Some people think that governments should spend money on public transport rather than roads. ".repeat(4),
+    status: "graded",
+    overall: 6.5,
+  };
+  await page.route(/\/ielts\/attempts$/, (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({ contentType: "application/json", body: JSON.stringify([earlier]) })
+      : route.fallback(),
+  );
+
+  for (const width of [1200, 390]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/ielts-mock");
+    await expect(page.getByRole("region", { name: "Earlier attempts" })).toContainText("Estimated band 6.5");
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow, `page scrolls sideways at ${width} px`).toBeLessThanOrEqual(0);
+  }
+});
