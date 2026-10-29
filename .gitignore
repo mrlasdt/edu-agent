@@ -32,7 +32,7 @@ build/
 # Third-party golden-set data (scraped / copyrighted text): local only, never commit
 evals/golden/local/
 
-# IELTS-style mock: attempts database (essays and reports), the blind-scoring essay pool and
+# IELTS mock: attempts database (essays and reports), the blind-scoring essay pool and
 # any local content packs. Personal data and third-party material: local only, never commit
 ielts-local/
 

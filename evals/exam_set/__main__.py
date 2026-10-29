@@ -8,7 +8,7 @@ Golden-set extension CLI.
   python -m evals.exam_set import-writing9 --limit 1200     # into evals/golden/local/
   python -m evals.exam_set import-cambridge --dir <folder>  # own book files, local OCR
   python -m evals.exam_set import-ieltsbuddy                # instructor-commented essays (polite)
-  python -m evals.exam_set build-blind-pool --drafts 41     # needs a key; into ielts-local/blind/
+  python -m evals.exam_set build-blind-pool                 # needs a key; into ielts-local/blind/
   python -m evals.exam_set import-blind-scores              # owner's scores.csv -> captain_blind
   python -m evals.exam_set manifest                         # print the local manifest
   python -m evals.exam_set summary                          # counts by exam, skill and tier

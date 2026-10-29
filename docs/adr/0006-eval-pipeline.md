@@ -26,7 +26,7 @@ Accepted.
 
 ## Amendment: agent-in-the-loop eval (implemented)
 
-The first implementation graded the golden answer against itself (Quant) and scored stored essays (AW), so it never exercised the agent. `evals/agent_eval/` now runs the real agent and judges its output; see the README "Eval pipeline" section for what is and is not measured. Spend is enforced by a persisted cumulative ledger (20 USD ceiling, checked before every call) rather than a per-run kill switch. Providers are free OpenRouter models first with OpenAI as an explicit fallback; the judge interface is typed (yes/no, score) so the optional jev decision model fits behind it. The Sonnet/Haiku judge tiers and the 24-prompt/150-item golden sets described above remain targets, not current state.
+The first implementation graded the golden answer against itself (Quant) and scored stored essays (AW), so it never exercised the agent. `evals/agent_eval/` now runs the real agent and judges its output; see the README "Eval pipeline" section for what is and is not measured. Spend is enforced by a persisted cumulative ledger (ceiling `AI_SPEND_CAP_USD`, shared with the IELTS mock per ADR-0014; checked before every call) rather than a per-run kill switch. Providers are free OpenRouter models first with OpenAI as an explicit fallback; the judge interface is typed (yes/no, score) so the optional jev decision model fits behind it. The Sonnet/Haiku judge tiers and the 24-prompt/150-item golden sets described above remain targets, not current state.
 
 ## Amendment: generation target
 
