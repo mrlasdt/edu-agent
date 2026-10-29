@@ -13,6 +13,7 @@ COPY services/agent/ services/agent/
 COPY shared/ shared/
 COPY config/ config/
 COPY prompts/ prompts/
+COPY evals/golden/ielts_writing_prompts.jsonl evals/golden/ielts_writing_prompts.jsonl
 ENV PYTHONPATH=/app PATH="/app/.venv/bin:$PATH"
 USER appuser
 EXPOSE 8000

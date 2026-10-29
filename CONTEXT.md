@@ -142,6 +142,28 @@ _Avoid_: Failed turn, math fail
 The estimated 0–6 score that a generated or Candidate-submitted AW essay would receive on the ETS rubric, as judged by an LLM judge calibrated against the public sample essays. Used both at eval time (to score canonical-style output) and at runtime (to give Candidates targeted feedback on their own essays).
 _Avoid_: Essay score, score estimate
 
+## IELTS-style mock
+
+**IELTS-style mock**:
+A timed practice attempt shaped like part of the IELTS exam. Always called "IELTS-style", never an official IELTS test or result. Only Writing Task 2 exists so far (ADR-0014).
+_Avoid_: IELTS test, official mock, IELTS simulator
+
+**Attempt**:
+One candidate's run of a mock on one question: created, started (the server fixes the deadline), autosaved, submitted, then marked. The server's clock decides the deadline and whether a submission is late; the browser only displays it.
+_Avoid_: Session (that is a tutoring conversation), submission
+
+**Estimated band**:
+The IELTS band (0 to 9 in half bands) the mock gives a response, per criterion and overall: the median of several independent marking passes, with caps from deterministic checks. Always shown with the line "Estimated band, not an official IELTS score." and as an **uncalibrated estimate** until the calibration gate passes.
+_Avoid_: Score, predicted band, IELTS score
+
+**Calibration gate**:
+The thresholds in ADR-0014 an estimate must meet against a labelled set (size, label tier, agreement, bias, slope, retest stability) before the UI may call it calibrated. Recorded in `config/ielts_calibration.json`.
+_Avoid_: Accuracy check, validation
+
+**Blind pool**:
+Essays shuffled under opaque ids, kept in the gitignored `ielts-local/blind/`, that the owner scores before seeing any grader output. The scores become `captain_blind` golden items.
+_Avoid_: Test set, answer key
+
 ## Eval
 
 **Golden set**:

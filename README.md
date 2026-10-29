@@ -11,7 +11,7 @@ cp .env.example .env   # then fill in OPENAI_API_KEY
 docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 498 Python tests (mocked LLM and Qdrant) plus 62 frontend unit tests, and `npm run test:e2e` is a browser smoke test with `/chat` mocked.
+That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 581 Python tests (mocked LLM and Qdrant) plus 95 frontend unit tests, and `npm run test:e2e` runs browser smoke tests with `/chat` and the `/ielts` API mocked.
 
 A recorded live check (screenshot and streamed transcript) is in [docs/mvp-demo](docs/mvp-demo/README.md).
 
@@ -176,10 +176,10 @@ Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`). To use anothe
 ### 4. Run tests
 
 ```bash
-# Python tests (498)
+# Python tests (581)
 uv run pytest tests/ -q
 
-# Frontend tests (62)
+# Frontend tests (95)
 cd web && npm test
 
 # Eval pipeline check (offline fake model, no network, no keys); includes the generation suite
@@ -212,6 +212,35 @@ curl -F "file=@path/to/notes.txt" \
      -F "test_type=gre" -F "tier=global" \
      http://localhost:8003/admin/documents
 ```
+
+## IELTS-style Writing mock
+
+A first slice of IELTS preparation: take a Writing Task 2 mock under a 40-minute clock and get an **estimated band** for each of the four criteria with examiner-style feedback. Design, calibration gates and limits are in ADR-0014. This is an IELTS-style mock, not an official test, and every band it shows carries the line **"Estimated band, not an official IELTS score."**
+
+```bash
+mkdir -p ielts-local            # attempts are stored here (SQLite, gitignored)
+docker compose -f infra/docker-compose.yml up --build -d    # needs OPENAI_API_KEY in .env, as for the tutor
+open http://localhost:5173/ielts-mock                         # or the "IELTS-style Writing mock" link on the start page
+```
+
+Without Docker, run the gateway (`uv run uvicorn services.gateway.src.gateway.main:app --port 8000`, with `OPENAI_API_KEY` in the environment) and `cd web && npm run dev`, then open http://localhost:5173/ielts-mock. The mock does not need Qdrant, the embedder or the other services.
+
+What happens: pick one of 8 original Task 2 questions, press Start (the server starts the 40-minute clock; refreshing the page does not reset it), write with a live word counter (it autosaves about every 10 seconds and resumes after a refresh), and submit, or let time run out and the essay is submitted for you. Marking takes under a minute: three independent marking passes whose per-criterion median is the band, deterministic checks (length, paragraphs, off-topic or copied text, instructions aimed at the marker), then a written review whose quotes are checked against your essay. The report shows the overall band with a range and a confidence, the four criteria each with evidence from your own text and concrete next steps, an error table, a task checklist, the three things to fix first, and the change since your last attempt.
+
+**What the band can and cannot be trusted for.** It is shown as **"Uncalibrated estimate"** until a labelled set passes the gate in ADR-0014, and that has not happened: there are no examiner-scored essays here. On 19 instructor-graded essays the grader landed within half a band of the instructor 84% of the time with almost no average bias, but it pulls scores toward the middle (calibration slope 0.55; only half of the 7.5+ essays were within half a band, and only two essays were below 5.5), so a very strong essay may read a band or so low. Treat it as a consistent yardstick for tracking your own progress across attempts and for finding weaknesses, not as a prediction of your exam score. Use the criterion feedback and the priorities more than the exact number; a half band either way is normal. The checks cap the band for responses that are too short, off topic, copied from the question, repetitive or that try to instruct the marker, and no estimate is ever above 8.5.
+
+**Measuring it yourself.** The repository can build a blind pool of essays for you to score without seeing the grader's output, then measure the grader against your scores:
+
+```bash
+uv run python -m evals.exam_set build-blind-pool --drafts 41   # needs OPENAI_API_KEY; writes ielts-local/blind/
+# read ielts-local/blind/essays.md, fill in ielts-local/blind/scores.csv (TR CC LR GRA, half bands)
+uv run python -m evals.exam_set import-blind-scores            # your scores become captain_blind golden items (local only)
+uv run python -m evals.agent_eval --mode live --suite ielts_writing --ielts-tier captain_blind --max-items 60
+```
+
+Do not open `ielts-local/blind/key-do-not-open-until-scored.jsonl` or run the grader on the pool until you have finished scoring.
+
+Not in this slice: Reading, Listening, Writing Task 1, Speaking, a full multi-section mock, and tutoring-chat changes. There is no login; it is a single-user local tool.
 
 ## MCP Servers
 
@@ -299,15 +328,17 @@ uv run python -m evals.exam_set summary    # counts by exam, skill, tier
 
 The Cambridge importer extracts Writing tasks with their sample answers, published bands and examiner comments, and writes the extracted text to `evals/golden/local/cambridge_extracted/` so OCR slips can be fixed by hand. **It has only been tested on synthetic text** (no book files were available), and real book layouts vary, so run it on one book and read the extracted text and printed counts before trusting it. Samples with no recoverable band are skipped and counted. Subfolders are searched, and a file that cannot be read (stalled cloud-drive mount, scan without OCR, corrupt PDF) is counted and named in the manifest notes instead of aborting the run. Sources surveyed so far, their tiers and the follow-ups are in `docs/ielts-golden-sources.md`.
 
-**IELTS Writing Task 2 grader target** (`--suite ielts_writing`, opt-in because it needs local data): a model scores each essay on Task Response, Coherence and Cohesion, Lexical Resource and Grammatical Range and Accuracy using an original rubric (official descriptors are not reproduced); the overall band is computed in code from the four. It reports within-0.5 rate, quadratic weighted kappa, exact match, MAE, bias and the same per criterion, against the best tier present (`--ielts-tier` forces one), always with `label_tier`, `label_tier_caveat` and `n_items`.
+**IELTS Writing Task 2 grader target** (`--suite ielts_writing`, opt-in because it needs local data): the production grader from `services/agent/src/agent/ielts/` (ADR-0014) scores each essay three times on Task Response, Coherence and Cohesion, Lexical Resource and Grammatical Range and Accuracy using an original rubric (official descriptors are not reproduced); the median per criterion is taken and the overall band is computed in code from the four. It reports within-0.5 rate, quadratic weighted kappa, exact match, MAE, bias, calibration slope, per-band-bucket agreement, per-criterion agreement and test-retest spread, and prints the development and decision gates from ADR-0014, against the best tier present (`--ielts-tier` forces one), always with `label_tier`, `label_tier_caveat` and `n_items`.
 
 ```bash
 uv run python -m evals.agent_eval --suite ielts_writing                         # dry run: item count and plan
-uv run python -m evals.agent_eval --mode offline --suite ielts_writing           # plumbing only: the fake grader echoes the labels
-uv run python -m evals.agent_eval --mode live --suite ielts_writing --max-items 6 --provider free+openai
+uv run python -m evals.agent_eval --mode offline --suite ielts_writing           # plumbing only: an offline fake grader, no key
+uv run python -m evals.agent_eval --mode offline --suite ielts_adversarial       # 12 injection / off-topic / junk cases: flags raised, no band 9
+uv run python -m evals.agent_eval --mode offline --suite ielts_report            # structural checks on the feedback report
+uv run python -m evals.agent_eval --mode live --suite ielts_writing --samples 3 --provider openai --judge-model openai/gpt-4.1-mini --ielts-tier teacher_graded
 ```
 
-One live smoke run has been made (6 writing9 essays, `--provider free+openai`): the free daily cap was exhausted, all 6 calls fell back to `gpt-4o-mini` (about 0.0012 USD), and against `site_or_model_weak` labels it scored within-0.5 on 4/6 with QWK about -0.12 and a +0.75 band bias. That is n=6 against noisy labels: a plumbing check, not a measurement of the grader. No baseline is checked in.
+**Live results (2026-10-29, grader prompt v1, 3 samples, labels `teacher_graded`, n=19, about 0.07 USD with gpt-4.1-mini):** within-0.5 0.84, bias -0.03, QWK 0.79, but calibration slope 0.55 (it pulls bands toward the middle; the 7.5+ bucket is 0.50). That passes the ADR-0014 *development* gate and fails the *decision* gate, which needs 60 essays labelled by an examiner or the owner blind. The free OpenRouter chain gave within-0.5 0.47 and bias -0.79 on 17 usable essays, so it is for plumbing only. Adversarial: 12 of 12 cases flagged, highest band 5.0. Report structure: 5 of 5 real reports pass. An earlier 6-essay run against weak labels is superseded. No baseline is checked in.
 
 Not done: SAT Reading and Writing, IELTS Speaking, Listening and Task 1 (charts), TOEIC, a captain-scored original essay set, and the EWCCE scripts (CC BY 4.0, checked: 200 scanned handwritten PDFs that need transcription, task type and band spread unknown without downloading them). `chillies/IELTS-writing-task-2-evaluation` was checked and not imported (one free-text band string per row, no per-criterion labels, no stated source or scorer, duplicates).
 
@@ -431,7 +462,7 @@ edu-agent/
 │   └── k8s/                # Phase 2: Deployment + Service manifests
 ├── .github/workflows/    # ci.yml + deploy.yml
 ├── docs/
-│   ├── adr/              # 11 Architectural Decision Records
+│   ├── adr/              # 14 Architectural Decision Records
 │   └── design-log/       # Trade-space analysis behind each ADR
 └── CONTEXT.md            # Domain glossary (canonical vocabulary)
 ```
@@ -449,3 +480,5 @@ All major architectural choices are recorded as ADRs in `docs/adr/`. Highlights:
 | 0007 | LiteLLM abstraction; OpenAI default, Anthropic configurable per role |
 | 0009 | Trunk-based development; k8s; Phase 1 Docker Compose |
 | 0011 | Microservices architecture (monorepo); `AgentRegistry` extensibility seam |
+| 0013 | IELTS and SAT golden sets: label tiers, third-party data stays local |
+| 0014 | IELTS-style Writing mock: `/ielts` attempt API, server clock, calibration gates, estimate framing |

@@ -125,6 +125,24 @@ def test_local_directory_is_gitignored():
     assert done.returncode == 0, "evals/golden/local/ must be gitignored"
 
 
+LOCAL_ONLY_DIRS = ("evals/golden/local", "ielts-local")
+
+
+@pytest.mark.parametrize("directory", LOCAL_ONLY_DIRS)
+def test_local_only_directories_are_ignored_and_hold_nothing_tracked(directory: str):
+    """Third-party essays, the IELTS attempts database and local packs must never be committed."""
+    ignored = subprocess.run(
+        ["git", "-C", str(REPO), "check-ignore", "-q", f"{directory}/anything.jsonl"],
+        check=False,
+    )
+    assert ignored.returncode == 0, f"{directory}/ must be gitignored"
+    tracked = subprocess.run(
+        ["git", "-C", str(REPO), "ls-files", directory],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    assert not tracked, f"files under {directory}/ are tracked: {tracked}"
+
+
 def test_no_third_party_text_in_committed_golden_files():
     committed = [p for p in _GOLDEN_DIR.glob("*.jsonl") if p.stem not in {
         "gre_quant", "gre_aw", "gre_quant_generation"}]
@@ -296,7 +314,7 @@ def test_reading_choice_items_have_a_key_among_the_choices():
 
 
 def test_writing_prompts_are_unscored_and_ignored_by_the_writing_grader():
-    prompts = [i for i in load_exam_items() if i.skill == "writing_t2"]
+    prompts = [i for i in load_exam_items() if i.task_type == "essay_prompt"]
     assert [i.model_dump() for i in prompts] == [
         i.model_dump() for i in ielts_writing_prompts.generate_all()
     ]

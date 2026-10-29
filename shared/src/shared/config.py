@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     math_verifier_url: str = "http://localhost:8090"
     admin_username: str = "admin"
     admin_password: str = "changeme"
+    # IELTS-style mock: attempts database and other local-only files (gitignored), and the
+    # number of grader samples whose per-criterion median is reported.
+    ielts_data_dir: str = "ielts-local"
+    ielts_grader_samples: int = 3
     env: str = "dev"
     model_config_path: str = "config/model_config.dev.yaml"
 

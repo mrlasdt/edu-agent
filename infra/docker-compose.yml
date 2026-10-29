@@ -222,13 +222,23 @@ services:
         condition: service_healthy
     command: ["python", "-m", "services.ingestion.src.ingestion.seed"]
 
+  # The gateway also serves the IELTS-style Writing mock (/ielts/...): attempts are kept in
+  # SQLite under ../ielts-local (gitignored; create it first with `mkdir -p ielts-local` so it
+  # is owned by you), and the eight original prompts are mounted from the golden set.
   gateway:
     build:
       context: ..
       dockerfile: services/gateway/Dockerfile
     env_file: *env-file
     environment: *app-env
-    volumes: *app-src
+    volumes:
+      - ../services:/app/services:ro
+      - ../shared:/app/shared:ro
+      - ../config:/app/config:ro
+      - ../prompts:/app/prompts:ro
+      - ../seed:/app/seed:ro
+      - ../evals/golden/ielts_writing_prompts.jsonl:/app/evals/golden/ielts_writing_prompts.jsonl:ro
+      - ../ielts-local:/app/ielts-local
     ports:
       - "8000:8000"
     depends_on:
@@ -239,7 +249,8 @@ services:
     command: ["uvicorn", "services.gateway.src.gateway.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/services", "--reload-dir", "/app/shared"]
 
   # Static React build behind nginx, which proxies /chat to the gateway with
-  # buffering off so the answer streams token by token.
+  # buffering off so the answer streams token by token, and /ielts/ (JSON) to the gateway.
+  # The Writing mock page is http://localhost:5173/ielts-mock.
   web:
     build:
       context: ..
