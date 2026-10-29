@@ -121,11 +121,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
         imported = directory / blind_pool.IMPORTED_FILE
-        fresh = {i.id for i in scored}
-        kept = [i for i in read_items(imported) if i.id not in fresh] if imported.exists() else []
-        write_items(imported, [*kept, *scored])
-        print(json.dumps({"scored": len(scored), "kept_from_earlier_pools": len(kept),
-                          "still_empty": empty,
+        merged, kept, skipped = blind_pool.merge_imported(
+            read_items(imported) if imported.exists() else [], scored
+        )
+        write_items(imported, merged)
+        print(json.dumps({"scored": len(scored), "kept_from_earlier_pools": kept,
+                          "skipped_duplicates": skipped, "still_empty": empty,
                           "file": str(directory / blind_pool.IMPORTED_FILE)}))
     elif args.cmd == "manifest":
         print(json.dumps(load_manifest(directory), indent=2))

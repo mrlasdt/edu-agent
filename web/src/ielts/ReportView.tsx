@@ -161,7 +161,7 @@ export function ReportView({ report, essay, onAnother }: Props) {
       <p className="ielts-hint ielts-facts">
         {report.word_count} words
         {report.timing && ` - ${clock(report.timing.used_s)} of ${clock(report.timing.allowed_s)} used`}
-        {report.timing?.late && " - submitted after time was up"}
+        {report.timing?.late && " - submitted after time was up, so the last autosave at the deadline was marked"}
       </p>
 
       {flags.length > 0 && (

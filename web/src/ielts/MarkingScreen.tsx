@@ -33,7 +33,7 @@ export function MarkingScreen({ attempt, retrying, onRetry, onBack }: Props) {
         Three independent marking passes and a written review. This usually takes under a minute.
       </p>
       {attempt.late && (
-        <p className="ielts-hint">Submitted after the time limit; the report will say so.</p>
+        <p className="ielts-hint">Submitted after the time limit, so the last autosave at the deadline is being marked.</p>
       )}
     </div>
   );

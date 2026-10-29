@@ -38,6 +38,27 @@ describe("WritingScreen", () => {
     expect(screen.getByLabelText("Your essay")).toHaveAttribute("readonly");
   });
 
+  it("says plainly once time is up that the last autosave at the deadline is what gets marked", async () => {
+    render(<WritingScreen attempt={attempt({ remaining_s: 3 })} initialText="" onSubmitted={vi.fn()} />);
+    expect(screen.queryByText(/last autosave at the deadline is what will be marked/)).not.toBeInTheDocument();
+    await act(async () => void vi.advanceTimersByTime(3_100));
+    expect(screen.getByText(/last autosave at the deadline is what will be marked/)).toBeInTheDocument();
+  });
+
+  it("offers to send the last autosave when the submit at time up fails", async () => {
+    api.submitAttempt.mockRejectedValueOnce(new Error("Cannot reach the server"));
+    const onSubmitted = vi.fn();
+    render(<WritingScreen attempt={attempt({ remaining_s: 3 })} initialText="Words" onSubmitted={onSubmitted} />);
+    await act(async () => void vi.advanceTimersByTime(3_600));
+    expect(screen.getByRole("alert")).toHaveTextContent("send your last autosave at the deadline");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("Your essay is still here");
+    expect(screen.getByLabelText("Your essay")).toHaveAttribute("readonly");
+    fireEvent.click(screen.getByRole("button", { name: "Submit for marking" }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes, submit" }));
+    await flush();
+    expect(onSubmitted).toHaveBeenCalledTimes(1);
+  });
+
   it("warns in the last five minutes", () => {
     render(<WritingScreen attempt={attempt({ remaining_s: 240 })} initialText="" onSubmitted={vi.fn()} />);
     expect(screen.getByRole("timer")).toHaveTextContent("wrap up");

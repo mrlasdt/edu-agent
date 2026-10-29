@@ -130,6 +130,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .ielts-hero { margin: 16px 0 8px; padding: 20px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
 .ielts-hero p { margin: 4px 0; }
 .ielts-hero-band { font-size: 3.4rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ielts-timeup { padding: 8px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); }
 .ielts-calibration { padding: 6px 10px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); }
 .ielts-calibration[data-status="calibrated"] { background: transparent; color: var(--ok); padding-left: 0; }
 .ielts-disclaimer { font-size: 0.85rem; font-weight: 600; }

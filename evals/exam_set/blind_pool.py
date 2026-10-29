@@ -126,7 +126,7 @@ class PoolAlreadyScoredError(RuntimeError):
 
 
 def ensure_unscored(out_dir: Path) -> None:
-    """A rebuild reuses ids for new essays, so it must never happen once scoring has begun."""
+    """A rebuild overwrites the score sheet, so it must never happen once scoring has begun."""
     sheet = out_dir / SCORE_SHEET
     if not sheet.exists():
         return
@@ -134,7 +134,7 @@ def ensure_unscored(out_dir: Path) -> None:
         if any(any((v or "").strip() for k, v in row.items() if k != "id")
                for row in csv.DictReader(f)):
             raise PoolAlreadyScoredError(
-                f"{sheet} already has scores; rebuilding would pair them with new essays."
+                f"{sheet} already has scores; rebuilding would overwrite them."
                 " Import them first, then move the folder aside to build a new pool."
             )
 
@@ -171,7 +171,7 @@ def build_pool(
     (out_dir / ESSAYS_JSONL).write_text("".join(
         json.dumps({"id": i, "prompt": p, "essay": e}) + "\n" for i, p, e, _ in rows))
     (out_dir / KEY_FILE).write_text("".join(
-        json.dumps({"id": i, **k}) + "\n" for i, _, _, k in rows))
+        json.dumps({"id": i, "pool_id": pool_id, **k}) + "\n" for i, _, _, k in rows))
     (out_dir / ESSAYS_MD).write_text(_render_markdown(rows))
     with (out_dir / SCORE_SHEET).open("w", newline="") as f:
         writer = csv.writer(f)
@@ -251,3 +251,29 @@ def import_scores(blind_dir: Path, today: str) -> tuple[list[ExamItem], int]:
                 split=_split(essay_id),  # type: ignore[arg-type]
             ))
     return items, empty
+
+
+def _essay_key(essay: str) -> str:
+    return " ".join(essay.split()).casefold()
+
+
+def merge_imported(
+    earlier: Sequence[ExamItem], scored: Sequence[ExamItem]
+) -> tuple[list[ExamItem], int, int]:
+    """
+    Earlier imports plus this pool's scored items, merged by id.
+
+    An essay already imported under another id (every pool carries the instructor-graded
+    essays) keeps its first score; the later copy is skipped so it is not counted twice.
+    Returns the merged items, how many earlier items were kept and how many were skipped.
+    """
+    fresh = {i.id for i in scored}
+    kept = [i for i in earlier if i.id not in fresh]
+    seen = {_essay_key(str(i.response)) for i in kept}
+    added: list[ExamItem] = []
+    for item in scored:
+        key = _essay_key(str(item.response))
+        if key not in seen:
+            seen.add(key)
+            added.append(item)
+    return [*kept, *added], len(kept), len(scored) - len(added)

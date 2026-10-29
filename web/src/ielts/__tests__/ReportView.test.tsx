@@ -95,7 +95,7 @@ describe("ReportView", () => {
     });
     render(<ReportView report={r} essay={ESSAY} onAnother={vi.fn()} />);
     expect(screen.getByText(/written feedback was unavailable/)).toBeInTheDocument();
-    expect(screen.getByText(/after time was up/)).toBeInTheDocument();
+    expect(screen.getByText(/after time was up, so the last autosave at the deadline was marked/)).toBeInTheDocument();
   });
 
   it("starts another essay", async () => {

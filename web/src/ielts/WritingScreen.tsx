@@ -17,6 +17,8 @@ interface Props {
 const LOW_WORDS = 150;
 const WARN_AT_S = 5 * 60;
 const ANNOUNCE_AT_S = [600, 300, 60];
+const TIME_UP_NOTICE =
+  "Time is up. The last autosave at the deadline is what will be marked; words not yet autosaved are not.";
 
 function saveLabel(state: SaveState): string {
   switch (state.kind) {
@@ -52,7 +54,7 @@ export function WritingScreen({ attempt, initialText, onSubmitted, autosaveMs }:
     autosaveMs
   );
 
-  async function submit(timeUp = false) {
+  async function submit(expired = false) {
     if (submitted.current) return;
     submitted.current = true;
     setSubmitting(true);
@@ -63,10 +65,11 @@ export function WritingScreen({ attempt, initialText, onSubmitted, autosaveMs }:
       submitted.current = false;
       setSubmitting(false);
       setConfirming(false);
+      const reason = err instanceof Error ? err.message : "Could not submit";
       setError(
-        `${err instanceof Error ? err.message : "Could not submit"}. Your essay is still here: ${
-          timeUp ? "press Submit to try again" : "try again"
-        }.`
+        expired || countdown.left <= 0
+          ? `${reason}. Press Submit to send your last autosave at the deadline for marking.`
+          : `${reason}. Your essay is still here: try again.`
       );
     }
   }
@@ -80,6 +83,7 @@ export function WritingScreen({ attempt, initialText, onSubmitted, autosaveMs }:
   const words = countWords(text);
   const low = words < LOW_WORDS;
   const urgent = countdown.left <= WARN_AT_S;
+  const timeUp = countdown.left <= 0;
 
   return (
     <section className="ielts-writing" aria-label="Writing task">
@@ -112,12 +116,14 @@ export function WritingScreen({ attempt, initialText, onSubmitted, autosaveMs }:
         <p className="ielts-hint">Write at least {ESSAY_MINIMUM_WORDS} words. Give reasons and relevant examples.</p>
       </div>
 
+      {timeUp && <p className="ielts-timeup">{TIME_UP_NOTICE}</p>}
+
       <textarea
         className="ielts-editor"
         aria-label="Your essay"
         value={text}
         onChange={(e) => setText(e.target.value)}
-        readOnly={submitting || countdown.left <= 0}
+        readOnly={submitting || timeUp}
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"

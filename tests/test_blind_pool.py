@@ -144,16 +144,57 @@ def test_two_pools_never_share_ids_even_with_the_same_seed(tmp_path: Path):
     assert not ids(first) & ids(second)
 
 
-def test_importing_a_second_pool_keeps_the_first_pools_scores(tmp_path: Path, capsys):
+def import_pools(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], pools: list[tuple[list[ExamItem], str]]
+) -> list[dict]:
+    """Build, fully score and import each pool in turn; returns what each import printed."""
     from evals.exam_set.__main__ import main
+
+    printed = []
+    for n, (essays, band) in enumerate(pools):
+        pool = tmp_path / f"pool{n}"
+        blind_pool.build_pool(pool, [], essays)
+        fill(pool, {row: (band,) * 4 for row in range(len(essays))})
+        assert main(["--local-dir", str(tmp_path / "local"), "import-blind-scores",
+                     "--blind-dir", str(pool)]) == 0
+        printed.append(json.loads(capsys.readouterr().out))
+    return printed
+
+
+def imported_bands(tmp_path: Path) -> dict[str, float | None]:
+    """Overall band per imported essay, keyed by the essay text."""
     from evals.exam_set.local_store import read_items
 
-    local = tmp_path / "local"
-    argv = ["--local-dir", str(local), "import-blind-scores"]
-    for name in ("one", "two"):
-        pool = tmp_path / name
-        blind_pool.build_pool(pool, [], [teacher(1)])
-        fill(pool, {0: ("6", "6", "6", "6")})
-        assert main([*argv, "--blind-dir", str(pool)]) == 0
-    imported = read_items(local / blind_pool.IMPORTED_FILE)
-    assert len(imported) == 2 and len({i.id for i in imported}) == 2
+    items = read_items(tmp_path / "local" / blind_pool.IMPORTED_FILE)
+    assert len({i.id for i in items}) == len(items)
+    return {str(i.response): i.labels.overall if i.labels else None for i in items}
+
+
+def test_importing_a_second_pool_keeps_the_first_pools_scores(tmp_path: Path, capsys):
+    import_pools(tmp_path, capsys, [([teacher(1)], "6"), ([teacher(2)], "7")])
+    assert imported_bands(tmp_path) == {
+        teacher(1).response: 6.0, teacher(2).response: 7.0}
+
+
+def test_an_essay_in_two_pools_is_imported_once_with_its_first_score(tmp_path: Path, capsys):
+    reflowed = teacher(1).model_copy(update={"response": "\n  " + str(teacher(1).response)})
+    first, second = import_pools(
+        tmp_path, capsys, [([teacher(1)], "6"), ([reflowed, teacher(2)], "7")])
+    assert first["skipped_duplicates"] == 0
+    assert second["skipped_duplicates"] == 1 and second["kept_from_earlier_pools"] == 1
+    assert imported_bands(tmp_path) == {
+        teacher(1).response: 6.0, teacher(2).response: 7.0}
+
+
+def test_reimporting_a_pool_updates_its_scores_instead_of_skipping_them(
+    tmp_path: Path, capsys
+):
+    import_pools(tmp_path, capsys, [([teacher(1)], "6")])
+    from evals.exam_set.__main__ import main
+
+    pool = tmp_path / "pool0"
+    fill(pool, {0: ("6.5",) * 4})
+    assert main(["--local-dir", str(tmp_path / "local"), "import-blind-scores",
+                 "--blind-dir", str(pool)]) == 0
+    assert json.loads(capsys.readouterr().out)["skipped_duplicates"] == 0
+    assert imported_bands(tmp_path) == {teacher(1).response: 6.5}
