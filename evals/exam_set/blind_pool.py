@@ -7,7 +7,7 @@ drafted by a model at a spread of target bands plus the instructor-graded essays
 the local golden directory, shuffled under opaque ids. The owner scores `essays.md` into
 `scores.csv`; `import-blind-scores` turns the sheet into `captain_blind` golden items.
 
-Everything lives under `ielts-local/blind/` (gitignored). `key.jsonl` records where each essay
+Everything lives under `ielts-local/blind/` (gitignored). The key file records where each essay
 came from and must not be opened until scoring is finished - the file name says so, and the
 essay file carries nothing but opaque ids, prompts and text.
 """
