@@ -66,12 +66,20 @@ function reportFor(draft: string) {
     vs_previous_attempt: null,
     ungraded_reason: null,
     prompt_versions: null,
-    disclaimer: "Estimated band, not an official IELTS score.",
+    disclaimer: "Mock score: an estimate, not an official IELTS result.",
   };
 }
 
 async function mockGateway(page: Page) {
-  const state = { status: "none", draft: "", startedAt: 0, elapsed: 0, saves: 0, grading: 0 };
+  const state = {
+    status: "none",
+    draft: "",
+    startedAt: 0,
+    elapsed: 0,
+    saves: 0,
+    grading: 0,
+    spent: 0.2,
+  };
   const view = () => ({
     id: "att1",
     prompt_id: PROMPTS[0].id,
@@ -87,7 +95,7 @@ async function mockGateway(page: Page) {
     error: null,
     retryable: false,
     overall: state.status === "graded" ? 6 : null,
-    disclaimer: "Estimated band, not an official IELTS score.",
+    disclaimer: "Mock score: an estimate, not an official IELTS result.",
   });
   const json = (body: unknown, status = 200) => ({
     status,
@@ -101,6 +109,20 @@ async function mockGateway(page: Page) {
     const path = new URL(req.url()).pathname;
     const method = req.method();
     if (path === "/ielts/prompts") return route.fulfill(json(PROMPTS));
+    if (path === "/ielts/budget") {
+      const exhausted = state.spent >= 4.95;
+      return route.fulfill(
+        json({
+          cap_usd: 5,
+          spent_usd: state.spent,
+          remaining_usd: 5 - state.spent,
+          exhausted,
+          message: exhausted
+            ? "The AI spend cap of $5.00 is used up ($5.00 spent), so no new mock can be marked."
+            : null,
+        }),
+      );
+    }
     if (path === "/ielts/attempts" && method === "GET") return route.fulfill(json([]));
     if (path === "/ielts/attempts" && method === "POST") {
       state.status = "created";
@@ -163,13 +185,25 @@ test("start, autosave, refresh-resume, submit and read the report", async ({ pag
   await expect(page.getByRole("heading", { name: "Marking your essay" })).toBeVisible();
 
   await page.clock.runFor(5_000);
-  const hero = page.getByRole("region", { name: "Estimated band" });
+  const hero = page.getByRole("region", { name: "Mock score" });
   await expect(hero).toContainText("6.0");
   await expect(hero).toContainText("Uncalibrated estimate");
-  await expect(hero).toContainText("Estimated band, not an official IELTS score.");
+  await expect(hero).toContainText("Mock score: an estimate, not an official IELTS result.");
   await expect(page.getByRole("article", { name: "Task Response" })).toContainText("Add one example per paragraph");
   await expect(page.getByRole("region", { name: "Your essay, marked" }).locator("mark")).toHaveText("students has");
   await expect(page.getByRole("region", { name: "Fix these first" })).toContainText("State your position early");
+});
+
+test("the AI spend is shown, and a used-up cap stops a new mock with the reason", async ({ page }) => {
+  const server = await mockGateway(page);
+  await page.goto("/ielts-mock");
+  await expect(page.getByLabel("AI spend")).toContainText("$0.20 of the $5.00 cap");
+  await expect(page.getByRole("button", { name: /Practice question 1/ })).toBeEnabled();
+
+  server.spent = 5;
+  await page.reload();
+  await expect(page.getByRole("alert")).toContainText("AI spend cap of $5.00 is used up");
+  await expect(page.getByRole("button", { name: /Practice question 1/ })).toBeDisabled();
 });
 
 test("time running out submits the essay by itself", async ({ page }) => {
@@ -205,7 +239,7 @@ test("a long prompt in Earlier attempts is truncated, not scrolled sideways", as
   for (const width of [1200, 390]) {
     await page.setViewportSize({ width, height: 800 });
     await page.goto("/ielts-mock");
-    await expect(page.getByRole("region", { name: "Earlier attempts" })).toContainText("Estimated band 6.5");
+    await expect(page.getByRole("region", { name: "Earlier attempts" })).toContainText("Mock score 6.5");
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow, `page scrolls sideways at ${width} px`).toBeLessThanOrEqual(0);
   }

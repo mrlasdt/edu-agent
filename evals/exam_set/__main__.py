@@ -57,7 +57,11 @@ def main(argv: list[str] | None = None) -> int:
     cam.add_argument("--dir", required=True, help="folder of the captain's book text/PDF/scans")
     sub.add_parser("import-ieltsbuddy")
     bp = sub.add_parser("build-blind-pool")
-    bp.add_argument("--drafts", type=int, default=41)
+    bp.add_argument("--drafts", type=int, default=18,
+                    help="model-drafted essays, spread over bands 4.0 to 8.0 (default 18)")
+    bp.add_argument("--teacher", type=int, default=12,
+                    help="instructor-graded essays to include, spread over their bands "
+                         "(default 12, so the default pool is 30 essays; 41 + 19 makes 60)")
     bp.add_argument("--model", default="openai/gpt-4.1-mini")
     bp.add_argument("--blind-dir", default=str(blind_pool.BLIND_DIR))
     bp.add_argument("--ledger", default=".eval-ledger/ledger.json")
@@ -148,7 +152,7 @@ def _build_blind_pool(args: argparse.Namespace, directory: Path) -> int:
 
     import litellm
 
-    from evals.agent_eval.budget import Ledger
+    from evals.agent_eval.budget import DEFAULT_CEILING_USD, Ledger
     from evals.agent_eval.transport import MeteredTransport
 
     if not (os.environ.get("OPENAI_API_KEY") or os.environ.get("OPENROUTER_API_KEY")):
@@ -163,12 +167,14 @@ def _build_blind_pool(args: argparse.Namespace, directory: Path) -> int:
         (i.id, i.prompt) for i in load_exam_items(exam="ielts", skill="writing_t2")
         if i.task_type == "essay_prompt"
     ]
-    teacher = [
+    teacher = blind_pool.spread_by_band([
         i for i in load_exam_items(exam="ielts", skill="writing_t2", include_local=True,
                                    local_directory=directory)
         if i.label_provenance.tier.value == "teacher_graded" and i.response
-    ]
-    transport = MeteredTransport(Ledger(Path(args.ledger), 20.0), f"blind-pool-{time.time():.0f}")
+    ], args.teacher)
+    transport = MeteredTransport(
+        Ledger(Path(args.ledger), DEFAULT_CEILING_USD), f"blind-pool-{time.time():.0f}"
+    )
 
     async def complete(messages: list[dict[str, str]]) -> str:
         response = await litellm.acompletion(

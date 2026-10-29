@@ -135,9 +135,9 @@ export function ReportView({ report, essay, onAnother }: Props) {
   return (
     <article className="ielts-report" aria-label="Report">
       {est ? (
-        <section className="ielts-hero" aria-label="Estimated band">
-          <p className="ielts-eyebrow">Estimated band</p>
-          <p className="ielts-hero-band" aria-label={`Estimated overall band ${band(est.overall)}`}>
+        <section className="ielts-hero" aria-label="Mock score">
+          <p className="ielts-eyebrow">Mock score</p>
+          <p className="ielts-hero-band" aria-label={`Mock overall score ${band(est.overall)}`}>
             {band(est.overall)}
           </p>
           <p>
@@ -176,7 +176,7 @@ export function ReportView({ report, essay, onAnother }: Props) {
 
       {report.vs_previous_attempt && (
         <p className="ielts-delta">
-          Change in estimated band since your last marked attempt: overall{" "}
+          Change in mock score since your last marked attempt: overall{" "}
           {signed(report.vs_previous_attempt.overall_delta)}
           {Object.entries(report.vs_previous_attempt.criteria_deltas).map(([k, v]) => (
             <span key={k}>
@@ -271,7 +271,7 @@ export function ReportView({ report, essay, onAnother }: Props) {
 
       <footer className="ielts-report-foot">
         <p className="ielts-hint">
-          An IELTS-style mock. It is good for spotting patterns and tracking change across attempts; it
+          An IELTS mock. It is good for spotting patterns and tracking change across attempts; it
           cannot replace an examiner's mark. Use the criterion feedback more than the exact number.
         </p>
         <button className="ielts-primary" onClick={onAnother}>

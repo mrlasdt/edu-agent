@@ -1,5 +1,5 @@
 """
-Band arithmetic and grader-reply parsing for the IELTS-style Writing mock.
+Band arithmetic and grader-reply parsing for the IELTS Writing mock.
 
 The overall band is always computed here from the four criterion bands, never taken from a
 model, and the median of several samples is used per criterion.

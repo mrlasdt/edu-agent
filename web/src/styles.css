@@ -60,7 +60,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .subject-other { margin-top: 24px; font-size: 0.9rem; opacity: 0.85; }
 .subject-other a, .ielts-home { color: var(--accent); }
 
-/* IELTS-style Writing mock */
+/* IELTS Writing mock */
 :root {
   --ok: #1f7a3d;
   --warn: #9a5b00;

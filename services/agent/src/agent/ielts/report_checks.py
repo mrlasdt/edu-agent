@@ -30,7 +30,7 @@ def check_report(report: Report, essay: str) -> list[str]:
         problems.append("disclaimer altered")
     band = report.estimated_band
     if band is None:
-        return [*problems, "graded report has no estimated band"]
+        return [*problems, "graded report has no mock score"]
     bands = {c.id: c.band for c in report.criteria}
     if set(bands) != set(CRITERIA):
         return [*problems, f"criteria are {sorted(bands)}"]

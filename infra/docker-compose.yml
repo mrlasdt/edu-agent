@@ -222,9 +222,10 @@ services:
         condition: service_healthy
     command: ["python", "-m", "services.ingestion.src.ingestion.seed"]
 
-  # The gateway also serves the IELTS-style Writing mock (/ielts/...): attempts are kept in
-  # SQLite under ../ielts-local (gitignored; create it first with `mkdir -p ielts-local` so it
-  # is owned by you), and the eight original prompts are mounted from the golden set.
+  # The gateway also serves the IELTS Writing mock (/ielts/...): attempts are kept in SQLite
+  # under ../ielts-local and the AI spend ledger (the 5 USD cap) under ../.eval-ledger, both
+  # gitignored (create them first with `mkdir -p ielts-local .eval-ledger` so they are owned
+  # by you), and the eight original prompts are mounted from the golden set.
   gateway:
     build:
       context: ..
@@ -239,6 +240,7 @@ services:
       - ../seed:/app/seed:ro
       - ../evals/golden/ielts_writing_prompts.jsonl:/app/evals/golden/ielts_writing_prompts.jsonl:ro
       - ../ielts-local:/app/ielts-local
+      - ../.eval-ledger:/app/.eval-ledger
     ports:
       - "8000:8000"
     depends_on:

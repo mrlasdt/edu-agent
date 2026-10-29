@@ -69,10 +69,14 @@ class Settings(BaseSettings):
     math_verifier_url: str = "http://localhost:8090"
     admin_username: str = "admin"
     admin_password: str = "changeme"
-    # IELTS-style mock: attempts database and other local-only files (gitignored), and the
+    # IELTS mock: attempts database and other local-only files (gitignored), and the
     # number of grader samples whose per-criterion median is reported.
     ielts_data_dir: str = "ielts-local"
     ielts_grader_samples: int = 3
+    # Total AI spend cap (USD) and the ledger it is counted in. The ledger is shared by the
+    # eval harness and the IELTS mock, so the cap is one number for the whole project.
+    ai_spend_cap_usd: float = 5.0
+    ai_ledger_path: str = ".eval-ledger/ledger.json"
     env: str = "dev"
     model_config_path: str = "config/model_config.dev.yaml"
 

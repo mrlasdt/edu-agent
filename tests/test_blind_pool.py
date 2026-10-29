@@ -37,6 +37,22 @@ async def test_drafts_spread_over_every_target_band():
     assert len(drafts) == 18
 
 
+def test_a_small_instructor_sample_still_covers_the_range_of_bands():
+    bands = [4.0] * 8 + [5.0] * 5 + [6.0] * 4 + [7.0, 8.0]
+    items = [
+        teacher(i).model_copy(update={"labels": Labels(
+            overall=b, criteria={"TR": b, "CC": b, "LR": b, "GRA": b})})
+        for i, b in enumerate(bands)
+    ]
+    picked = blind_pool.spread_by_band(items, 5)
+    assert len(picked) == 5 and len({i.id for i in picked}) == 5
+    overall = [i.labels.overall for i in picked if i.labels]
+    assert overall[0] == 4.0 and overall[-1] == 8.0 and overall == sorted(overall)
+    assert len(blind_pool.spread_by_band(items, 99)) == len(items)
+    assert blind_pool.spread_by_band(items, 0) == []
+    assert len(blind_pool.spread_by_band(items, 1)) == 1
+
+
 async def test_too_short_drafts_are_dropped():
     async def short(messages: list[dict[str, str]]) -> str:
         return "No."

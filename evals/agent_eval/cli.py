@@ -10,7 +10,7 @@ Agent-in-the-loop eval CLI.
 
 Live runs need keys in the environment (OPENROUTER_API_KEY and/or OPENAI_API_KEY); the CLI
 only checks that they are set and never prints or stores them. Cumulative spend across runs is
-capped by the ledger (default 20 USD) and checked before every call.
+capped by the ledger (default 5 USD, the project-wide AI spend cap) and checked before every call.
 Exit code: 0 ok, 1 regression vs --baseline, 2 budget exceeded, run failure or coverage below
 --min-coverage (too many units dropped: no regression metrics are produced).
 Successful model responses are cached in --cache-dir (gitignored); --no-cache disables it.

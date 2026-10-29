@@ -1,5 +1,5 @@
 """
-Adversarial responses for the IELTS-style Writing mock: injection, off-topic, copied prompt,
+Adversarial responses for the IELTS Writing mock: injection, off-topic, copied prompt,
 junk. Each case lists the flags the pipeline must raise and the highest overall band it may
 report, so a compromised or over-generous grader cannot turn them into a good score.
 

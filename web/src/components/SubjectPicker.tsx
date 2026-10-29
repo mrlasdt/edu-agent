@@ -17,7 +17,7 @@ export function SubjectPicker({ onSelect }: Props) {
         </button>
       </div>
       <p className="subject-other">
-        Preparing for IELTS? <a href="/ielts-mock">Take an IELTS-style Writing mock</a>
+        Preparing for IELTS? <a href="/ielts-mock">Take an IELTS Writing mock</a>
       </p>
     </div>
   );

@@ -1,5 +1,5 @@
 """
-The local blind-scoring pool for the IELTS-style Writing mock.
+The local blind-scoring pool for the IELTS Writing mock.
 
 The grader's accuracy can only be certified against bands a person gave without seeing the
 grader's output (ADR-0014, report section 4.2). This builds the material for that: essays
@@ -115,6 +115,20 @@ async def draft_essays(
         if len(essay.split()) >= 50:
             drafts.append(Draft(prompt_id, prompt, target, essay))
     return drafts
+
+
+def spread_by_band(items: Sequence[ExamItem], n: int) -> list[ExamItem]:
+    """
+    `n` items spread evenly over the label range (lowest to highest overall), so a small pool
+    still covers the scale instead of the commonest bands. All of them when `n` is not smaller.
+    """
+    ranked = sorted(items, key=lambda i: (i.labels.overall if i.labels else 0.0, i.id))
+    if n >= len(ranked):
+        return ranked
+    if n <= 0:
+        return []
+    last = len(ranked) - 1
+    return [ranked[round(k * last / (n - 1))] if n > 1 else ranked[last // 2] for k in range(n)]
 
 
 def _opaque_id(pool_id: str, index: int) -> str:

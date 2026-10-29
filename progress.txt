@@ -49,8 +49,8 @@ Moderation API). See README "Status" for what is still missing.
   live check in docs/mvp-demo
 
 ### Current counts
-- Python tests: 498 passing (uv run pytest tests/ -q)
-- Frontend (Vitest) tests: 62 passing (cd web && npm test)
+- Python tests: 599 passing (uv run pytest tests/ -q)
+- Frontend (Vitest) tests: 97 passing (cd web && npm test)
 - Browser smoke test (mocked /chat): cd web && npm run test:e2e (Playwright)
 - CI checks: ruff, mypy (strict), pytest, web typecheck + vitest + vite build + Playwright
 

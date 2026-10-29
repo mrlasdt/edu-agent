@@ -1,5 +1,5 @@
 """
-HTTP API for the IELTS-style Writing Task 2 mock (`/ielts/...`, JSON).
+HTTP API for the IELTS Writing Task 2 mock (`/ielts/...`, JSON).
 
 Deliberately not routed through `/chat`: a graded submission is not a tutoring turn, so the
 content-safety and completeness guardrails (and the PII redaction that would corrupt an
@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from services.agent.src.agent.ielts.checks import words
 from services.agent.src.agent.ielts.grading import GradingError
-from services.agent.src.agent.ielts.llm import Completer, LiteLLMCompleter
+from services.agent.src.agent.ielts.llm import Completer, LiteLLMCompleter, spend_ledger
 from services.agent.src.agent.ielts.marking import mark_essay
 from services.agent.src.agent.ielts.models import DISCLAIMER, Report, Timing
 from services.agent.src.agent.ielts.prompts import WritingPrompt, load_prompts
@@ -31,6 +31,7 @@ from services.gateway.src.gateway.ielts_store import (
     AttemptStateError,
     AttemptStore,
 )
+from shared.src.shared.budget import BudgetExceededError, Ledger
 from shared.src.shared.config import get_settings
 
 _log = logging.getLogger(__name__)
@@ -40,6 +41,11 @@ router = APIRouter(prefix="/ielts", tags=["ielts"])
 _CANDIDATE = "ielts-local"  # single local user
 _limiter = RateLimiter(max_per_minute=10, max_per_day=60)
 _inflight: set[str] = set()  # attempts being marked by this process
+
+# One mock costs about 0.01 to 0.02 USD with the default model. A new attempt (or a retry) is
+# refused unless at least this much of the spend cap is left, so a candidate is not asked to
+# write for 40 minutes and then told the marking cannot be paid for.
+MOCK_RESERVE_USD = 0.05
 
 
 @lru_cache
@@ -57,8 +63,13 @@ def get_prompts() -> dict[str, WritingPrompt]:
     return {p.id: p for p in load_prompts()}
 
 
+def get_ledger() -> Ledger:
+    return spend_ledger()
+
+
 Store = Annotated[AttemptStore, Depends(get_store)]
 Marker = Annotated[Completer, Depends(get_completer)]
+SpendLedger = Annotated[Ledger, Depends(get_ledger)]
 
 
 class PromptOut(BaseModel):
@@ -66,6 +77,14 @@ class PromptOut(BaseModel):
     essay_type: str
     essay_type_label: str
     text: str
+
+
+class BudgetOut(BaseModel):
+    cap_usd: float
+    spent_usd: float
+    remaining_usd: float
+    exhausted: bool  # true when a new mock would be refused
+    message: str | None  # the explanation shown to the candidate when exhausted
 
 
 class CreateAttempt(BaseModel):
@@ -129,13 +148,37 @@ def _load(store: AttemptStore, attempt_id: str) -> Attempt:
         raise HTTPException(404, "attempt not found") from None
 
 
+def _budget(ledger: Ledger) -> BudgetOut:
+    spent, remaining = ledger.spent(), ledger.remaining()
+    exhausted = remaining < MOCK_RESERVE_USD
+    return BudgetOut(
+        cap_usd=ledger.ceiling_usd, spent_usd=spent, remaining_usd=remaining,
+        exhausted=exhausted, message=cap_message(ledger) if exhausted else None,
+    )
+
+
+def cap_message(ledger: Ledger) -> str:
+    return (
+        f"The AI spend cap of ${ledger.ceiling_usd:.2f} is used up (${ledger.spent():.2f} spent), "
+        "so no new mock can be marked. Earlier attempts and saved essays stay available. "
+        "Raise AI_SPEND_CAP_USD to continue."
+    )
+
+
+def _require_budget(ledger: Ledger) -> None:
+    if ledger.remaining() < MOCK_RESERVE_USD:
+        raise HTTPException(402, cap_message(ledger))
+
+
 def _limit() -> None:
     allowed, message = _limiter.check(_CANDIDATE)
     if not allowed:
         raise HTTPException(429, message)
 
 
-async def grade_attempt(attempt_id: str, store: AttemptStore, completer: Completer) -> None:
+async def grade_attempt(
+    attempt_id: str, store: AttemptStore, completer: Completer, ledger: Ledger | None = None,
+) -> None:
     """Mark a submitted attempt and store the outcome; a model outage leaves it retryable."""
     _inflight.add(attempt_id)
     try:
@@ -162,6 +205,8 @@ async def grade_attempt(attempt_id: str, store: AttemptStore, completer: Complet
         store.finish(attempt_id, report.model_dump_json(), graded=report.status == "graded")
     except GradingError as exc:
         store.fail(attempt_id, exc.reason, retryable=True)
+    except BudgetExceededError:  # the cap was hit mid-attempt: the essay stays, the retry waits
+        store.fail(attempt_id, cap_message(ledger or spend_ledger()), retryable=True)
     except Exception:  # noqa: BLE001 - keep the essay and offer a retry; the cause goes to the log
         _log.exception("marking attempt %s failed", attempt_id)
         store.fail(attempt_id, "Marking failed unexpectedly. Your essay is saved; try again.")
@@ -174,11 +219,17 @@ def list_prompts() -> list[PromptOut]:
     return [PromptOut(**vars(p)) for p in get_prompts().values()]
 
 
+@router.get("/budget")
+def get_budget(ledger: SpendLedger) -> BudgetOut:
+    return _budget(ledger)
+
+
 @router.post("/attempts", status_code=201)
-def create_attempt(body: CreateAttempt, store: Store) -> AttemptOut:
+def create_attempt(body: CreateAttempt, store: Store, ledger: SpendLedger) -> AttemptOut:
     prompt = get_prompts().get(body.prompt_id)
     if prompt is None:
         raise HTTPException(404, "unknown prompt")
+    _require_budget(ledger)
     _limit()
     return _view(store.create(prompt.id, prompt.text), store)
 
@@ -211,6 +262,7 @@ def save_draft(attempt_id: str, body: EssayText, store: Store) -> AttemptOut:
 @router.post("/attempts/{attempt_id}/submit")
 def submit_attempt(
     attempt_id: str, body: EssayText, background: BackgroundTasks, store: Store, completer: Marker,
+    ledger: SpendLedger,
 ) -> AttemptOut:
     _load(store, attempt_id)
     try:
@@ -219,23 +271,25 @@ def submit_attempt(
     except AttemptStateError as exc:
         raise HTTPException(409, str(exc)) from None
     if before == "in_progress":  # a repeated submit must not mark twice
-        background.add_task(grade_attempt, attempt_id, store, completer)
+        background.add_task(grade_attempt, attempt_id, store, completer, ledger)
     return _view(attempt, store)
 
 
 @router.post("/attempts/{attempt_id}/regrade")
 def regrade_attempt(
     attempt_id: str, background: BackgroundTasks, store: Store, completer: Marker,
+    ledger: SpendLedger,
 ) -> AttemptOut:
     attempt = _load(store, attempt_id)
     view = _view(attempt, store)  # settles a stale 'grading' state first
     attempt = store.get(attempt_id)
     if attempt.status != "ungraded" or not attempt.retryable:
         raise HTTPException(409, f"attempt is {view.status}; nothing to retry")
+    _require_budget(ledger)
     _limit()
     attempt = store.begin_grading(attempt_id)
     _inflight.add(attempt_id)
-    background.add_task(grade_attempt, attempt_id, store, completer)
+    background.add_task(grade_attempt, attempt_id, store, completer, ledger)
     return _view(attempt, store)
 
 
