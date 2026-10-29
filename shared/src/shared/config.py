@@ -73,8 +73,8 @@ class Settings(BaseSettings):
     # number of grader samples whose per-criterion median is reported.
     ielts_data_dir: str = "ielts-local"
     ielts_grader_samples: int = 3
-    # Total AI spend cap (USD) and the ledger it is counted in. The ledger is shared by the
-    # eval harness and the IELTS mock, so the cap is one number for the whole project.
+    # AI spend cap (USD) for the IELTS mock and the evals, and the ledger it is counted in.
+    # Both share the ledger, so the cap is one number; the GRE tutor's /chat is not metered.
     ai_spend_cap_usd: float = 5.0
     ai_ledger_path: str = ".eval-ledger/ledger.json"
     env: str = "dev"

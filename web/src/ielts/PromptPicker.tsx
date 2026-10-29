@@ -33,7 +33,8 @@ export function PromptPicker({ prompts, history, budget, busy, onPick, onOpen }:
       </p>
       {budget && (
         <p className="ielts-hint" aria-label="AI spend">
-          AI spend so far: {usd(budget.spent_usd)} of the {usd(budget.cap_usd)} cap.
+          AI spend on the mock and evals so far: {usd(budget.spent_usd)} of the{" "}
+          {usd(budget.cap_usd)} cap.
         </p>
       )}
       {exhausted && budget?.message && (

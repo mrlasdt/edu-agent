@@ -10,7 +10,8 @@ Agent-in-the-loop eval CLI.
 
 Live runs need keys in the environment (OPENROUTER_API_KEY and/or OPENAI_API_KEY); the CLI
 only checks that they are set and never prints or stores them. Cumulative spend across runs is
-capped by the ledger (default 5 USD, the project-wide AI spend cap) and checked before every call.
+capped by the shared spend ledger (default AI_LEDGER_PATH and AI_SPEND_CAP_USD, 5 USD, the cap
+the IELTS mock also obeys) and checked before every call.
 Exit code: 0 ok, 1 regression vs --baseline, 2 budget exceeded, run failure or coverage below
 --min-coverage (too many units dropped: no regression metrics are produced).
 Successful model responses are cached in --cache-dir (gitignored); --no-cache disables it.
@@ -31,11 +32,10 @@ from typing import Any
 
 from evals.agent_eval import generation, ielts_writing, offline_generation, runner
 from evals.agent_eval.budget import (
-    DEFAULT_CEILING_USD,
-    DEFAULT_LEDGER_PATH,
     BudgetExceededError,
     Ledger,
     estimate_cost,
+    spend_ledger,
 )
 from evals.agent_eval.cache import DEFAULT_CACHE_DIR, ResponseCache
 from evals.agent_eval.judges import HeuristicJudge, JevJudge, Judge, JudgeQuestion, LLMJudge
@@ -151,7 +151,7 @@ def plan(args: argparse.Namespace, chain: list[str], ledger: Ledger) -> dict[str
 
 
 async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
-    ledger = Ledger(Path(args.ledger), args.ceiling)
+    ledger = spend_ledger(args.ledger, args.ceiling)
     chain = provider_chain(args.provider)
     if args.mode == "dry-run":
         return plan(args, chain, ledger), 0
@@ -341,8 +341,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--cache-dir", default=str(DEFAULT_CACHE_DIR))
     p.add_argument("--no-cache", action="store_true", help="always call the model")
     p.add_argument("--max-items", type=int, default=5)
-    p.add_argument("--ledger", default=str(DEFAULT_LEDGER_PATH))
-    p.add_argument("--ceiling", type=float, default=DEFAULT_CEILING_USD)
+    p.add_argument("--ledger", default=None, help="spend ledger (default AI_LEDGER_PATH)")
+    p.add_argument("--ceiling", type=float, default=None,
+                   help="spend cap in USD (default AI_SPEND_CAP_USD)")
     p.add_argument("--out-dir", default=str(DEFAULT_RUNS_DIR))
     p.add_argument("--baseline", default=None, help="JSON of metrics to regression-check against")
     p.add_argument("--write-baseline", default=None, help="write measured metrics to this path")

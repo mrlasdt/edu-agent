@@ -252,3 +252,21 @@ def test_a_budget_stop_inside_the_grader_is_not_reported_as_a_model_outage(
     view = client.get(f"/ielts/attempts/{attempt_id}").json()
     assert view["status"] == "ungraded" and "spend cap" in view["error"]
     assert "unavailable" not in view["error"]
+
+
+def test_a_budget_stop_in_the_feedback_stage_keeps_the_essay_and_says_why(
+    client: TestClient, completer: Metered
+):
+    completer.inner.feedback = BudgetExceededError("budget guard: ...")
+    attempt_id = client.post(
+        "/ielts/attempts", json={"prompt_id": "ielts_writing_prompt_1"}
+    ).json()["id"]
+    client.post(f"/ielts/attempts/{attempt_id}/start")
+    client.post(f"/ielts/attempts/{attempt_id}/submit", json={"text": ESSAY})
+    view = client.get(f"/ielts/attempts/{attempt_id}").json()
+    assert view["status"] == "ungraded" and view["retryable"] and view["draft"] == ESSAY
+    assert "spend cap" in view["error"]
+
+    completer.inner.feedback = feedback_reply()
+    assert client.post(f"/ielts/attempts/{attempt_id}/regrade").status_code == 200
+    assert client.get(f"/ielts/attempts/{attempt_id}").json()["status"] == "graded"

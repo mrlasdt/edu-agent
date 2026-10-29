@@ -7,6 +7,7 @@ from shared.src.shared.budget import (
     estimate_cost,
     estimate_tokens,
     is_free,
+    spend_ledger,
 )
 
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
     "estimate_cost",
     "estimate_tokens",
     "is_free",
+    "spend_ledger",
 ]

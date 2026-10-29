@@ -19,7 +19,7 @@ from typing import Any, Protocol
 
 import litellm
 
-from shared.src.shared.budget import Ledger, estimate_cost, estimate_tokens
+from shared.src.shared.budget import Ledger, estimate_cost, estimate_tokens, spend_ledger
 from shared.src.shared.config import get_settings, load_model_config
 from shared.src.shared.observability import build_llm_metadata
 
@@ -55,12 +55,6 @@ def role_temperature(role: str) -> float:
 
 def role_model(role: str) -> str:
     return load_model_config(get_settings().model_config_path).litellm_model(role)
-
-
-def spend_ledger() -> Ledger:
-    """The shared spend ledger at the configured path, with the configured total cap."""
-    settings = get_settings()
-    return Ledger(Path(settings.ai_ledger_path), settings.ai_spend_cap_usd)
 
 
 class LiteLLMCompleter:

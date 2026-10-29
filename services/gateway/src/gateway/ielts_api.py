@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from services.agent.src.agent.ielts.checks import words
 from services.agent.src.agent.ielts.grading import GradingError
-from services.agent.src.agent.ielts.llm import Completer, LiteLLMCompleter, spend_ledger
+from services.agent.src.agent.ielts.llm import Completer, LiteLLMCompleter
 from services.agent.src.agent.ielts.marking import mark_essay
 from services.agent.src.agent.ielts.models import DISCLAIMER, Report, Timing
 from services.agent.src.agent.ielts.prompts import WritingPrompt, load_prompts
@@ -31,7 +31,7 @@ from services.gateway.src.gateway.ielts_store import (
     AttemptStateError,
     AttemptStore,
 )
-from shared.src.shared.budget import BudgetExceededError, Ledger
+from shared.src.shared.budget import BudgetExceededError, Ledger, spend_ledger
 from shared.src.shared.config import get_settings
 
 _log = logging.getLogger(__name__)

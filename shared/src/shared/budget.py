@@ -1,13 +1,15 @@
 """
-Spend accounting for every real-model call: eval runs and the IELTS mock alike.
+Spend accounting for the metered real-model calls: eval runs and the IELTS mock.
 
 The ledger is a JSON file (default `.eval-ledger/ledger.json`, gitignored) that
 accumulates the cost of every call. Every call is checked against the cumulative
 ceiling *before* it is made, using a worst-case projection, so a run aborts
 instead of overshooting. Free models (`:free`, `openrouter/free`) cost zero.
 
-The ceiling is the owner's total AI spend cap for the project (5 USD): evals and the
-product share one ledger, so there is one number to look at.
+The ceiling is the owner's AI spend cap for the IELTS mock and the evals (5 USD), which share
+one ledger, so there is one number to look at. Other model calls (the GRE tutor's /chat) are
+not metered here. `spend_ledger()` is that shared ledger as configured (`AI_LEDGER_PATH`,
+`AI_SPEND_CAP_USD`).
 """
 from __future__ import annotations
 
@@ -17,6 +19,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from shared.src.shared.config import get_settings
 
 DEFAULT_CEILING_USD = 5.0
 DEFAULT_LEDGER_PATH = Path(".eval-ledger/ledger.json")
@@ -100,3 +104,12 @@ class Ledger:
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, indent=2))
         os.replace(tmp, self.path)
+
+
+def spend_ledger(path: str | Path | None = None, ceiling_usd: float | None = None) -> Ledger:
+    """The shared spend ledger at the configured path and cap, unless overridden."""
+    settings = get_settings()
+    return Ledger(
+        Path(path or settings.ai_ledger_path),
+        settings.ai_spend_cap_usd if ceiling_usd is None else ceiling_usd,
+    )
