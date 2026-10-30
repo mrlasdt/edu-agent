@@ -1,11 +1,11 @@
-"""The report the IELTS-style Writing mock returns, shared by the API and the web app."""
+"""The report the IELTS Writing mock returns, shared by the API and the web app."""
 from __future__ import annotations
 
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-DISCLAIMER = "Estimated band, not an official IELTS score."
+DISCLAIMER = "Mock score: an estimate, not an official IELTS result."
 
 
 class Flag(BaseModel):

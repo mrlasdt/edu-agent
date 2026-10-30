@@ -19,7 +19,7 @@ export function attempt(patch: Partial<Attempt> = {}): Attempt {
     error: null,
     retryable: false,
     overall: null,
-    disclaimer: "Estimated band, not an official IELTS score.",
+    disclaimer: "Mock score: an estimate, not an official IELTS result.",
     ...patch,
   };
 }
@@ -87,7 +87,7 @@ export function report(patch: Partial<Report> = {}): Report {
     feedback_status: "complete",
     vs_previous_attempt: { overall_delta: 0.5, criteria_deltas: { TR: 0.5, CC: 0 } },
     ungraded_reason: null,
-    disclaimer: "Estimated band, not an official IELTS score.",
+    disclaimer: "Mock score: an estimate, not an official IELTS result.",
     ...patch,
   };
 }

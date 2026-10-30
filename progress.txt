@@ -49,8 +49,8 @@ Moderation API). See README "Status" for what is still missing.
   live check in docs/mvp-demo
 
 ### Current counts
-- Python tests: 498 passing (uv run pytest tests/ -q)
-- Frontend (Vitest) tests: 62 passing (cd web && npm test)
+- Python tests: 599 passing (uv run pytest tests/ -q)
+- Frontend (Vitest) tests: 97 passing (cd web && npm test)
 - Browser smoke test (mocked /chat): cd web && npm run test:e2e (Playwright)
 - CI checks: ruff, mypy (strict), pytest, web typecheck + vitest + vite build + Playwright
 
@@ -67,7 +67,7 @@ Moderation API). See README "Status" for what is still missing.
 - /generate streams text only; verifier_fail / citation_stripped metadata is dropped,
   so SourcesPanel has nothing to show.
 - Evals are small (5 Quant and 2 AW golden items). evals/agent_eval runs the real QuantAgent
-  (leak rate, sympy-graded accuracy, judge-vs-golden agreement, cost/latency, 20 USD ledger);
+  (leak rate, sympy-graded accuracy, judge-vs-golden agreement, cost/latency, shared 5 USD ledger);
   AW is judge calibration only. No baseline is measured/checked in; CI runs it offline only.
 - QuantAgent._verify still compares the agent's answer to itself (parse/well-formedness only);
   multi-value and prose answers no longer spuriously fail it. Independent verification needs a

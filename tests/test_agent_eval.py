@@ -21,6 +21,7 @@ from evals.agent_eval.probes import (
 )
 from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport
 from evals.judges.quant_judge import grade_quant_item
+from shared.src.shared.config import Settings
 
 # ── Quant eval no longer grades the answer key against itself ────────────────
 
@@ -214,6 +215,22 @@ def test_dry_run_makes_no_calls_and_writes_nothing(
     plan = json.loads(capsys.readouterr().out)
     assert plan["mode"] == "dry-run" and plan["max_agent_calls"] > 0
     assert not ledger.exists() and not (tmp_path / "runs").exists()
+
+
+def test_the_eval_cli_defaults_to_the_configured_spend_cap_and_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    _block_network(monkeypatch)
+    ledger = tmp_path / "shared.json"
+    Ledger(ledger, 10.0).record("mock", "gpt-4.1-mini", 6.0)
+    settings = Settings(ai_spend_cap_usd=10.0, ai_ledger_path=str(ledger))
+    monkeypatch.setattr("shared.src.shared.budget.get_settings", lambda: settings)
+    assert cli.main(["--out-dir", str(tmp_path / "runs")]) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["ledger_ceiling_usd"] == 10.0 and plan["ledger_spent_usd"] == 6.0
+    assert cli.main(["--ceiling", "2", "--ledger", str(tmp_path / "other.json")]) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["ledger_ceiling_usd"] == 2.0 and plan["ledger_spent_usd"] == 0.0
 
 
 def test_offline_pipeline_runs_real_agent_without_network(

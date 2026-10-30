@@ -1,5 +1,5 @@
 """
-Attempt store for the IELTS-style mock: one local SQLite file, one user.
+Attempt store for the IELTS mock: one local SQLite file, one user.
 
 The clock is server-side: starting an attempt fixes `deadline_at`; the browser countdown is
 only a display. An attempt is module-agnostic (`module` column) so later modules reuse it. The

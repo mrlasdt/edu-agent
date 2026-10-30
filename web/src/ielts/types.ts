@@ -1,6 +1,14 @@
 // Mirrors services/agent/src/agent/ielts/models.py and services/gateway/.../ielts_api.py.
 
-export const DISCLAIMER = "Estimated band, not an official IELTS score.";
+export interface Budget {
+  cap_usd: number;
+  spent_usd: number;
+  remaining_usd: number;
+  exhausted: boolean;
+  message: string | null;
+}
+
+export const DISCLAIMER = "Mock score: an estimate, not an official IELTS result.";
 export const ESSAY_MINIMUM_WORDS = 250;
 
 export type CriterionId = "TR" | "CC" | "LR" | "GRA";

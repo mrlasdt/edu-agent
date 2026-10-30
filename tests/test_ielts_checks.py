@@ -1,4 +1,4 @@
-"""Deterministic essay checks and band arithmetic for the IELTS-style Writing mock."""
+"""Deterministic essay checks and band arithmetic for the IELTS Writing mock."""
 import pytest
 
 from evals.exam_set import ielts_writing_adversarial as adversarial

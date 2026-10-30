@@ -1,4 +1,4 @@
-import type { Attempt, Report, WritingPrompt } from "./types";
+import type { Attempt, Budget, Report, WritingPrompt } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -37,6 +37,7 @@ const json = (method: string, body?: unknown): RequestInit => ({
   body: body === undefined ? undefined : JSON.stringify(body),
 });
 
+export const getBudget = () => call<Budget>("/ielts/budget");
 export const listPrompts = () => call<WritingPrompt[]>("/ielts/prompts");
 export const listAttempts = () => call<Attempt[]>("/ielts/attempts");
 export const createAttempt = (promptId: string) =>

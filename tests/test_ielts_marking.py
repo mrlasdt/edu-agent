@@ -1,5 +1,5 @@
 """
-The IELTS-style Writing mock pipeline: sampled grading, caps, feedback validation, report and
+The IELTS Writing mock pipeline: sampled grading, caps, feedback validation, report and
 calibration gate. A scripted completer stands in for the model; nothing touches the network.
 """
 import json
@@ -267,7 +267,7 @@ async def test_full_report_passes_the_mechanical_checks():
     band = report.estimated_band
     assert band is not None and band.overall == 6.0 and band.range[0] <= 6.0 <= band.range[1]
     assert band.calibration.label == "Uncalibrated estimate" and band.confidence == "high"
-    assert report.disclaimer == "Estimated band, not an official IELTS score."
+    assert report.disclaimer == "Mock score: an estimate, not an official IELTS result."
     assert [p.criterion for p in report.top_priorities] == ["LR", "GRA", "TR"]
     assert report.vs_previous_attempt is not None
     assert report.vs_previous_attempt.criteria_deltas["LR"] == 0.5

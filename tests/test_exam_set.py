@@ -125,12 +125,17 @@ def test_local_directory_is_gitignored():
     assert done.returncode == 0, "evals/golden/local/ must be gitignored"
 
 
-LOCAL_ONLY_DIRS = ("evals/golden/local", "ielts-local")
+# Third-party essays, the mock's attempts, blind pools and downloaded band descriptors; and the
+# spend ledger and run reports, which hold costs and model outputs.
+LOCAL_ONLY_DIRS = (
+    "evals/golden/local", "ielts-local", "ielts-local/blind", "ielts-local/descriptors",
+    ".eval-ledger", ".eval-runs", ".eval-cache",
+)
 
 
 @pytest.mark.parametrize("directory", LOCAL_ONLY_DIRS)
 def test_local_only_directories_are_ignored_and_hold_nothing_tracked(directory: str):
-    """Third-party essays, the IELTS attempts database and local packs must never be committed."""
+    """Nothing under a local-only directory may be tracked, and each must be gitignored."""
     ignored = subprocess.run(
         ["git", "-C", str(REPO), "check-ignore", "-q", f"{directory}/anything.jsonl"],
         check=False,

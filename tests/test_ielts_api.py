@@ -20,6 +20,7 @@ from services.gateway.src.gateway.ielts_store import (
     AttemptStore,
 )
 from services.gateway.src.gateway.main import app
+from shared.src.shared.budget import Ledger
 from tests.test_ielts_marking import ESSAY, Scripted, feedback_reply, grade_reply
 
 
@@ -47,9 +48,15 @@ def completer() -> Scripted:
 
 
 @pytest.fixture
-def client(store: AttemptStore, completer: Scripted) -> Iterator[TestClient]:
+def ledger(tmp_path: Path) -> Ledger:
+    return Ledger(tmp_path / "ledger.json", ceiling_usd=5.0)
+
+
+@pytest.fixture
+def client(store: AttemptStore, completer: Scripted, ledger: Ledger) -> Iterator[TestClient]:
     app.dependency_overrides[ielts_api.get_store] = lambda: store
     app.dependency_overrides[ielts_api.get_completer] = lambda: completer
+    app.dependency_overrides[ielts_api.get_ledger] = lambda: ledger
     ielts_api._limiter._minute_window.clear()
     ielts_api._limiter._day_counts.clear()
     with TestClient(app) as c:
@@ -155,7 +162,7 @@ def test_full_flow_start_autosave_resume_submit_report(
     report = client.get(f"/ielts/attempts/{attempt_id}/report").json()
     assert report["status"] == "graded" and report["timing"]["used_s"] == 900
     assert report["estimated_band"]["calibration"]["label"] == "Uncalibrated estimate"
-    assert report["disclaimer"] == "Estimated band, not an official IELTS score."
+    assert report["disclaimer"] == "Mock score: an estimate, not an official IELTS result."
     assert report["criteria"][0]["evidence"][0]["quote"] in ESSAY
 
 

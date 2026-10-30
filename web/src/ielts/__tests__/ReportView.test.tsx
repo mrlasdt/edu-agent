@@ -5,12 +5,12 @@ import { ReportView } from "../ReportView";
 import { ESSAY, report } from "./fixtures";
 
 describe("ReportView", () => {
-  it("leads with the estimated band, its range, and the fixed disclaimer", () => {
+  it("leads with the mock score, its range, and the fixed disclaimer", () => {
     render(<ReportView report={report()} essay={ESSAY} onAnother={vi.fn()} />);
-    const hero = screen.getByRole("region", { name: "Estimated band" });
-    expect(within(hero).getByLabelText("Estimated overall band 6.0")).toBeInTheDocument();
+    const hero = screen.getByRole("region", { name: "Mock score" });
+    expect(within(hero).getByLabelText("Mock overall score 6.0")).toBeInTheDocument();
     expect(hero).toHaveTextContent("between 5.5 and 6.5");
-    expect(hero).toHaveTextContent("Estimated band, not an official IELTS score.");
+    expect(hero).toHaveTextContent("Mock score: an estimate, not an official IELTS result.");
   });
 
   it("says 'Uncalibrated estimate' until the calibration gate has passed", () => {
@@ -51,7 +51,7 @@ describe("ReportView", () => {
     );
     expect(screen.getByText(/well under the 250-word minimum/)).toBeInTheDocument();
     expect(screen.getByText(/overall \+0.5/)).toHaveTextContent(
-      "Change in estimated band since your last marked attempt: overall +0.5",
+      "Change in mock score since your last marked attempt: overall +0.5",
     );
     expect(screen.getByText("at least 250 words")).toBeInTheDocument();
     expect(screen.getByText(/not assessed/)).toBeInTheDocument();
@@ -83,8 +83,8 @@ describe("ReportView", () => {
     });
     render(<ReportView report={r} essay="Cooking is good." onAnother={vi.fn()} />);
     expect(screen.getByText(/too short to mark/)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Estimated overall band/)).not.toBeInTheDocument();
-    expect(screen.getByText("Estimated band, not an official IELTS score.")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Mock overall score/)).not.toBeInTheDocument();
+    expect(screen.getByText("Mock score: an estimate, not an official IELTS result.")).toBeInTheDocument();
   });
 
   it("says when the written feedback is unavailable and notes a late submission", () => {

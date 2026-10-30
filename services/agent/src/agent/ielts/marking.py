@@ -2,7 +2,8 @@
 Mark one Writing Task 2 response end to end: checks, sampled grading, feedback, report.
 
 Two outcomes are final and returned as an `ungraded` report (the response cannot be marked);
-a model outage raises `GradingError` so the caller can keep the essay and offer a retry.
+a model outage raises `GradingError` and a budget stop `BudgetExceededError`, at any stage, so
+the caller can keep the essay and offer a retry.
 """
 from __future__ import annotations
 
@@ -33,6 +34,7 @@ from services.agent.src.agent.ielts.models import (
     Timing,
 )
 from services.agent.src.agent.ielts.scoring import CRITERIA, CRITERION_NAMES, MAX_ESTIMATED_BAND
+from shared.src.shared.budget import BudgetExceededError
 
 LOW_CONFIDENCE_FLAGS = frozenset(
     {"possibly_off_topic", "copies_prompt", "addressed_to_marker", "repetitive_text"}
@@ -149,6 +151,8 @@ async def mark_essay(
         feedback: Feedback | None = await generate_feedback(
             prompt, essay, outcome.criteria, notes, completer=completer, trace_id=trace_id
         )
+    except BudgetExceededError:
+        raise
     except Exception:  # noqa: BLE001 - the bands stand without feedback; the report says so
         feedback = None
 

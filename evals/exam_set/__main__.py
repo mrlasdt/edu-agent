@@ -8,7 +8,7 @@ Golden-set extension CLI.
   python -m evals.exam_set import-writing9 --limit 1200     # into evals/golden/local/
   python -m evals.exam_set import-cambridge --dir <folder>  # own book files, local OCR
   python -m evals.exam_set import-ieltsbuddy                # instructor-commented essays (polite)
-  python -m evals.exam_set build-blind-pool --drafts 41     # needs a key; into ielts-local/blind/
+  python -m evals.exam_set build-blind-pool                 # needs a key; into ielts-local/blind/
   python -m evals.exam_set import-blind-scores              # owner's scores.csv -> captain_blind
   python -m evals.exam_set manifest                         # print the local manifest
   python -m evals.exam_set summary                          # counts by exam, skill and tier
@@ -57,10 +57,18 @@ def main(argv: list[str] | None = None) -> int:
     cam.add_argument("--dir", required=True, help="folder of the captain's book text/PDF/scans")
     sub.add_parser("import-ieltsbuddy")
     bp = sub.add_parser("build-blind-pool")
-    bp.add_argument("--drafts", type=int, default=41)
+    bp.add_argument("--drafts", type=int, default=18,
+                    help="model-drafted essays, spread over bands 4.0 to 8.0 (default 18)")
+    bp.add_argument("--teacher", type=int, default=12,
+                    help="instructor-graded essays to include, spread over their bands "
+                         "(default 12, so the default pool is 30 essays). Essays already "
+                         "imported from an earlier pool are skipped on import, so a second "
+                         "pool toward n=60 needs more --drafts, e.g. --drafts 30 --teacher 0")
     bp.add_argument("--model", default="openai/gpt-4.1-mini")
     bp.add_argument("--blind-dir", default=str(blind_pool.BLIND_DIR))
-    bp.add_argument("--ledger", default=".eval-ledger/ledger.json")
+    bp.add_argument("--ledger", default=None, help="spend ledger (default AI_LEDGER_PATH)")
+    bp.add_argument("--ceiling", type=float, default=None,
+                    help="spend cap in USD (default AI_SPEND_CAP_USD)")
     isb = sub.add_parser("import-blind-scores")
     isb.add_argument("--blind-dir", default=str(blind_pool.BLIND_DIR))
     sub.add_parser("manifest")
@@ -148,7 +156,7 @@ def _build_blind_pool(args: argparse.Namespace, directory: Path) -> int:
 
     import litellm
 
-    from evals.agent_eval.budget import Ledger
+    from evals.agent_eval.budget import spend_ledger
     from evals.agent_eval.transport import MeteredTransport
 
     if not (os.environ.get("OPENAI_API_KEY") or os.environ.get("OPENROUTER_API_KEY")):
@@ -163,12 +171,14 @@ def _build_blind_pool(args: argparse.Namespace, directory: Path) -> int:
         (i.id, i.prompt) for i in load_exam_items(exam="ielts", skill="writing_t2")
         if i.task_type == "essay_prompt"
     ]
-    teacher = [
+    teacher = blind_pool.spread_by_band([
         i for i in load_exam_items(exam="ielts", skill="writing_t2", include_local=True,
                                    local_directory=directory)
         if i.label_provenance.tier.value == "teacher_graded" and i.response
-    ]
-    transport = MeteredTransport(Ledger(Path(args.ledger), 20.0), f"blind-pool-{time.time():.0f}")
+    ], args.teacher)
+    transport = MeteredTransport(
+        spend_ledger(args.ledger, args.ceiling), f"blind-pool-{time.time():.0f}"
+    )
 
     async def complete(messages: list[dict[str, str]]) -> str:
         response = await litellm.acompletion(

@@ -213,32 +213,41 @@ curl -F "file=@path/to/notes.txt" \
      http://localhost:8003/admin/documents
 ```
 
-## IELTS-style Writing mock
+## IELTS Writing mock
 
-A first slice of IELTS preparation: take a Writing Task 2 mock under a 40-minute clock and get an **estimated band** for each of the four criteria with examiner-style feedback. Design, calibration gates and limits are in ADR-0014. This is an IELTS-style mock, not an official test, and every band it shows carries the line **"Estimated band, not an official IELTS score."**
+A first slice of IELTS preparation for the **General Training** test: take a Writing Task 2 mock under the computer-delivered clock (40 minutes within the 60-minute Writing module, at least 250 words) and get a **mock score** for each of the four criteria with examiner-style feedback. Task 2 is the same essay task in General Training and Academic, so nothing in the mock depends on the variant. Design, calibration gates and limits are in ADR-0014. This is a mock, not an official test, and every score it shows carries the line **"Mock score: an estimate, not an official IELTS result."**
 
 ```bash
-mkdir -p ielts-local            # attempts are stored here (SQLite, gitignored)
-docker compose -f infra/docker-compose.yml up --build -d    # needs OPENAI_API_KEY in .env, as for the tutor
-open http://localhost:5173/ielts-mock                         # or the "IELTS-style Writing mock" link on the start page
+mkdir -p ielts-local .eval-ledger   # attempts (SQLite) and the spend ledger; both gitignored
+# put OPENAI_API_KEY=... in .env (see .env.example), then:
+docker compose -f infra/docker-compose.yml up --build -d
+open http://localhost:5173/ielts-mock                         # or the "IELTS Writing mock" link on the start page
 ```
 
 Without Docker, run the gateway (`uv run uvicorn services.gateway.src.gateway.main:app --port 8000`, with `OPENAI_API_KEY` in the environment) and `cd web && npm run dev`, then open http://localhost:5173/ielts-mock. The mock does not need Qdrant, the embedder or the other services.
 
-What happens: pick one of 8 original Task 2 questions, press Start (the server starts the 40-minute clock; refreshing the page does not reset it), write with a live word counter (it autosaves about every 10 seconds and resumes after a refresh), and submit, or let time run out and the essay is submitted for you. Marking takes under a minute: three independent marking passes whose per-criterion median is the band, deterministic checks (length, paragraphs, off-topic or copied text, instructions aimed at the marker), then a written review whose quotes are checked against your essay. The report shows the overall band with a range and a confidence, the four criteria each with evidence from your own text and concrete next steps, an error table, a task checklist, the three things to fix first, and the change since your last attempt.
+What happens: pick one of 8 original Task 2 questions, press Start (the server starts the 40-minute clock; refreshing the page does not reset it), write with a live word counter (it autosaves about every 10 seconds and resumes after a refresh), and submit, or let time run out and the essay is submitted for you. Marking takes under a minute: three independent marking passes whose per-criterion median is the score, deterministic checks (length, paragraphs, off-topic or copied text, instructions aimed at the marker), then a written review whose quotes are checked against your essay. The report shows the overall mock score with a range and a confidence, the four criteria each with evidence from your own text and concrete next steps, an error table, a task checklist, the three things to fix first, and the change since your last attempt.
 
-**What the band can and cannot be trusted for.** It is shown as **"Uncalibrated estimate"** until a labelled set passes the gate in ADR-0014, and that has not happened: there are no examiner-scored essays here. On 19 instructor-graded essays the grader landed within half a band of the instructor 84% of the time with almost no average bias, but it pulls scores toward the middle (calibration slope 0.55; only half of the 7.5+ essays were within half a band, and only two essays were below 5.5), so a very strong essay may read a band or so low. Treat it as a consistent yardstick for tracking your own progress across attempts and for finding weaknesses, not as a prediction of your exam score. Use the criterion feedback and the priorities more than the exact number; a half band either way is normal. The checks cap the band for responses that are too short, off topic, copied from the question, repetitive or that try to instruct the marker, and no estimate is ever above 8.5.
+**Spend cap.** AI spend on the IELTS mock and the evals is capped at **5 USD** (`AI_SPEND_CAP_USD`), counted in one ledger (`.eval-ledger/ledger.json`, `AI_LEDGER_PATH`) that they share. The GRE tutor's `/chat` is not metered and does not count toward it. A mock costs about 0.01 USD. Every mock and eval model call is checked against the cap before it is made. Once less than a mock's worth is left, the page shows how much is spent, refuses to start a new mock and says why; if the cap is reached while you write, your essay is kept and marking can be retried after the cap is raised.
 
-**Measuring it yourself.** The repository can build a blind pool of essays for you to score without seeing the grader's output, then measure the grader against your scores:
+**What the mock score can and cannot be trusted for.** It is shown as **"Uncalibrated estimate"** until a labelled set passes the gate in ADR-0014, and that has not happened: there are no examiner-scored essays here. On 19 instructor-graded essays the grader landed within half a band of the instructor 84% of the time with almost no average bias, but it pulls scores toward the middle (calibration slope 0.55; only half of the 7.5+ essays were within half a band, and only two essays were below 5.5), so a very strong essay may read a band or so low. Treat it as a consistent yardstick for tracking your own progress across attempts and for finding weaknesses, not as a prediction of your exam score. Use the criterion feedback and the priorities more than the exact number; a half band either way is normal. The checks cap the score for responses that are too short, off topic, copied from the question, repetitive or that try to instruct the marker, and no estimate is ever above 8.5.
+
+**Blind-scoring essays (the way to calibrate it).** The repository builds a pool of essays for you to score without seeing the grader's output, then measures the grader against your scores. The default pool is 30 essays: 18 drafted by a model at bands from 4.0 to 8.0 and 12 instructor-graded learner essays, shuffled under opaque ids (about 12 minutes each).
 
 ```bash
-uv run python -m evals.exam_set build-blind-pool --drafts 41   # needs OPENAI_API_KEY; writes ielts-local/blind/
-# read ielts-local/blind/essays.md, fill in ielts-local/blind/scores.csv (TR CC LR GRA, half bands)
-uv run python -m evals.exam_set import-blind-scores            # your scores become captain_blind golden items (local only)
-uv run python -m evals.agent_eval --mode live --suite ielts_writing --ielts-tier captain_blind --max-items 60
+# 1. build the pool (about 0.02 USD; needs OPENAI_API_KEY; writes ielts-local/blind/)
+uv run python -m evals.exam_set build-blind-pool
+# 2. the public band descriptors, saved locally (gitignored) - score from these, one criterion at a time
+mkdir -p ielts-local/descriptors && curl -L -o ielts-local/descriptors/writing-band-descriptors.pdf \
+  https://ielts.org/cdn/Guides/ielts-writing-band-descriptors.pdf
+# 3. read ielts-local/blind/essays.md and fill ielts-local/blind/scores.csv:
+#    one row per essay id, TR CC LR GRA as half bands (e.g. 6.5); leave a row empty to skip it
+# 4. import your scores (they become captain_blind golden items, local only), then measure
+uv run python -m evals.exam_set import-blind-scores
+uv run python -m evals.agent_eval --mode live --suite ielts_writing --ielts-tier captain_blind --max-items 30
 ```
 
-Do not open `ielts-local/blind/key-do-not-open-until-scored.jsonl` or run the grader on the pool until you have finished scoring.
+Do not open `ielts-local/blind/key-do-not-open-until-scored.jsonl` or run the grader on the pool until you have finished scoring: it would remove the blindness. Thirty essays can reject a bad grader but cannot certify a good one; the decision gate in ADR-0014 needs 60, so scoring a second pool later is how the "uncalibrated" label eventually goes. A second default pool would only add its 18 new model drafts (48 in all), because the instructor-graded essays already imported are skipped as duplicates on import; build the second one with more drafts instead (`build-blind-pool --drafts 30 --teacher 0` adds 30, for 60).
 
 Not in this slice: Reading, Listening, Writing Task 1, Speaking, a full multi-section mock, and tutoring-chat changes. There is no login; it is a single-user local tool.
 
@@ -291,7 +300,7 @@ What it measures (Quant, `QuantAgent` unmodified, run on golden-set questions):
 
 The `generation` suite is described under "Question-generation pipeline" below. What it does **not** measure: AW agent output (the AW agent needs the corpus service; AW is judge calibration only), multi-turn tutoring, retrieval quality, or anything the 5-item Quant slice is too small to support statistically. Offline numbers are plumbing checks, not quality. The free tier is heavily rate-limited: in the one smoke run (2 Quant items, free models, 0 USD) most units were dropped as unavailable and are counted in `units_dropped_model_unavailable`, so treat any free-model number as noisy and check that count. Real calls are made non-streaming and replayed to the agent as a stream, so time-to-first-token is not measured.
 
-Providers and spend: the free chain is `openrouter/free` then pinned free models; `--provider free+openai` appends `openai/gpt-4o-mini` as the fallback for final runs. A persisted ledger (`.eval-ledger/ledger.json`, gitignored; `--ledger` to relocate) caps cumulative spend at 20 USD (`--ceiling`); each call is projected at worst case and aborts the run before it could exceed the cap. Free models count as zero. The jev judge (`typesafe/jev-1.14`, OpenRouter decisions API, typed yes/no and score answers, no explanations) is paid and off by default; its request/response mapping follows OpenRouter's docs but has not been run live. Reports (with model outputs) go to `.eval-runs/` (gitignored); only aggregates are printed.
+Providers and spend: the free chain is `openrouter/free` then pinned free models; `--provider free+openai` appends `openai/gpt-4o-mini` as the fallback for final runs. A persisted ledger (`.eval-ledger/ledger.json`, gitignored; `AI_LEDGER_PATH` or `--ledger` to relocate) caps cumulative spend at 5 USD (`AI_SPEND_CAP_USD` or `--ceiling`), the same cap the IELTS mock obeys; each call is projected at worst case and aborts the run before it could exceed the cap. Free models count as zero. The jev judge (`typesafe/jev-1.14`, OpenRouter decisions API, typed yes/no and score answers, no explanations) is paid and off by default; its request/response mapping follows OpenRouter's docs but has not been run live. Reports (with model outputs) go to `.eval-runs/` (gitignored); only aggregates are printed.
 
 Run hygiene: a provider's daily free-tier quota 429 (e.g. OpenRouter `free-models-per-day`) is not retried; the model is skipped for the rest of the run, and every failed call is summarised with its redacted reason under `call_failures`. A run where a suite completes fewer than `--min-coverage` (default 0.8) of its units exits 2 with `coverage_gate` set and no regression metrics, so a mostly-dropped run cannot look green or feed a baseline. Successful responses are cached in `.eval-cache/` (gitignored, holds model outputs; `--cache-dir`, `--no-cache`) keyed by model, messages and sampling parameters, so reruns re-pay nothing. litellm's stdout banners are suppressed so the printed summary is parseable JSON.
 
@@ -359,7 +368,7 @@ plan -> route -> generator expert -> verify tools -> critic -> accept
 - **Critic**: an LLM wording check for ambiguity and answer leaks, run only on items that passed the tools. It fails closed: an unparseable reply counts as a failed check, so the item is retried and then escalated.
 - **Revise loop**: failed checks become feedback to the same expert; after `max_attempts` the item is escalated instead of emitted.
 - **Trace**: every result carries a `TraceEvent` per step (plan, routing, each attempt's item, every check result, feedback, model, latency).
-- **Provider layer**: roles `question_planner`, `question_generator`, `question_critic` in `config/model_config.dev.yaml`, called through `litellm`, so the eval harness's metered transport (free OpenRouter first, OpenAI fallback, 20 USD ledger checked before every call) applies unchanged.
+- **Provider layer**: roles `question_planner`, `question_generator`, `question_critic` in `config/model_config.dev.yaml`, called through `litellm`, so the eval harness's metered transport (free OpenRouter first, OpenAI fallback, the shared spend ledger checked before every call) applies unchanged.
 
 ```python
 from services.agent.src.agent.pipeline.factory import build_pipeline
@@ -481,4 +490,4 @@ All major architectural choices are recorded as ADRs in `docs/adr/`. Highlights:
 | 0009 | Trunk-based development; k8s; Phase 1 Docker Compose |
 | 0011 | Microservices architecture (monorepo); `AgentRegistry` extensibility seam |
 | 0013 | IELTS and SAT golden sets: label tiers, third-party data stays local |
-| 0014 | IELTS-style Writing mock: `/ielts` attempt API, server clock, calibration gates, estimate framing |
+| 0014 | IELTS Writing mock: `/ielts` attempt API, server clock, calibration gates, estimate framing |

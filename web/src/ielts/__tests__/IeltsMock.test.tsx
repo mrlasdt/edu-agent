@@ -5,6 +5,7 @@ import { ApiError } from "../api";
 import { attempt, report } from "./fixtures";
 
 const api = vi.hoisted(() => ({
+  getBudget: vi.fn(),
   listPrompts: vi.fn(),
   listAttempts: vi.fn(),
   createAttempt: vi.fn(),
@@ -29,6 +30,13 @@ const settle = () => act(async () => {});
 describe("IeltsMock", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    api.getBudget.mockResolvedValue({
+      cap_usd: 5,
+      spent_usd: 0.2,
+      remaining_usd: 4.8,
+      exhausted: false,
+      message: null,
+    });
     api.listPrompts.mockResolvedValue(prompts);
     api.listAttempts.mockResolvedValue([]);
     api.saveDraft.mockResolvedValue(attempt());
@@ -43,11 +51,34 @@ describe("IeltsMock", () => {
     render(<IeltsMock />);
     await settle();
     const history = screen.getByRole("region", { name: "Earlier attempts" });
-    expect(history).toHaveTextContent("Estimated band, not an official IELTS score.");
-    expect(within(history).getAllByText(/^Estimated band \d\.\d$/).map((e) => e.textContent)).toEqual([
-      "Estimated band 6.5",
-      "Estimated band 5.0",
+    expect(history).toHaveTextContent("Mock score: an estimate, not an official IELTS result.");
+    expect(within(history).getAllByText(/^Mock score \d\.\d$/).map((e) => e.textContent)).toEqual([
+      "Mock score 6.5",
+      "Mock score 5.0",
     ]);
+  });
+
+  it("shows the AI spend against the cap", async () => {
+    render(<IeltsMock />);
+    await settle();
+    expect(screen.getByLabelText("AI spend")).toHaveTextContent("$0.20 of the $5.00 cap");
+  });
+
+  it("refuses new mocks with the server's message once the spend cap is used up", async () => {
+    const message = "The AI spend cap of $5.00 is used up ($5.00 spent), so no new mock can be marked.";
+    api.getBudget.mockResolvedValue({
+      cap_usd: 5,
+      spent_usd: 5,
+      remaining_usd: 0,
+      exhausted: true,
+      message,
+    });
+    render(<IeltsMock />);
+    await settle();
+    expect(screen.getByRole("alert")).toHaveTextContent(message);
+    for (const card of screen.getAllByRole("button", { name: /Question number/ })) {
+      expect(card).toBeDisabled();
+    }
   });
 
   it("offers the eight questions with their essay types", async () => {
@@ -96,7 +127,7 @@ describe("IeltsMock", () => {
     api.getReport.mockResolvedValue(report());
     render(<IeltsMock />);
     await settle();
-    expect(screen.getByLabelText("Estimated overall band 6.0")).toBeInTheDocument();
+    expect(screen.getByLabelText("Mock overall score 6.0")).toBeInTheDocument();
   });
 
   it("polls while marking and then shows the report", async () => {
@@ -111,7 +142,7 @@ describe("IeltsMock", () => {
       await settle();
       expect(screen.getByText("Marking your essay")).toBeInTheDocument();
       await act(async () => void vi.advanceTimersByTime(1100));
-      expect(screen.getByLabelText("Estimated overall band 6.0")).toBeInTheDocument();
+      expect(screen.getByLabelText("Mock overall score 6.0")).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }

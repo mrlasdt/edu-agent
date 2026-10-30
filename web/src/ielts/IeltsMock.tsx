@@ -3,6 +3,7 @@ import {
   ApiError,
   createAttempt,
   getAttempt,
+  getBudget,
   getReport,
   listAttempts,
   listPrompts,
@@ -15,12 +16,12 @@ import { ReadyScreen } from "./ReadyScreen";
 import { ReportView } from "./ReportView";
 import { WritingScreen } from "./WritingScreen";
 import { forgetDraft, rememberAttempt, rememberedAttempt, unsavedDraft } from "./storage";
-import type { Attempt, Report, WritingPrompt } from "./types";
+import type { Attempt, Budget, Report, WritingPrompt } from "./types";
 
 type View =
   | { kind: "loading" }
   | { kind: "failed"; message: string }
-  | { kind: "picker"; prompts: WritingPrompt[]; history: Attempt[] }
+  | { kind: "picker"; prompts: WritingPrompt[]; history: Attempt[]; budget: Budget | null }
   | { kind: "ready"; attempt: Attempt }
   | { kind: "writing"; attempt: Attempt; initialText: string }
   | { kind: "marking"; attempt: Attempt }
@@ -41,7 +42,7 @@ export function IeltsMock({ pollMs = POLL_MS, autosaveMs }: IeltsMockProps) {
   const prompts = useRef<WritingPrompt[]>([]);
 
   useEffect(() => {
-    document.title = "IELTS-style Writing mock";
+    document.title = "IELTS Writing mock";
   }, []);
 
   /** Where an attempt belongs on screen, given what the server says about it. */
@@ -72,12 +73,13 @@ export function IeltsMock({ pollMs = POLL_MS, autosaveMs }: IeltsMockProps) {
   const showPicker = useCallback(async () => {
     rememberAttempt(null);
     setNotice(null);
-    const [list, history] = await Promise.all([
+    const [list, history, budget] = await Promise.all([
       prompts.current.length ? Promise.resolve(prompts.current) : listPrompts(),
       listAttempts().catch(() => [] as Attempt[]),
+      getBudget().catch(() => null),
     ]);
     prompts.current = list;
-    setView({ kind: "picker", prompts: list, history: history.slice(0, 5) });
+    setView({ kind: "picker", prompts: list, history: history.slice(0, 5), budget });
   }, []);
 
   useEffect(() => {
@@ -182,7 +184,7 @@ export function IeltsMock({ pollMs = POLL_MS, autosaveMs }: IeltsMockProps) {
   return (
     <main className="app ielts" data-view={view.kind}>
       <header className="app-header">
-        <h1>IELTS-style Writing mock</h1>
+        <h1>IELTS Writing mock</h1>
         <a className="ielts-home" href="/">
           GRE tutor
         </a>
@@ -203,6 +205,7 @@ export function IeltsMock({ pollMs = POLL_MS, autosaveMs }: IeltsMockProps) {
         <PromptPicker
           prompts={view.prompts}
           history={view.history}
+          budget={view.budget}
           busy={busy}
           onPick={(p) => void pick(p)}
           onOpen={(a) => void open(a)}
