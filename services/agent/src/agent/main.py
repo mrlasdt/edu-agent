@@ -11,6 +11,7 @@ from services.agent.src.agent.bootstrap import build_registry
 from services.agent.src.agent.registry import AgentNotRegisteredError
 from shared.src.shared.models import Message, MessageRole, Mode, Session
 from shared.src.shared.observability import setup_observability
+from shared.src.shared.trailer import encode, strip_mark
 
 app = FastAPI(title="Agent Service")
 
@@ -77,12 +78,14 @@ async def generate(req: GenerateRequest) -> StreamingResponse:
 
     async def token_stream() -> AsyncGenerator[bytes, None]:
         if isinstance(first, str):
-            yield first.encode("utf-8")
+            yield strip_mark(first).encode("utf-8")
         async for item in items:
             if isinstance(item, str):
-                yield item.encode("utf-8")
-            # dict metadata (verifier_fail, citation_stripped) is not part of the
-            # text stream in v1 — it will move to a trailing SSE event later.
+                yield strip_mark(item).encode("utf-8")
+            elif isinstance(item, dict) and isinstance(item.get("verifier_fail"), bool):
+                # The verifier's verdict is only known with the finished answer: it ends the
+                # stream as a trailer the gateway passes on. Other metadata is not streamed.
+                yield encode({"math_verified": not item["verifier_fail"]}).encode("utf-8")
 
     return StreamingResponse(
         token_stream(), media_type="text/plain; charset=utf-8", headers=headers

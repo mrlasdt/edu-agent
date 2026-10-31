@@ -56,7 +56,8 @@ Moderation API). See README "Status" for what is still missing.
 
 ### Known gaps (not done)
 - Web app shell is minimal: Sources, feedback, preferences and upload components are
-  not wired into it, there is no math rendering and no conversation persistence.
+  not wired into it, math is only lightly typeset (superscripts and symbols, no LaTeX)
+  and there is no conversation persistence.
 - The seeded corpus is nine short Quant notes; AW has no corpus.
 - RAG reranking is optional and unevaluated. search_corpus reranks the RRF top-20 with
   BGE-reranker-v2-m3 (TEI /rerank) when TEI_RERANKER_URL is set, and fails open to the RRF

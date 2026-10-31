@@ -12,7 +12,7 @@ interface Props {
 const CONFIDENCE_TEXT = {
   high: "High confidence: the marking passes agreed closely.",
   medium: "Medium confidence: the marking passes differed a little.",
-  low: "Low confidence: the marking passes disagreed or the essay has issues, so treat this band loosely.",
+  low: "Low confidence: the marking passes disagreed, or an automatic check on the essay overrode them, so treat this band loosely.",
 } as const;
 
 const ERROR_LABEL: Record<string, string> = {
@@ -86,9 +86,9 @@ function CriterionCard({ c }: { c: CriterionReport }) {
         <ul className="ielts-evidence" aria-label={`Evidence for ${c.name}`}>
           {c.evidence.map((e, i) => (
             <li key={i} data-effect={e.effect}>
-              <q>{e.quote}</q>
+              <q>{e.cut ? `${e.quote}...` : e.quote}</q>
               <span className="ielts-hint">
-                {e.effect === "supports" ? "supports the band" : "holds the band back"} - paragraph {e.para}
+                {e.effect === "supports" ? "a strength" : "holds the band back"} - paragraph {e.para}
               </span>
             </li>
           ))}

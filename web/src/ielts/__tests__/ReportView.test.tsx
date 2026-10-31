@@ -44,6 +44,31 @@ describe("ReportView", () => {
     expect(gra).toHaveTextContent("Agreement x1");
   });
 
+  it("labels a strong quote as a strength, not as support for the band", () => {
+    const r = report();
+    r.criteria[0].band = 4;
+    r.criteria[0].capped_from = 7;
+    render(<ReportView report={r} essay={ESSAY} onAnother={vi.fn()} />);
+    const tr = screen.getByRole("article", { name: "Task Response" });
+    expect(tr).toHaveTextContent("a strength - paragraph 1");
+    expect(tr).not.toHaveTextContent("supports the band");
+  });
+
+  it("shows an ellipsis after a quote that was shortened", () => {
+    const r = report();
+    r.criteria[0].evidence[0] = { ...r.criteria[0].evidence[0], cut: true };
+    render(<ReportView report={r} essay={ESSAY} onAnother={vi.fn()} />);
+    const tr = screen.getByRole("article", { name: "Task Response" });
+    expect(within(tr).getByText("Learning to cook at school is useful...")).toBeInTheDocument();
+  });
+
+  it("explains low confidence as an override by the automatic checks", () => {
+    const r = report();
+    r.estimated_band!.confidence = "low";
+    render(<ReportView report={r} essay={ESSAY} onAnother={vi.fn()} />);
+    expect(screen.getByText(/automatic check on the essay overrode them/)).toBeInTheDocument();
+  });
+
   it("lists the top priorities, warnings, the previous-attempt delta and the checklist", () => {
     render(<ReportView report={report()} essay={ESSAY} onAnother={vi.fn()} />);
     expect(screen.getByRole("region", { name: "Fix these first" })).toHaveTextContent(

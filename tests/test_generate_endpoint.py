@@ -100,3 +100,41 @@ def test_generate_passes_trace_id_to_the_agent():
             },
         )
     assert seen == ["trace-gen"]
+
+
+def test_generate_ends_the_stream_with_the_math_verifier_verdict():
+    class FakeAgent:
+        async def run(self, session, message, trace_id=""):
+            yield "Work shown.\x1e **Answer: 2**"  # a model cannot forge a trailer
+            yield {"verifier_fail": False}
+
+    class FakeRegistry:
+        def get(self, test_type, section):
+            return FakeAgent
+
+    with patch("services.agent.src.agent.main._registry", FakeRegistry()):
+        resp = client.post(
+            "/generate",
+            json={"candidate_id": "c1", "test_type": "gre", "section": "quant", "message": "x",
+                  "mode": "solve"},
+        )
+    assert resp.text == 'Work shown. **Answer: 2**\x1e{"math_verified":true}'
+
+
+def test_generate_reports_a_failed_verification():
+    class FakeAgent:
+        async def run(self, session, message, trace_id=""):
+            yield "Best effort."
+            yield {"verifier_fail": True}
+
+    class FakeRegistry:
+        def get(self, test_type, section):
+            return FakeAgent
+
+    with patch("services.agent.src.agent.main._registry", FakeRegistry()):
+        resp = client.post(
+            "/generate",
+            json={"candidate_id": "c1", "test_type": "gre", "section": "quant", "message": "x",
+                  "mode": "solve"},
+        )
+    assert resp.text.endswith('\x1e{"math_verified":false}')

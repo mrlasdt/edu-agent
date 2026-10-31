@@ -21,13 +21,19 @@ from typing import Any
 from shared.src.shared.config import get_settings
 
 
+def _is_set(key: str) -> bool:
+    """A real key: not empty and not an unedited `.env.example` placeholder such as `sk-lf-...`."""
+    key = key.strip()
+    return bool(key) and not key.endswith("...")
+
+
 def setup_observability() -> None:
     """
     Configure LiteLLM → Langfuse callback if keys are configured (env or .env).
     Safe to call multiple times; idempotent.
     """
     settings = get_settings()
-    if not (settings.langfuse_public_key and settings.langfuse_secret_key):
+    if not (_is_set(settings.langfuse_public_key) and _is_set(settings.langfuse_secret_key)):
         return  # no-op in dev/test without Langfuse
 
     # The LiteLLM Langfuse callback reads its credentials from os.environ, but

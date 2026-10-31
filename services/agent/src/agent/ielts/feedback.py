@@ -28,6 +28,7 @@ from services.agent.src.agent.ielts.scoring import (
 
 FEEDBACK_MAX_TOKENS = 6000  # a cap, not a target
 MAX_QUOTE_WORDS = 15
+MAX_LOCATE_WORDS = 60  # longest quote the code will look for before shortening it
 MAX_ERRORS = 12
 MAX_ERROR_WORDS = 10  # a whole clause is not a located error
 ATTEMPTS = 2
@@ -37,6 +38,21 @@ ERROR_TYPES = (
 )
 _EDGE = re.compile(r"^[\s\"'“”‘’.…]+|[\s\"'“”‘’.…]+$")
 _BARE_NUMBER = re.compile(r"(?:band\s*)?[\d.,/+\-–\s]+", re.I)
+# A note that calls the text informal, a style choice or a regional variant is not naming an error.
+_NOT_AN_ERROR = re.compile(
+    r"\b(?:informal|colloquial|conversational|register|stylistic|style|american|british|"
+    r"us english|uk english)\b", re.I,
+)
+# Spelling pairs that differ only by British/American convention, mapped to one shared key.
+_VARIANTS = (
+    (re.compile(r"(?<=[a-z])yz(?=e|ed|es|ing|ation)"), "ys"),
+    (re.compile(r"(?<=[a-z])iz(?=e|ed|es|ing|ation|er|ers)"), "is"),
+    (re.compile(r"our(?=s|ed|ing|ful|able|\b)"), "or"),
+    (re.compile(r"(?<=[b-df-hj-np-tv-z])re\b"), "er"),
+    (re.compile(r"ogue\b"), "og"),
+    (re.compile(r"ence\b"), "ense"),
+    (re.compile(r"(?<=[aeiou])ll(?=ed|ing|er)"), "l"),
+)
 
 
 @dataclass
@@ -63,9 +79,10 @@ def locate_quote(text: str, quote: str, taken: list[tuple[int, int]] | None = No
     """
     Span of `quote` in `text`, tolerant of whitespace and surrounding quote marks. Returns None
     when the words are not in one paragraph of the text. `taken` spans are skipped so repeated
-    quotes map to different occurrences where they exist.
+    quotes map to different occurrences where they exist. The whole quote is located, however
+    long (up to MAX_LOCATE_WORDS); `shorten_span` brings it within the display limit.
     """
-    tokens = _EDGE.sub("", quote).split()[:MAX_QUOTE_WORDS]
+    tokens = _EDGE.sub("", quote).split()[:MAX_LOCATE_WORDS]
     if not tokens:
         return None
     pattern = re.compile(r"\s+".join(re.escape(t) for t in tokens))
@@ -80,6 +97,49 @@ def locate_quote(text: str, quote: str, taken: list[tuple[int, int]] | None = No
         if not taken or all(span[1] <= a or span[0] >= b for a, b in taken):
             return span
     return first
+
+
+def shorten_span(text: str, span: tuple[int, int]) -> tuple[tuple[int, int], bool]:
+    """`span` cut to its first MAX_QUOTE_WORDS words, and whether anything was cut."""
+    words = list(re.finditer(r"\S+", text[span[0]:span[1]]))
+    if len(words) <= MAX_QUOTE_WORDS:
+        return span, False
+    return (span[0], span[0] + words[MAX_QUOTE_WORDS - 1].end()), True
+
+
+def _variant_key(word: str) -> str:
+    key = re.sub(r"[^a-z]", "", word.lower())
+    for pattern, repl in _VARIANTS:
+        key = pattern.sub(repl, key)
+    return key
+
+
+def is_spelling_variant(quote: str, suggestion: str) -> bool:
+    """True when `suggestion` only swaps British and American spellings of the quoted words."""
+    wanted = re.sub(r"\(.*?\)", " ", suggestion).split()
+    got = quote.split()
+    if not got or len(wanted) < len(got):
+        return False
+    return all(
+        _variant_key(a) == _variant_key(b) for a, b in zip(got, wanted, strict=False)
+    )
+
+
+def is_not_an_error(kind: str, quote: str, note: str, suggestion: str) -> bool:
+    """A correct spelling variant, or a remark on style rather than on a rule that was broken."""
+    if _NOT_AN_ERROR.search(note):
+        return True
+    return kind == "spelling" and is_spelling_variant(quote, suggestion)
+
+
+def _changes_a_form(quote: str, suggestion: str) -> bool:
+    """Whether the fix swaps a word for another form of itself (economy -> economic)."""
+    old = set(re.findall(r"[a-z]+", quote.lower()))
+    new = set(re.findall(r"[a-z]+", suggestion.lower()))
+    gone, added = old - new, new - old
+    if not gone or not added:
+        return True  # an insertion or deletion: nothing here says the type is wrong
+    return any(a[:4] == b[:4] for a in gone for b in added if min(len(a), len(b)) >= 4)
 
 
 def within_paragraph(paragraphs: list[tuple[int, int]], start: int, end: int) -> bool:
@@ -144,8 +204,9 @@ def build_feedback(raw: dict[str, Any], essay: str) -> Feedback:
                 dropped += 1
                 continue
             taken.append(span)
+            span, cut = shorten_span(essay, span)
             evidence.append(Evidence(
-                quote=essay[span[0]:span[1]], start=span[0], end=span[1],
+                quote=essay[span[0]:span[1]], start=span[0], end=span[1], cut=cut,
                 para=paragraph_of(essay, span[0]),
                 effect="weakens" if str(ev.get("effect")) == "weakens" else "supports",
             ))
@@ -185,12 +246,18 @@ def build_feedback(raw: dict[str, Any], essay: str) -> Feedback:
             continue
         if len(essay[span[0]:span[1]].split()) > MAX_ERROR_WORDS:
             continue
-        taken_errors.append(span)
+        quote = essay[span[0]:span[1]]
         kind = str(err.get("type", "other")).strip().lower()
+        kind = kind if kind in ERROR_TYPES else "other"
+        note, suggestion = _text(err.get("note"), 300), _text(err.get("suggestion"), 300)
+        if is_not_an_error(kind, quote, note, suggestion):
+            continue
+        if kind == "word_form" and not _changes_a_form(quote, suggestion):
+            kind = "other"  # a different word is a word-choice fix, not a change of form
+        taken_errors.append(span)
         errors.append(ErrorSpan(
-            start=span[0], end=span[1], quote=essay[span[0]:span[1]],
-            type=kind if kind in ERROR_TYPES else "other",
-            note=_text(err.get("note"), 300), suggestion=_text(err.get("suggestion"), 300),
+            start=span[0], end=span[1], quote=quote, type=kind, note=note,
+            suggestion=suggestion,
         ))
     errors.sort(key=lambda e: e.start)
 

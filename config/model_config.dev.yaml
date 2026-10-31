@@ -95,7 +95,8 @@ roles:
 # To roll a prompt forward or A/B it: add prompts/<agent>/<mode>/vN.md and point here.
 prompts:
   quant_agent:
-    tutor: v2  # v1 plus "plain-text math": the web app does not render LaTeX
+    tutor: v3  # v2 plus: cite the reference note as [N], never as "your notes"
+    # v2 was v1 plus "plain-text math": the web app typesets x^2 and => but not LaTeX
     solve: v2
   aw_agent:
     tutor: v1
@@ -104,7 +105,7 @@ prompts:
   ielts_grader:
     writing_t2: v1
   ielts_feedback:
-    writing_t2: v1
+    writing_t2: v2  # v1 plus: both spelling conventions are correct; style is not an error
   # Question pipeline roles (prompts/question_pipeline/<role>/<version>.md)
   question_pipeline:
     planner: v1

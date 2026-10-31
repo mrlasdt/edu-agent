@@ -8,6 +8,35 @@ import type { ReactNode } from "react";
 
 export type RenderCitation = (index: number, key: string) => ReactNode;
 
+// The tutor writes math as plain text (x^2, sqrt(2), =>). Typeset it for reading: exponents as
+// superscripts and ASCII operators as symbols. Text only; code spans and fences are left as is.
+const SYMBOLS: [RegExp, string][] = [
+  [/<=>/g, "\u21d4"],
+  [/=>/g, "\u21d2"],
+  [/<=/g, "\u2264"],
+  [/>=/g, "\u2265"],
+  [/!=/g, "\u2260"],
+  [/->/g, "\u2192"],
+  [/\+-/g, "\u00b1"],
+  [/\bsqrt\(/g, "\u221a("],
+];
+const EXPONENT = /([A-Za-z0-9)\]])\^(-?(?:\d+(?:\.\d+)?|[A-Za-z]\b)|\([^()\n]*\))/g;
+
+function renderMath(text: string, keyPrefix: string): ReactNode[] {
+  const symbolic = SYMBOLS.reduce((acc, [pattern, symbol]) => acc.replace(pattern, symbol), text);
+  const out: ReactNode[] = [];
+  let last = 0;
+  for (const m of symbolic.matchAll(EXPONENT)) {
+    const start = m.index ?? 0;
+    const exponent = m[2].startsWith("(") ? m[2].slice(1, -1) : m[2];
+    out.push(symbolic.slice(last, start) + m[1]);
+    out.push(<sup key={`${keyPrefix}.${start}`}>{exponent}</sup>);
+    last = start + m[0].length;
+  }
+  out.push(symbolic.slice(last));
+  return out;
+}
+
 // `code` | **bold** | *italic* (not inside words, so 2*3*4 stays literal) | [N]
 const INLINE =
   /`([^`\n]+)`|\*\*(\S(?:[^\n]*?\S)?)\*\*|(^|[^\w*])\*([^\s*](?:[^*\n]*[^\s*])?)\*(?![\w*])|\[(\d+)\]/;
@@ -22,7 +51,7 @@ function renderInline(text: string, renderCitation: RenderCitation, keyPrefix: s
     const key = `${keyPrefix}.${match.index}`;
     let start = match.index;
     if (italic !== undefined) start += italicLead.length;
-    if (start > last) out.push(text.slice(last, start));
+    if (start > last) out.push(...renderMath(text.slice(last, start), `${key}.t`));
     if (code !== undefined) {
       out.push(<code key={key}>{code}</code>);
     } else if (bold !== undefined) {
@@ -34,7 +63,7 @@ function renderInline(text: string, renderCitation: RenderCitation, keyPrefix: s
     }
     last = match.index + whole.length;
   }
-  if (last < text.length) out.push(text.slice(last));
+  if (last < text.length) out.push(...renderMath(text.slice(last), `${keyPrefix}.end`));
   return out;
 }
 

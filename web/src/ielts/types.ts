@@ -58,6 +58,7 @@ export interface Evidence {
   end: number;
   para: number;
   effect: "supports" | "weakens";
+  cut?: boolean;
 }
 
 export interface Action {

@@ -11,20 +11,20 @@ cp .env.example .env   # then fill in OPENAI_API_KEY
 docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 581 Python tests (mocked LLM and Qdrant) plus 95 frontend unit tests, and `npm run test:e2e` runs browser smoke tests with `/chat` and the `/ielts` API mocked.
+That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 614 Python tests (mocked LLM and Qdrant) plus 111 frontend unit tests, and `npm run test:e2e` runs browser smoke tests with `/chat` and the `/ielts` API mocked.
 
 A recorded live check (screenshot and streamed transcript) is in [docs/mvp-demo](docs/mvp-demo/README.md).
 
 What is still missing:
 
-- **The web app is a thin shell.** Subject picker, tutor/solve switch and a chat that streams `POST /chat` into message bubbles. There is no sources panel, feedback, preferences or upload in the UI (components exist but are not wired), no math rendering (answers render basic Markdown; math is plain text), and no conversation persistence.
+- **The web app is a thin shell.** Subject picker, tutor/solve switch and a chat that streams `POST /chat` into message bubbles. There is no sources panel, feedback, preferences or upload in the UI (components exist but are not wired), so a `[1]` citation marker is plain text, and no conversation persistence. Answers render basic Markdown, and the plain-text math the tutor writes is typeset lightly (`x^2` as a superscript, `=>`, `<=`, `>=`, `!=`, `->`, `sqrt(` as symbols); there is no LaTeX or fraction layout.
 - **The corpus is tiny and Quant only.** Nine short notes written for this repo; the AW agent has no corpus (no ETS material is checked in). More documents go in through the ingestion API (see "Ingest more documents").
 - **The RAG reranker is optional.** Retrieval is hybrid (dense + a locally hashed sparse vector, fused with RRF; `HYBRID_RETRIEVAL_ENABLED=false` for dense-only). When `TEI_RERANKER_URL` is set, the top 20 fused hits are reranked by BGE-reranker-v2-m3 (leave it unset to turn reranking off); if the reranker is down or slow, retrieval logs a warning and keeps the RRF order. Retrieval quality with the reranker has not been evaluated.
 - **The Orchestrator's complexity step is a stub.** `/chat` applies the rate-limit, PII, content-safety, completeness, answer-leak and citation guardrails (see "Guardrails"), but not output content safety.
-- **Agent metadata is dropped.** `/generate` streams text only, apart from an `X-Source-Count` header the gateway uses for the citation check, so sources and verifier events never reach a UI.
+- **Most agent metadata is dropped.** `/generate` streams text, an `X-Source-Count` header the gateway uses for the citation check, and (in Solve mode) a one-line trailer with the math verifier's verdict that the web app shows under the answer. Sources themselves never reach the UI. The verifier is a well-formedness check of the agent's own final answer, not an independent solve (see "Agent eval harness"), and the UI says so.
 - **Evals are small and CI never scores a real model.** 5 Quant and 2 AW golden GRE items, plus 33 SAT Math, 41 IELTS Reading and 8 IELTS Writing prompt items (see "IELTS and SAT golden sets"); the IELTS Writing target needs third-party data downloaded locally and CI has none. The agent-in-the-loop harness (below) runs the real Quant agent, but CI only runs it offline against a fake model; real runs are manual and there is no measured baseline checked in.
 - **The question-generation pipeline is a library plus an eval target.** It is not exposed over HTTP, has no UI, and has only been run for real on a handful of items on free models (see "Question-generation pipeline").
-- **Local only.** The k8s manifests have never been applied to a cluster, and Langfuse is opt-in (`--profile observability`).
+- **Local only.** The k8s manifests have never been applied to a cluster, and Langfuse is opt-in (`--profile observability`): leave the `LANGFUSE_*` keys commented out in `.env` unless it is running, because any value (even the `.env.example` placeholders, which are now ignored) turns tracing on.
 
 The sections below describe the intended design; see `progress.txt` for the current state of each piece.
 
@@ -105,7 +105,7 @@ Every role defaults to `gpt-4o-mini` to keep spend low; a production setup would
 
 ### Prerequisites
 
-- Python 3.12+, `uv`, Node 20.19+ (CI uses 22), Docker Desktop
+- Python 3.12+, `uv`, Node 20.19+ (CI uses 22), Docker Desktop (the app must be running before step 3; on macOS start it with `open -a Docker` and wait until `docker info` answers)
 
 ### 1. Clone and install
 
@@ -176,10 +176,10 @@ Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`). To use anothe
 ### 4. Run tests
 
 ```bash
-# Python tests (581)
+# Python tests (614)
 uv run pytest tests/ -q
 
-# Frontend tests (95)
+# Frontend tests (111)
 cd web && npm test
 
 # Eval pipeline check (offline fake model, no network, no keys); includes the generation suite
@@ -218,11 +218,12 @@ curl -F "file=@path/to/notes.txt" \
 A first slice of IELTS preparation for the **General Training** test: take a Writing Task 2 mock under the computer-delivered clock (40 minutes within the 60-minute Writing module, at least 250 words) and get a **mock score** for each of the four criteria with examiner-style feedback. Task 2 is the same essay task in General Training and Academic, so nothing in the mock depends on the variant. Design, calibration gates and limits are in ADR-0014. This is a mock, not an official test, and every score it shows carries the line **"Mock score: an estimate, not an official IELTS result."**
 
 ```bash
-mkdir -p ielts-local .eval-ledger   # attempts (SQLite) and the spend ledger; both gitignored
 # put OPENAI_API_KEY=... in .env (see .env.example), then:
 docker compose -f infra/docker-compose.yml up --build -d
 open http://localhost:5173/ielts-mock                         # or the "IELTS Writing mock" link on the start page
 ```
+
+Compose creates `./ielts-local` (attempts, SQLite) and `./.eval-ledger` (the spend ledger), both gitignored, on first start. With Docker Desktop that needs nothing from you; with Docker Engine on Linux run `mkdir -p ielts-local .eval-ledger` first so they are owned by you rather than root.
 
 Without Docker, run the gateway (`uv run uvicorn services.gateway.src.gateway.main:app --port 8000`, with `OPENAI_API_KEY` in the environment) and `cd web && npm run dev`, then open http://localhost:5173/ielts-mock. The mock does not need Qdrant, the embedder or the other services.
 
@@ -230,7 +231,7 @@ What happens: pick one of 8 original Task 2 questions, press Start (the server s
 
 **Spend cap.** AI spend on the IELTS mock and the evals is capped at **5 USD** (`AI_SPEND_CAP_USD`), counted in one ledger (`.eval-ledger/ledger.json`, `AI_LEDGER_PATH`) that they share. The GRE tutor's `/chat` is not metered and does not count toward it. A mock costs about 0.01 USD. Every mock and eval model call is checked against the cap before it is made. Once less than a mock's worth is left, the page shows how much is spent, refuses to start a new mock and says why; if the cap is reached while you write, your essay is kept and marking can be retried after the cap is raised.
 
-**What the mock score can and cannot be trusted for.** It is shown as **"Uncalibrated estimate"** until a labelled set passes the gate in ADR-0014, and that has not happened: there are no examiner-scored essays here. On 19 instructor-graded essays the grader landed within half a band of the instructor 84% of the time with almost no average bias, but it pulls scores toward the middle (calibration slope 0.55; only half of the 7.5+ essays were within half a band, and only two essays were below 5.5), so a very strong essay may read a band or so low. Treat it as a consistent yardstick for tracking your own progress across attempts and for finding weaknesses, not as a prediction of your exam score. Use the criterion feedback and the priorities more than the exact number; a half band either way is normal. The checks cap the score for responses that are too short, off topic, copied from the question, repetitive or that try to instruct the marker, and no estimate is ever above 8.5.
+**What the mock score can and cannot be trusted for.** It is shown as **"Uncalibrated estimate"** until a labelled set passes the gate in ADR-0014, and that has not happened: there are no examiner-scored essays here. On 19 instructor-graded essays the grader landed within half a band of the instructor 84% of the time with almost no average bias, but it pulls scores toward the middle (calibration slope 0.55; only half of the 7.5+ essays were within half a band, and only two essays were below 5.5), so a very strong essay may read a band or so low. Treat it as a consistent yardstick for tracking your own progress across attempts and for finding weaknesses, not as a prediction of your exam score. Use the criterion feedback and the priorities more than the exact number; a half band either way is normal. The checks cap the score for responses that are too short (under 150 words: Task Response at 4 and every other criterion at 5.5), a single paragraph (Coherence and Cohesion at 5), off topic, copied from the question, repetitive or that try to instruct the marker, and no estimate is ever above 8.5. When a cap overrides the marking passes the confidence is shown as low, because the passes agreeing says little then.
 
 **Blind-scoring essays (the way to calibrate it).** The repository builds a pool of essays for you to score without seeing the grader's output, then measures the grader against your scores. The default pool is 30 essays: 18 drafted by a model at bands from 4.0 to 8.0 and 12 instructor-graded learner essays, shuffled under opaque ids (about 12 minutes each).
 

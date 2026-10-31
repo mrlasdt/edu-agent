@@ -20,6 +20,7 @@ class Evidence(BaseModel):
     end: int
     para: int
     effect: Literal["supports", "weakens"]
+    cut: bool = False  # the model's quote was longer than the limit, so this is its opening words
 
 
 class Action(BaseModel):

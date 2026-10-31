@@ -76,3 +76,22 @@ def test_every_adversarial_case_raises_its_expected_flags(name: str):
 def test_the_plain_essay_alone_raises_no_manipulation_flag():
     codes = {f.code for f in check_essay(PROMPT, PLAIN).flags}
     assert not codes & {"addressed_to_marker", "possibly_off_topic", "copies_prompt"}
+
+
+def test_a_response_far_under_length_holds_every_criterion_down():
+    checks = check_essay(PROMPT, PLAIN)
+    assert checks.word_count < 150
+    assert checks.caps == {"TR": 4.0, "CC": 5.0, "LR": 5.5, "GRA": 5.5}  # PLAIN is one paragraph
+
+
+def test_one_paragraph_caps_coherence_but_two_or_three_only_note_it():
+    body = long_essay(260)
+    one = check_essay(PROMPT, body)
+    assert one.has("one_paragraph") and not one.has("few_paragraphs")
+    assert one.caps == {"CC": 5.0}
+    words = body.split()
+    three = check_essay(PROMPT, "\n\n".join(" ".join(words[i::3]) for i in range(3)))
+    assert three.has("few_paragraphs") and not three.has("one_paragraph")
+    assert "CC" not in three.caps
+    four = check_essay(PROMPT, "\n\n".join(" ".join(words[i::4]) for i in range(4)))
+    assert not four.has("few_paragraphs") and not four.has("one_paragraph")

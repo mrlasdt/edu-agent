@@ -49,18 +49,18 @@ export function App() {
     setDraft("");
     setBusy(true);
     try {
-      for await (const chunk of streamChat({
+      for await (const event of streamChat({
         candidateId: candidateId.current,
         subject,
         mode,
         message: text,
         history,
       })) {
-        patchMessage(agentId, (m) => ({
-          ...m,
-          content: m.content + chunk,
-          status: undefined,
-        }));
+        patchMessage(agentId, (m) =>
+          event.kind === "text"
+            ? { ...m, content: m.content + event.text, status: undefined }
+            : { ...m, mathVerified: event.mathVerified }
+        );
       }
       patchMessage(agentId, (m) => ({
         ...m,
