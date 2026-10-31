@@ -375,3 +375,125 @@ def test_calibration_defaults_to_uncalibrated_and_only_trusts_a_passed_gate(tmp_
 def test_the_committed_calibration_file_says_uncalibrated_until_a_gate_passes():
     cal = load_calibration()
     assert cal.status == "uncalibrated" and "ncalibrated" in cal.label
+
+
+# ── slice-check regressions: one short paragraph, false errors, cut quotes ───
+
+SHORT_ESSAY = (
+    "I agree that schools should teach students to cook and manage a household budget, because "
+    "these skills affect daily life far more than many people realise. First, cooking teaches "
+    "students to eat healthily and spend less money. A teenager who can prepare a simple meal "
+    "is less likely to rely on expensive fast food. Second, budgeting is a skill many adults "
+    "learn only after they make costly mistakes with credit cards or rent. If schools taught it "
+    "earlier, fewer young people would fall into debt. However, some argue that the timetable "
+    "is already full and that parents should teach these things at home. This is true in some "
+    "families, but not all parents have the time or knowledge. In conclusion, schools should "
+    "include both subjects, because they prepare students for independent adult life."
+)
+
+
+async def test_a_short_single_paragraph_essay_cannot_score_well_overall():
+    """A generous grader gave 7s; the checks must hold the whole report down, not only TR."""
+    completer = Scripted([grade_reply(7, 7, 7, 7)] * 3, feedback_reply(invented_error=False))
+    report = await mark_essay(
+        PROMPT, SHORT_ESSAY, completer=completer, samples=3, calibration=UNCAL
+    )
+    band = report.estimated_band
+    assert band is not None
+    bands = {c.id: c.band for c in report.criteria}
+    assert bands == {"TR": 4.0, "CC": 5.0, "LR": 5.5, "GRA": 5.5}
+    assert band.overall == 5.0
+    assert band.confidence == "low"  # the checks overrode every marking pass
+    assert {f.code for f in report.flags} >= {"under_length", "one_paragraph"}
+
+
+async def test_confidence_stays_high_when_no_check_overrides_the_marking_passes():
+    completer = Scripted([grade_reply(6, 6, 6, 6)] * 3, feedback_reply(invented_error=False))
+    report = await mark_essay(PROMPT, ESSAY, completer=completer, samples=3, calibration=UNCAL)
+    assert report.estimated_band is not None and report.estimated_band.confidence == "high"
+
+
+def feedback_with_errors(*errors: dict[str, str]) -> dict[str, object]:
+    return {"criteria": {}, "errors": list(errors), "checks": {}}
+
+
+def test_a_correct_british_or_american_spelling_is_not_an_error():
+    fb = build_feedback(feedback_with_errors(
+        {"quote": "many people realise", "type": "spelling",
+         "note": "American vs British spelling", "suggestion": "realize (if American English)"},
+        {"quote": "a colour", "type": "spelling", "note": "n", "suggestion": "a color"},
+        {"quote": "recieve", "type": "spelling", "note": "i before e", "suggestion": "receive"},
+    ), SHORT_ESSAY + " I will recieve a colour.")
+    assert [e.quote for e in fb.errors] == ["recieve"]
+
+
+@pytest.mark.parametrize(("quote", "suggestion"), [
+    ("controled", "controlled"), ("fulfiled", "fulfilled"), ("advertize", "advertise"),
+    ("exercize", "exercise"), ("surprize", "surprise"), ("sence", "sense"),
+    ("hense", "hence"), ("or", "our"), ("for", "four"), ("good practise", "good practice"),
+    ("a storey about", "a story about"), ("a draught of", "a draft of"), ("kerb", "curb"),
+    ("computer programmes", "computer programs"), ("a learnt scholar", "a learned scholar"),
+])
+def test_a_misspelling_wrong_in_both_conventions_stays_an_error(quote: str, suggestion: str):
+    fb = build_feedback(feedback_with_errors(
+        {"quote": quote, "type": "spelling", "note": "Misspelling", "suggestion": suggestion},
+    ), f"They {quote} it.")
+    assert [e.quote for e in fb.errors] == [quote]
+
+
+def test_a_misspelling_whose_note_mentions_british_spelling_stays_an_error():
+    fb = build_feedback(feedback_with_errors(
+        {"quote": "behavour", "type": "spelling", "note": "Misspelling of the British spelling",
+         "suggestion": "behaviour"},
+        {"quote": "travelled", "type": "spelling", "note": "n", "suggestion": "traveled"},
+    ), "Their behavour changed after they travelled.")
+    assert [e.quote for e in fb.errors] == ["behavour"]
+
+
+def test_a_style_remark_is_not_an_error_and_a_wrong_type_is_relabelled():
+    fb = build_feedback(feedback_with_errors(
+        {"quote": "teach these things", "type": "word_form", "note": "Informal phrase",
+         "suggestion": "teach these skills"},
+        {"quote": "the timetable is already full", "type": "word_form",
+         "note": "Wrong word", "suggestion": "the schedule is already crowded"},
+        {"quote": "less money", "type": "word_form", "note": "n", "suggestion": "lesser monies"},
+    ), SHORT_ESSAY)
+    assert [(e.quote, e.type) for e in fb.errors] == [
+        ("less money", "word_form"),
+        ("the timetable is already full", "other"),
+    ]
+
+
+def test_a_rule_error_whose_note_uses_a_style_word_stays_an_error():
+    fb = build_feedback(feedback_with_errors(
+        {"quote": "informal learning are", "type": "agreement",
+         "note": "Agreement: 'informal learning' is singular",
+         "suggestion": "informal learning is"},
+        {"quote": "life style", "type": "spelling", "note": "\u201clife style\u201d is one word",
+         "suggestion": "lifestyle"},
+        {"quote": "informel learning", "type": "spelling", "note": "Misspelling of informal",
+         "suggestion": "informal learning"},
+        {"quote": "regster", "type": "spelling", "note": "Misspelling of register",
+         "suggestion": "register"},
+        {"quote": "stlye", "type": "spelling", "note": "Misspelling of style",
+         "suggestion": "style"},
+        {"quote": "it's", "type": "other", "note": "It's informal; don't contract",
+         "suggestion": "it is"},
+    ), "They say informal learning are useful. It shapes our life style, and it's cheap. "
+       "Some informel learning helps. Voters regster in a new stlye.")
+    assert [e.quote for e in fb.errors] == [
+        "informal learning are", "life style", "informel learning", "regster", "stlye",
+    ]
+
+
+def test_a_quote_over_the_word_limit_is_shortened_and_marked_cut():
+    long_quote = (
+        "A teenager who can prepare a simple meal is less likely to rely on expensive fast food"
+    )
+    fb = build_feedback({"criteria": {"GRA": {"evidence": [
+        {"quote": long_quote, "effect": "supports"},
+        {"quote": "fall into debt", "effect": "supports"}]}}}, SHORT_ESSAY)
+    cut, whole = fb.criteria["GRA"].evidence
+    assert cut.cut and len(cut.quote.split()) == 15 and cut.quote.endswith("rely on expensive")
+    assert SHORT_ESSAY[cut.start:cut.end] == cut.quote
+    assert not whole.cut and whole.quote == "fall into debt"

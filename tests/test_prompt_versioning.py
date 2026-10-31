@@ -54,7 +54,7 @@ def test_dev_config_declares_prompt_versions():
 
     cfg = load_model_config("config/model_config.dev.yaml")
     # dev config must declare an active version for the shipped agents/modes
-    assert cfg.prompt_version("quant_agent", "tutor") == "v2"
+    assert cfg.prompt_version("quant_agent", "tutor") == "v3"
     assert cfg.prompt_version("aw_agent", "tutor") == "v1"
 
 

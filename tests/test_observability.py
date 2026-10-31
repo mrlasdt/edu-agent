@@ -65,6 +65,28 @@ def test_setup_observability_enables_langfuse_callback(monkeypatch, clean_callba
     assert clean_callbacks.failure_callback == ["langfuse"]
 
 
+def test_setup_observability_ignores_unedited_env_example_placeholders(
+    monkeypatch, clean_callbacks
+):
+    """`cp .env.example .env` must not turn on Langfuse, which logs a connection error per turn."""
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-...")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-...")
+
+    setup_observability()
+
+    assert clean_callbacks.success_callback == []
+    assert clean_callbacks.failure_callback == []
+
+
+def test_env_example_ships_with_tracing_off(monkeypatch, clean_callbacks):
+    from pathlib import Path
+
+    from dotenv import dotenv_values
+
+    values = dotenv_values(Path(".env.example"))
+    assert not values.get("LANGFUSE_PUBLIC_KEY") and not values.get("LANGFUSE_SECRET_KEY")
+
+
 # ── 2. setup_observability no-op when keys absent ────────────────────────────
 
 def test_setup_observability_noop_without_keys(monkeypatch, clean_callbacks):

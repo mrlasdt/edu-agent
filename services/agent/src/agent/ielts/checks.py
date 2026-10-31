@@ -49,6 +49,8 @@ _INJECTION = re.compile(
 
 
 TASK_FAILURE_BAND = 5.5  # ceiling for the other criteria when the response is not an answer
+TOO_SHORT_BAND = 5.5  # a response this short shows too little range and control for more
+ONE_PARAGRAPH_CC_BAND = 5.0  # inadequate paragraphing is a band 5 Coherence descriptor
 
 
 def cap_task_failure(caps: dict[str, float]) -> None:
@@ -158,9 +160,12 @@ def check_essay(prompt: str, essay: str) -> EssayChecks:
     if n < SHORT_WORDS:
         flags.append(_flag(
             "under_length", "warn",
-            f"{n} words is far under the 250-word minimum; Task Response is capped at 4.",
+            f"{n} words is far under the 250-word minimum; Task Response is capped at 4 and"
+            f" the other criteria at {TOO_SHORT_BAND:g}.",
         ))
         checks.caps["TR"] = 4.0
+        for crit in ("CC", "LR", "GRA"):
+            checks.caps[crit] = min(checks.caps.get(crit, 9.0), TOO_SHORT_BAND)
     elif n < NEAR_TARGET_WORDS:
         flags.append(_flag(
             "under_length", "warn",
@@ -173,7 +178,14 @@ def check_essay(prompt: str, essay: str) -> EssayChecks:
             f"{n} words is just under the 250-word minimum; examiners penalise this.",
         ))
 
-    if checks.paragraph_count < MIN_PARAGRAPHS:
+    if checks.paragraph_count == 1:
+        flags.append(_flag(
+            "one_paragraph", "warn",
+            "The whole response is one paragraph; Coherence and Cohesion is capped at"
+            f" {ONE_PARAGRAPH_CC_BAND:g}.",
+        ))
+        checks.caps["CC"] = min(checks.caps.get("CC", 9.0), ONE_PARAGRAPH_CC_BAND)
+    elif checks.paragraph_count < MIN_PARAGRAPHS:
         flags.append(_flag(
             "few_paragraphs", "info",
             f"{checks.paragraph_count} paragraph(s); a Task 2 essay normally has four or more.",

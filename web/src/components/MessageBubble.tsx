@@ -19,16 +19,24 @@ function renderContentWithCitations(
 
   return (
     <>
-      {renderMarkdown(mainContent, (idx, key) => (
-        <button
-          key={key}
-          className="citation-marker"
-          aria-label={`[${idx}]`}
-          onClick={() => onCitationClick?.(idx)}
-        >
-          [{idx}]
-        </button>
-      ))}
+      {renderMarkdown(mainContent, (idx, key) =>
+        // The web app has no sources panel yet, so a marker is plain text unless something
+        // handles the click: a button that does nothing is worse than no button.
+        onCitationClick ? (
+          <button
+            key={key}
+            className="citation-marker"
+            aria-label={`[${idx}]`}
+            onClick={() => onCitationClick(idx)}
+          >
+            [{idx}]
+          </button>
+        ) : (
+          <sup key={key} className="citation-marker citation-marker--static">
+            [{idx}]
+          </sup>
+        )
+      )}
       {hasDisclaimer && (
         <aside
           data-testid="essay-disclaimer"
@@ -55,6 +63,16 @@ export function MessageBubble({ message, onCitationClick, onFeedback }: Props) {
       <div className="message-content">
         {renderContentWithCitations(message.content, onCitationClick)}
       </div>
+      {message.mathVerified !== undefined && (
+        <p
+          className={`math-check math-check--${message.mathVerified ? "ok" : "fail"}`}
+          role="note"
+        >
+          {message.mathVerified
+            ? "Final answer checked by the math verifier. It confirms the answer is well-formed, not that the working is right."
+            : "The math verifier could not confirm the final answer. Check the working yourself."}
+        </p>
+      )}
       {isAgent && onFeedback && (
         <div className="feedback-buttons" role="group" aria-label="feedback">
           <button

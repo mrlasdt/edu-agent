@@ -101,6 +101,60 @@ describe("MessageBubble — citations", () => {
   });
 });
 
+describe("MessageBubble — markers without a handler", () => {
+  it("renders [N] as plain text, not a button that does nothing", () => {
+    const { container } = render(
+      <MessageBubble message={{ ...baseMsg, content: "See reference [1] for details." }} />
+    );
+    expect(screen.queryByRole("button", { name: "[1]" })).not.toBeInTheDocument();
+    expect(container.querySelector("sup.citation-marker")).toHaveTextContent("[1]");
+  });
+});
+
+describe("MessageBubble — math", () => {
+  const text = (content: string) =>
+    render(<MessageBubble message={{ ...baseMsg, content }} />).container;
+
+  it("typesets exponents as superscripts", () => {
+    const container = text("Factor x^2 - 5x + 6 = 0, then 2^(n+1) and 10^-3.");
+    const sups = [...container.querySelectorAll("sup")].map((s) => s.textContent);
+    expect(sups).toEqual(["2", "n+1", "-3"]);
+    expect(container.textContent).toBe("Factor x2 - 5x + 6 = 0, then 2n+1 and 10-3.");
+  });
+
+  it("replaces ASCII operators with symbols", () => {
+    const container = text("x^2 = 4 => x = 2 or x <= 3, y >= 1, z != 0, a -> b, sqrt(2), 2 +- 1");
+    expect(container.textContent).toContain("\u21d2 x = 2");
+    for (const symbol of ["\u2264", "\u2265", "\u2260", "\u2192", "\u221a(2)", "\u00b1"]) {
+      expect(container.textContent).toContain(symbol);
+    }
+  });
+
+  it("leaves code spans and fences literal", () => {
+    const container = text("Use `x^2 => y` here\n\n```\nx^2 <= 3\n```");
+    expect(container.querySelector("sup")).toBeNull();
+    expect(container.querySelector("p code")).toHaveTextContent("x^2 => y");
+    expect(container.querySelector("pre code")).toHaveTextContent("x^2 <= 3");
+  });
+});
+
+describe("MessageBubble — math verification", () => {
+  it("says when the math verifier checked the final answer", () => {
+    render(<MessageBubble message={{ ...baseMsg, content: "**Answer: 2**", mathVerified: true }} />);
+    expect(screen.getByRole("note")).toHaveTextContent(/checked by the math verifier/i);
+  });
+
+  it("warns when the math verifier could not confirm it", () => {
+    render(<MessageBubble message={{ ...baseMsg, content: "Best effort.", mathVerified: false }} />);
+    expect(screen.getByRole("note")).toHaveTextContent(/could not confirm/i);
+  });
+
+  it("shows nothing when the verifier did not run", () => {
+    render(<MessageBubble message={baseMsg} />);
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  });
+});
+
 describe("MessageBubble — disclaimer", () => {
   it("renders disclaimer text in a distinct disclaimer element", () => {
     const msg = { ...baseMsg, content: `Great essay.\n\n${ESSAY_DISCLAIMER}` };

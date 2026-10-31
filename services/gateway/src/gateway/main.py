@@ -31,6 +31,7 @@ from services.gateway.src.gateway.orchestrator import (
 from shared.src.shared.config import get_settings
 from shared.src.shared.models import Message, MessageRole, Mode, Session
 from shared.src.shared.observability import setup_observability
+from shared.src.shared.trailer import TrailerSplitter, encode
 
 _log = logging.getLogger(__name__)
 
@@ -155,22 +156,26 @@ async def chat(req: ChatRequest) -> StreamingResponse:
         meta: dict[str, Any] = {}
         guard: ReplyGuard | None = None
         decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        trailer = TrailerSplitter()  # the agent's metadata is not part of the answer text
         async for chunk in _stream_from_agent(payload, meta):
             if guard is None:
                 guard = ReplyGuard(req.mode, trace_id, meta.get("num_sources"))
-            text = guard.feed(decoder.decode(chunk))
+            text = guard.feed(trailer.feed(decoder.decode(chunk)))
             if text:
                 yield text.encode("utf-8")
             if guard.stopped:
                 return
         if guard is not None:
-            tail = guard.feed(decoder.decode(b"", final=True)) + guard.finish()
+            tail = guard.feed(trailer.feed(decoder.decode(b"", final=True))) + guard.finish()
             if (
                 not guard.stopped
                 and guard.text.strip()
                 and await check_answer_leak(guard.text, req.mode, trace_id)
             ):
                 tail += LLM_LEAK_NOTICE
+            verified = trailer.meta.get("math_verified")
+            if isinstance(verified, bool):
+                tail += encode({"math_verified": verified})
             if tail:
                 yield tail.encode("utf-8")
 

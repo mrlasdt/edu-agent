@@ -24,7 +24,9 @@ test("picks a subject, sends a message and renders the streamed answer", async (
 
   await expect(page.getByText("Solve 2x + 3 = 11")).toBeVisible();
   await expect(page.getByText(/Try isolating x first/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "[1]" })).toBeVisible();
+  // No sources panel yet, so the marker is plain text rather than a button that does nothing.
+  await expect(page.getByText("[1]", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "[1]" })).toHaveCount(0);
 
   expect(requests[0]).toMatchObject({
     test_type: "gre",
@@ -77,4 +79,26 @@ test("failed and empty turns are not replayed as history", async ({ page }) => {
     { role: "candidate", content: "first" },
     { role: "candidate", content: "second" },
   ]);
+});
+
+test("solve mode shows the math verifier's verdict and typeset math, not the raw trailer", async ({
+  page,
+}) => {
+  await page.route("**/chat", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/plain; charset=utf-8",
+      body: 'Factor x^2 - 5x + 6 = 0 => (x - 2)(x - 3).\n\n**Answer: x = 2, x = 3**\x1e{"math_verified":true}',
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Quant" }).click();
+  await page.getByLabel("Your message").fill("Solve x^2 - 5x + 6 = 0");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  await expect(page.getByText("Answer: x = 2, x = 3")).toBeVisible();
+  await expect(page.getByRole("note")).toContainText("checked by the math verifier");
+  await expect(page.locator(".message-bubble--agent sup")).toHaveText("2");
+  await expect(page.locator(".message-bubble--agent .message-content")).not.toContainText("math_verified");
 });

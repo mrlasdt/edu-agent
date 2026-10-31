@@ -365,3 +365,28 @@ def test_math_reply_with_long_numbers_is_not_redacted():
 def test_citations_are_not_checked_when_agent_reports_no_source_count():
     resp = _chat(["Try isolating x first [1]."])
     assert resp.text == "Try isolating x first [1]."
+
+
+# ── Math verifier verdict: a trailer after the answer ─────────────────────────
+
+
+def test_the_verifier_verdict_follows_the_answer_and_never_reaches_the_guardrails():
+    guarded: list[str] = []
+    original_feed = ReplyGuard.feed
+
+    def spy(self, text):
+        guarded.append(text)
+        return original_feed(self, text)
+
+    with patch.object(ReplyGuard, "feed", spy):
+        resp = _chat(["Step 1. x = 2.", "\n\n**Answer: 2**", '\x1e{"math_ver', 'ified":true}'],
+                     body={"mode": "solve"})
+    assert resp.text == 'Step 1. x = 2.\n\n**Answer: 2**\x1e{"math_verified":true}'
+    assert not any("\x1e" in part or "math_verified" in part for part in guarded)
+
+
+def test_a_failed_verification_is_reported_and_junk_trailers_are_dropped():
+    failed = _chat(["Best effort.", '\x1e{"math_verified":false}'], body={"mode": "solve"})
+    assert failed.text.endswith('\x1e{"math_verified":false}')
+    for junk in ('\x1e{"math_verified":"yes"}', "\x1enot json", "\x1e[1]"):
+        assert _chat(["Fine.", junk], body={"mode": "solve"}).text == "Fine."

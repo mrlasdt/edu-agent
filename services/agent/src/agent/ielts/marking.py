@@ -50,6 +50,8 @@ def _confidence(outcome: GradeOutcome) -> str:
     n = len(outcome.samples)
     if n < 2 or outcome.spread > 1.0 or any(f.code in LOW_CONFIDENCE_FLAGS for f in outcome.flags):
         return "low"
+    if any(outcome.caps.get(c, 9.0) < outcome.median[c] for c in CRITERIA):
+        return "low"  # a rule overrode the marking passes, so their agreement says little
     return "high" if n >= 3 and outcome.spread <= 0.5 else "medium"
 
 

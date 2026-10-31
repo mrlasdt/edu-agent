@@ -51,6 +51,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .message-content pre code { padding: 0; background: none; }
 .status-line { margin: 0; font-size: 0.85rem; opacity: 0.7; }
 .citation-marker { padding: 0 4px; border: none; color: var(--accent); }
+.citation-marker--static { font-size: 0.75em; }
+.message-content sup { font-size: 0.75em; line-height: 0; }
+.math-check { margin: 6px 0 0; font-size: 0.8rem; opacity: 0.8; }
+.math-check--ok::before { content: "\2713  "; color: var(--accent); }
+.math-check--fail { font-weight: 600; opacity: 1; }
 .essay-disclaimer { margin-top: 8px; font-size: 0.8rem; opacity: 0.75; }
 .feedback-buttons { display: flex; gap: 6px; margin-top: 6px; }
 

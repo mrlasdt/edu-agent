@@ -125,13 +125,14 @@ async def test_llm_grader_goes_through_litellm(monkeypatch: pytest.MonkeyPatch):
 
     async def fake(**kw: Any) -> Any:
         seen.append(kw)
-        content = '{"TR": 6, "CC": 6.5, "LR": 6, "GRA": 5.5, "rationale": "ok"}'
+        # the essay is short and one paragraph, so the checks hold every band at or below 5.5
+        content = '{"TR": 6, "CC": 4.5, "LR": 6, "GRA": 5.5, "rationale": "ok"}'
         return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
 
     monkeypatch.setattr("litellm.acompletion", fake)
     grader = ielts_writing.LLMIeltsGrader("m", samples=3)
     graded = await grader.grade(adversarial.PROMPT, essay, essay_item("x", 6.0))
-    assert graded.criteria["CC"] == 6.5 and graded.criteria["GRA"] == 5.5
+    assert graded.criteria["CC"] == 4.5 and graded.criteria["GRA"] == 5.5
     assert len(seen) == 3 and graded.spread == 0.0
     assert seen[0]["model"] == "m" and seen[0]["temperature"] == 0.3
     assert "Candidate essay" in seen[0]["messages"][1]["content"]
