@@ -3,7 +3,8 @@ British and American spellings of the same word.
 
 Each entry is a British stem, the American stem and the endings both forms take ("" is the bare
 stem). Only the listed words count as variants, so a misspelling that is wrong in both
-conventions (controled, advertize, sence) is never mistaken for one.
+conventions (controled, advertize, sence) is never mistaken for one. Pairs that are variants in
+one sense only (practise/practice, licence/license, draught/draft) are left out.
 """
 from __future__ import annotations
 
@@ -92,7 +93,6 @@ _STEMS = (
     # -re / -er
     ("centre", "center", "|s"),
     ("centred", "centered", ""),
-    ("metre", "meter", "|s"),
     ("kilometre", "kilometer", "|s"),
     ("centimetre", "centimeter", "|s"),
     ("millimetre", "millimeter", "|s"),
@@ -117,7 +117,6 @@ _STEMS = (
     # -ence / -ense
     ("defence", "defense", "|s|less"),
     ("offence", "offense", "|s"),
-    ("licence", "license", "|s"),
     ("pretence", "pretense", "|s"),
     # doubled and single l
     ("travell", "travel", "ed|ing|er|ers"),
@@ -143,10 +142,8 @@ _STEMS = (
     ("instalment", "installment", "|s"),
     ("distil", "distill", "|s"),
     # single words
-    ("practis", "practic", "e|es|ed|ing"),
     ("programme", "program", "|s"),
     ("grey", "gray", "|s|er|ish"),
-    ("tyre", "tire", "|s"),
     ("ageing", "aging", ""),
     ("judgement", "judgment", "|s|al"),
     ("acknowledgement", "acknowledgment", "|s"),
@@ -162,13 +159,8 @@ _STEMS = (
     ("orthopaedic", "orthopedic", "|s"),
     ("oestrogen", "estrogen", ""),
     ("foetus", "fetus", "|es"),
-    ("storey", "story", ""),
-    ("storeys", "stories", ""),
-    ("kerb", "curb", "|s"),
-    ("draught", "draft", "|s|y"),
     ("pyjamas", "pajamas", ""),
     ("cosy", "cozy", ""),
-    ("cheque", "check", "|s"),
     ("artefact", "artifact", "|s"),
     ("moustache", "mustache", "|s"),
     ("sulphur", "sulfur", ""),

@@ -43,6 +43,7 @@ _BARE_NUMBER = re.compile(r"(?:band\s*)?[\d.,/+\-–\s]+", re.I)
 _NOT_AN_ERROR = re.compile(
     r"\b(?:informal|colloquial|conversational|register|stylistic|style)\b", re.I,
 )
+_QUOTED = re.compile(r"(?<![A-Za-z])['‘][^'‘’]+['’](?![A-Za-z])|[\"“][^\"“”]*[\"”]")
 
 
 @dataclass
@@ -109,9 +110,16 @@ def is_spelling_variant(quote: str, suggestion: str) -> bool:
     return bool(swapped) and all(any((g, w) in VARIANT_PAIRS for g in got) for w in swapped)
 
 
+def _own_words(note: str, quote: str) -> str:
+    """The note without the essay words it quotes, so only its own remark is left."""
+    quoted = {w.lower() for w in re.findall(r"[A-Za-z]+", quote)}
+    words = re.findall(r"[A-Za-z]+", _QUOTED.sub(" ", note))
+    return " ".join(w for w in words if w.lower() not in quoted)
+
+
 def is_not_an_error(kind: str, quote: str, note: str, suggestion: str) -> bool:
     """A correct spelling variant, or a remark on style rather than on a rule that was broken."""
-    if _NOT_AN_ERROR.search(note):
+    if _NOT_AN_ERROR.search(_own_words(note, quote)):
         return True
     return kind == "spelling" and is_spelling_variant(quote, suggestion)
 

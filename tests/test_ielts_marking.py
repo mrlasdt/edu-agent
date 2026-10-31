@@ -430,7 +430,8 @@ def test_a_correct_british_or_american_spelling_is_not_an_error():
 @pytest.mark.parametrize(("quote", "suggestion"), [
     ("controled", "controlled"), ("fulfiled", "fulfilled"), ("advertize", "advertise"),
     ("exercize", "exercise"), ("surprize", "surprise"), ("sence", "sense"),
-    ("hense", "hence"), ("or", "our"), ("for", "four"),
+    ("hense", "hence"), ("or", "our"), ("for", "four"), ("good practise", "good practice"),
+    ("a storey about", "a story about"), ("a draught of", "a draft of"), ("kerb", "curb"),
 ])
 def test_a_misspelling_wrong_in_both_conventions_stays_an_error(quote: str, suggestion: str):
     fb = build_feedback(feedback_with_errors(
@@ -460,6 +461,19 @@ def test_a_style_remark_is_not_an_error_and_a_wrong_type_is_relabelled():
         ("less money", "word_form"),
         ("the timetable is already full", "other"),
     ]
+
+
+def test_a_style_word_the_note_quotes_from_the_essay_is_not_a_style_remark():
+    fb = build_feedback(feedback_with_errors(
+        {"quote": "informal learning are", "type": "agreement",
+         "note": "Agreement: 'informal learning' is singular",
+         "suggestion": "informal learning is"},
+        {"quote": "life style", "type": "spelling", "note": "\u201clife style\u201d is one word",
+         "suggestion": "lifestyle"},
+        {"quote": "it's", "type": "other", "note": "It's informal; don't contract",
+         "suggestion": "it is"},
+    ), "They say informal learning are useful. It shapes our life style, and it's cheap.")
+    assert [e.quote for e in fb.errors] == ["informal learning are", "life style"]
 
 
 def test_a_quote_over_the_word_limit_is_shortened_and_marked_cut():
