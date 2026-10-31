@@ -432,6 +432,7 @@ def test_a_correct_british_or_american_spelling_is_not_an_error():
     ("exercize", "exercise"), ("surprize", "surprise"), ("sence", "sense"),
     ("hense", "hence"), ("or", "our"), ("for", "four"), ("good practise", "good practice"),
     ("a storey about", "a story about"), ("a draught of", "a draft of"), ("kerb", "curb"),
+    ("computer programmes", "computer programs"), ("a learnt scholar", "a learned scholar"),
 ])
 def test_a_misspelling_wrong_in_both_conventions_stays_an_error(quote: str, suggestion: str):
     fb = build_feedback(feedback_with_errors(
