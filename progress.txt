@@ -45,12 +45,12 @@ Moderation API). See README "Status" for what is still missing.
 
 - runnable local MVP: containerized web app (nginx proxies /chat), seed job ingesting the
   self-written seed/gre-quant notes as the global corpus, Quant agent retrieves the top 3 notes,
-  all roles on gpt-4o-mini, v2 quant prompts (plain-text math), basic Markdown in chat bubbles;
+  all roles on gpt-4o-mini, plain-text-math quant prompts (versions in config/model_config.dev.yaml),
+  basic Markdown and light math typesetting in chat bubbles;
   live check in docs/mvp-demo
 
 ### Current counts
-- Python tests: 599 passing (uv run pytest tests/ -q)
-- Frontend (Vitest) tests: 97 passing (cd web && npm test)
+- Python and frontend (Vitest) test counts: README "4. Run tests"
 - Browser smoke test (mocked /chat): cd web && npm run test:e2e (Playwright)
 - CI checks: ruff, mypy (strict), pytest, web typecheck + vitest + vite build + Playwright
 
@@ -65,8 +65,9 @@ Moderation API). See README "Status" for what is still missing.
 - Orchestrator complexity classification is a stub. Gateway /chat applies rate limit, PII
   redaction, content safety, completeness (enrichment), answer-leak and citation guardrails;
   output content safety is not applied.
-- /generate streams text only; verifier_fail / citation_stripped metadata is dropped,
-  so SourcesPanel has nothing to show.
+- /generate streams text plus a trailer with the math verifier's verdict (shown under a
+  solved answer); sources and citation_stripped metadata are dropped, so SourcesPanel has
+  nothing to show.
 - Evals are small (5 Quant and 2 AW golden items). evals/agent_eval runs the real QuantAgent
   (leak rate, sympy-graded accuracy, judge-vs-golden agreement, cost/latency, shared 5 USD ledger);
   AW is judge calibration only. No baseline is measured/checked in; CI runs it offline only.
