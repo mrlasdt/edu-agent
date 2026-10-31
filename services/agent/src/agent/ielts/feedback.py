@@ -25,6 +25,7 @@ from services.agent.src.agent.ielts.scoring import (
     GradeParseError,
     extract_json,
 )
+from services.agent.src.agent.ielts.spelling_variants import VARIANT_PAIRS
 
 FEEDBACK_MAX_TOKENS = 6000  # a cap, not a target
 MAX_QUOTE_WORDS = 15
@@ -38,20 +39,9 @@ ERROR_TYPES = (
 )
 _EDGE = re.compile(r"^[\s\"'“”‘’.…]+|[\s\"'“”‘’.…]+$")
 _BARE_NUMBER = re.compile(r"(?:band\s*)?[\d.,/+\-–\s]+", re.I)
-# A note that calls the text informal, a style choice or a regional variant is not naming an error.
+# A note that calls the text informal or a style choice is not naming an error.
 _NOT_AN_ERROR = re.compile(
-    r"\b(?:informal|colloquial|conversational|register|stylistic|style|american|british|"
-    r"us english|uk english)\b", re.I,
-)
-# Spelling pairs that differ only by British/American convention, mapped to one shared key.
-_VARIANTS = (
-    (re.compile(r"(?<=[a-z])yz(?=e|ed|es|ing|ation)"), "ys"),
-    (re.compile(r"(?<=[a-z])iz(?=e|ed|es|ing|ation|er|ers)"), "is"),
-    (re.compile(r"our(?=s|ed|ing|ful|able|\b)"), "or"),
-    (re.compile(r"(?<=[b-df-hj-np-tv-z])re\b"), "er"),
-    (re.compile(r"ogue\b"), "og"),
-    (re.compile(r"ence\b"), "ense"),
-    (re.compile(r"(?<=[aeiou])ll(?=ed|ing|er)"), "l"),
+    r"\b(?:informal|colloquial|conversational|register|stylistic|style)\b", re.I,
 )
 
 
@@ -107,22 +97,16 @@ def shorten_span(text: str, span: tuple[int, int]) -> tuple[tuple[int, int], boo
     return (span[0], span[0] + words[MAX_QUOTE_WORDS - 1].end()), True
 
 
-def _variant_key(word: str) -> str:
-    key = re.sub(r"[^a-z]", "", word.lower())
-    for pattern, repl in _VARIANTS:
-        key = pattern.sub(repl, key)
-    return key
+def _bare_word(word: str) -> str:
+    return re.sub(r"[^a-z]", "", word.lower())
 
 
 def is_spelling_variant(quote: str, suggestion: str) -> bool:
     """True when `suggestion` only swaps British and American spellings of the quoted words."""
-    wanted = re.sub(r"\(.*?\)", " ", suggestion).split()
-    got = quote.split()
-    if not got or len(wanted) < len(got):
-        return False
-    return all(
-        _variant_key(a) == _variant_key(b) for a, b in zip(got, wanted, strict=False)
-    )
+    got = {_bare_word(w) for w in quote.split()}
+    wanted = {_bare_word(w) for w in re.sub(r"\(.*?\)", " ", suggestion).split()} - {""}
+    swapped = wanted - got
+    return bool(swapped) and all(any((g, w) in VARIANT_PAIRS for g in got) for w in swapped)
 
 
 def is_not_an_error(kind: str, quote: str, note: str, suggestion: str) -> bool:

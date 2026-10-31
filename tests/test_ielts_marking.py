@@ -427,6 +427,27 @@ def test_a_correct_british_or_american_spelling_is_not_an_error():
     assert [e.quote for e in fb.errors] == ["recieve"]
 
 
+@pytest.mark.parametrize(("quote", "suggestion"), [
+    ("controled", "controlled"), ("fulfiled", "fulfilled"), ("advertize", "advertise"),
+    ("exercize", "exercise"), ("surprize", "surprise"), ("sence", "sense"),
+    ("hense", "hence"), ("or", "our"), ("for", "four"),
+])
+def test_a_misspelling_wrong_in_both_conventions_stays_an_error(quote: str, suggestion: str):
+    fb = build_feedback(feedback_with_errors(
+        {"quote": quote, "type": "spelling", "note": "Misspelling", "suggestion": suggestion},
+    ), f"They {quote} it.")
+    assert [e.quote for e in fb.errors] == [quote]
+
+
+def test_a_misspelling_whose_note_mentions_british_spelling_stays_an_error():
+    fb = build_feedback(feedback_with_errors(
+        {"quote": "behavour", "type": "spelling", "note": "Misspelling of the British spelling",
+         "suggestion": "behaviour"},
+        {"quote": "travelled", "type": "spelling", "note": "n", "suggestion": "traveled"},
+    ), "Their behavour changed after they travelled.")
+    assert [e.quote for e in fb.errors] == ["behavour"]
+
+
 def test_a_style_remark_is_not_an_error_and_a_wrong_type_is_relabelled():
     fb = build_feedback(feedback_with_errors(
         {"quote": "teach these things", "type": "word_form", "note": "Informal phrase",

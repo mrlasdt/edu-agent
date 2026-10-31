@@ -16,7 +16,6 @@ export interface Message {
   content: string;
   citations?: Citation[];
   status?: string; // "checking" | "retrieving" | null
-  verifier_fail?: boolean;
   // Whether the math verifier accepted the final answer; absent when it did not run (tutor mode).
   mathVerified?: boolean;
   citation_stripped?: boolean;
