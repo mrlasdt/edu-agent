@@ -464,17 +464,26 @@ def test_a_style_remark_is_not_an_error_and_a_wrong_type_is_relabelled():
     ]
 
 
-def test_a_style_word_the_note_quotes_from_the_essay_is_not_a_style_remark():
+def test_a_rule_error_whose_note_uses_a_style_word_stays_an_error():
     fb = build_feedback(feedback_with_errors(
         {"quote": "informal learning are", "type": "agreement",
          "note": "Agreement: 'informal learning' is singular",
          "suggestion": "informal learning is"},
         {"quote": "life style", "type": "spelling", "note": "\u201clife style\u201d is one word",
          "suggestion": "lifestyle"},
+        {"quote": "informel learning", "type": "spelling", "note": "Misspelling of informal",
+         "suggestion": "informal learning"},
+        {"quote": "regster", "type": "spelling", "note": "Misspelling of register",
+         "suggestion": "register"},
+        {"quote": "stlye", "type": "spelling", "note": "Misspelling of style",
+         "suggestion": "style"},
         {"quote": "it's", "type": "other", "note": "It's informal; don't contract",
          "suggestion": "it is"},
-    ), "They say informal learning are useful. It shapes our life style, and it's cheap.")
-    assert [e.quote for e in fb.errors] == ["informal learning are", "life style"]
+    ), "They say informal learning are useful. It shapes our life style, and it's cheap. "
+       "Some informel learning helps. Voters regster in a new stlye.")
+    assert [e.quote for e in fb.errors] == [
+        "informal learning are", "life style", "informel learning", "regster", "stlye",
+    ]
 
 
 def test_a_quote_over_the_word_limit_is_shortened_and_marked_cut():
