@@ -494,3 +494,26 @@ def test_transcript_cli_reads_the_newest_report(
     assert read_transcripts.newest_report(tmp_path) == path
     with pytest.raises(SystemExit):
         read_transcripts.newest_report(tmp_path / "missing")
+
+
+# ── the checked-in baseline and its report ───────────────────────────────────
+
+
+def test_checked_in_baseline_names_its_model_and_renders_as_a_report(capsys):
+    from evals import quant_report
+
+    doc = json.loads(Path("evals/baselines/quant.json").read_text())
+    meta = doc["meta"]
+    assert meta["model"].endswith(":free") and meta["is_product_default_model"] is False
+    assert "NOT the product default" in doc["note"]
+    assert quant_report.main([]) == 0
+    out = capsys.readouterr().out
+    assert meta["model"] in out and "pass^k" in out and "95% interval" in out
+
+
+def test_comparing_a_baseline_with_itself_moves_nothing(capsys):
+    from evals import quant_report
+
+    path = "evals/baselines/quant.json"
+    assert quant_report.main([path, "--against", path]) == 0
+    assert "None of the" in capsys.readouterr().out

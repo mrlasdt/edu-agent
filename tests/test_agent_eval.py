@@ -386,7 +386,7 @@ async def test_failed_run_exits_nonzero_and_emits_no_regression_metrics(
     monkeypatch.setattr("litellm.acompletion", down)
     args = cli.argparse.Namespace(
         mode="live", suite=["quant", "aw"], provider="openai", judge="llm", judge_model=None,
-        max_items=5, max_items_given=False, samples=1, model=None,
+        max_items=5, max_items_given=False, samples=1, model=None, max_tokens=800,
         ledger=str(tmp_path / "l.json"), ceiling=20.0, out_dir=str(tmp_path),
         baseline=None, write_baseline=None, min_coverage=0.8,
         cache_dir=str(tmp_path / "c"), no_cache=True,

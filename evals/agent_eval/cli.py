@@ -34,7 +34,14 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from evals.agent_eval import generation, ielts_writing, offline_generation, quant_suite, runner
+from evals.agent_eval import (
+    generation,
+    ielts_writing,
+    offline_generation,
+    quant_suite,
+    runner,
+    transport,
+)
 from evals.agent_eval.budget import (
     BudgetExceededError,
     Ledger,
@@ -218,6 +225,7 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         run_id,
         fallbacks=chain[1:],
         fake_model=_offline_model if offline else None,
+        max_tokens=args.max_tokens,
         cache=cache,
     )
     model = OFFLINE_MODEL if offline else chain[0]
@@ -337,6 +345,7 @@ def run_meta(args: argparse.Namespace, model: str, chain: list[str]) -> dict[str
         "model": model,
         "model_chain": chain,
         "samples": args.samples,
+        "max_tokens": args.max_tokens,
         "product_default_model": product_default,
         "is_product_default_model": model == product_default,
         "prompt_versions": {
@@ -446,6 +455,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="fail (exit 2) if a suite completes fewer than this share of its units")
     p.add_argument("--cache-dir", default=str(DEFAULT_CACHE_DIR))
     p.add_argument("--no-cache", action="store_true", help="always call the model")
+    p.add_argument("--max-tokens", type=int, default=transport.DEFAULT_MAX_TOKENS,
+                   help="completion cap per model call; the product sets none, so raise this "
+                        "for a reasoning model whose hidden thinking would otherwise cut replies")
     p.add_argument("--max-items", type=int, default=None,
                    help="items per suite (default 5; the quant suite defaults to all of them)")
     p.add_argument("--ledger", default=None, help="spend ledger (default AI_LEDGER_PATH)")
@@ -493,6 +505,7 @@ def write_baseline(path: str, report: dict[str, Any]) -> None:
     A quant-only run writes the interval-carrying baseline (`evals/baselines/quant.json`);
     any other run writes the flat metric dict the older suites compare against.
     """
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
     if "quant" in report["suites"]:
         if set(report["suites"]) != {"quant"}:
             raise SystemExit("write the quant baseline from a run with --suite quant only")

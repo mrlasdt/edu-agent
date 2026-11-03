@@ -38,9 +38,11 @@ from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.answers import extract_final_answer, normalize_answer
 from services.agent.src.agent.skills.retrieve_corpus import CorpusChunk, RetrieveCorpusSkill
 from services.agent.src.agent.skills.verify_math import VerifyMathSkill
+from shared.src.shared.budget import estimate_cost
 from shared.src.shared.models import MessageRole, Mode, Session
 from shared.src.shared.turn_meter import TurnLog
 
+PRICED_AS = "openai/gpt-4o-mini"
 MODEL_KINDS = ("solve", "tutor", "tutor_multiturn")
 BASELINE_SCHEMA = "eval-baseline/1"
 AgentFactory = Callable[[list[str]], QuantAgent]
@@ -215,6 +217,13 @@ def _cost_block(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "usd_total": round(sum(usd), 6),
         "usd_per_turn_mean": round(statistics.fmean(usd), 6),
         "usd_per_turn_p95": _pct(usd, 0.95),
+        # The tokens priced as the product's default paid model, so a free-model run still
+        # gives a cost to compare later slices against (see shared.budget._PRICES).
+        "usd_per_turn_if_gpt_4o_mini": round(
+            statistics.fmean(
+                estimate_cost(PRICED_AS, t["input_tokens"], t["output_tokens"]) for t in turns
+            ), 6,
+        ),
         "llm_calls_per_turn_mean": round(statistics.fmean(t["llm_calls"] for t in turns), 2),
         "input_tokens_per_turn_mean": round(statistics.fmean(t["input_tokens"] for t in turns), 1),
         "output_tokens_per_turn_mean": round(
@@ -356,7 +365,14 @@ def headline_metrics(suite: dict[str, Any]) -> dict[str, dict[str, Any]]:
 def baseline_document(suite: dict[str, Any], meta: dict[str, Any]) -> dict[str, Any]:
     """The checked-in baseline: aggregates only (no model text), with the run's provenance."""
     summary = {k: v for k, v in suite.items() if k != "rows"}
-    return {"schema": BASELINE_SCHEMA, "suite": "quant", "meta": meta,
+    note = (
+        "Measured on the model named in meta.model. "
+        + ("" if meta.get("is_product_default_model") else
+           f"That is NOT the product default ({meta.get('product_default_model')}); "
+           "re-run with the default model before comparing a change against these numbers. ")
+        + "Every rate carries its n and 95% interval; a difference inside an interval is noise."
+    )
+    return {"schema": BASELINE_SCHEMA, "suite": "quant", "meta": meta, "note": note,
             "metrics": headline_metrics(suite), "summary": summary}
 
 
