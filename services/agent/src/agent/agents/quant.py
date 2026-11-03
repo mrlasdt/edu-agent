@@ -6,8 +6,6 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from pathlib import Path
 from typing import Any
 
-import litellm
-
 from services.agent.src.agent.answers import extract_final_answer, normalize_answer
 from services.agent.src.agent.base import BaseAgent
 from services.agent.src.agent.skills.retrieve_corpus import CorpusChunk, RetrieveCorpusSkill
@@ -15,6 +13,7 @@ from services.agent.src.agent.skills.verify_math import VerifyMathResult, Verify
 from shared.src.shared.config import load_model_config
 from shared.src.shared.models import MessageRole, Mode, Session
 from shared.src.shared.observability import build_llm_metadata
+from shared.src.shared.turn_meter import TurnMeter
 
 _log = logging.getLogger(__name__)
 
@@ -104,16 +103,29 @@ class QuantAgent(BaseAgent):
         """
         version = self._model_config.prompt_version("quant_agent", session.mode.value)
         obs_meta = build_llm_metadata(trace_id=trace_id, prompt_version=version)
-        chunks = await self._retrieve(session, message)
-        if chunks:
-            yield {"sources": len(chunks)}
-        chunk_context = _format_chunks_for_context(chunks)
-        if session.mode == Mode.tutor:
-            async for token in self._tutor_turn(session, message, obs_meta, version, chunk_context):
-                yield token
-        else:
-            async for item in self._solve_turn(session, message, obs_meta, version, chunk_context):
-                yield item
+        meter = TurnMeter(trace_id, "agent", "quant_agent", session.mode.value, version)
+        try:
+            with meter.phase("retrieval"):
+                chunks = await self._retrieve(session, message)
+            meter.annotate(notes_retrieved=len(chunks))
+            if chunks:
+                yield {"sources": len(chunks)}
+            chunk_context = _format_chunks_for_context(chunks)
+            if session.mode == Mode.tutor:
+                async for token in self._tutor_turn(
+                    session, message, meter, obs_meta, version, chunk_context
+                ):
+                    yield token
+            else:
+                async for item in self._solve_turn(
+                    session, message, meter, obs_meta, version, chunk_context
+                ):
+                    yield item
+        except Exception as exc:
+            meter.finish(error=type(exc).__name__)
+            raise
+        finally:
+            meter.finish()
 
     # ── tutor mode ────────────────────────────────────────────────────────────
 
@@ -121,6 +133,7 @@ class QuantAgent(BaseAgent):
         self,
         session: Session,
         message: str,
+        meter: TurnMeter,
         obs_meta: dict[str, Any] | None = None,
         version: str = "v1",
         chunk_context: str = "",
@@ -130,11 +143,10 @@ class QuantAgent(BaseAgent):
         model = self._model_config.litellm_model("quant_agent")
         temperature = self._model_config.role("quant_agent").temperature
 
-        response = await litellm.acompletion(
+        response = meter.stream(
             model=model,
             messages=messages,
             temperature=temperature,
-            stream=True,
             **(obs_meta or {}),
         )
         async for chunk in response:
@@ -148,6 +160,7 @@ class QuantAgent(BaseAgent):
         self,
         session: Session,
         message: str,
+        meter: TurnMeter,
         obs_meta: dict[str, Any] | None = None,
         version: str = "v1",
         chunk_context: str = "",
@@ -174,17 +187,17 @@ class QuantAgent(BaseAgent):
                     }
                 ]
 
-            response = await litellm.acompletion(
+            response = meter.stream(
                 model=model,
                 messages=messages,
                 temperature=temperature,
-                stream=True,
                 **(obs_meta or {}),
             )
             tokens, full_text = await _collect_stream(response)
             prev_answer = self._extract_final_answer(full_text)
 
-            result = await self._verify(full_text, prev_answer or "")
+            with meter.phase("verify"):
+                result = await self._verify(full_text, prev_answer or "")
             if result.verified:
                 for token in tokens:
                     yield token
@@ -201,15 +214,15 @@ class QuantAgent(BaseAgent):
                 ),
             }
         ]
-        response = await litellm.acompletion(
+        response = meter.stream(
             model=escalation_model,
             messages=escalation_messages,
             temperature=self._model_config.role("math_escalation").temperature,
-            stream=True,
         )
         tokens, full_text = await _collect_stream(response)
         prev_answer = self._extract_final_answer(full_text)
-        result = await self._verify(full_text, prev_answer or "")
+        with meter.phase("verify"):
+            result = await self._verify(full_text, prev_answer or "")
         if result.verified:
             for token in tokens:
                 yield token

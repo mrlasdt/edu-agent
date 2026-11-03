@@ -24,6 +24,9 @@ build/
 # Ralph Loop state
 .claude/ralph-loop.local.md
 
+# Per-turn measurement log of the live chat path (python -m evals.turn_report)
+.turn-log/
+
 # Agent-in-the-loop eval: spend ledger and run reports (never commit)
 .eval-ledger/
 .eval-runs/

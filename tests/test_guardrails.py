@@ -94,7 +94,7 @@ async def test_enrichment_llm_sees_history_and_carries_trace_metadata():
         Message(role=MessageRole.agent, content="Subtract 3 from both sides: 2x = 8."),
     ]
     with patch(
-        "services.gateway.src.gateway.guardrails.input.litellm.acompletion",
+        "litellm.acompletion",
         new_callable=AsyncMock,
     ) as mock_llm:
         mock_llm.return_value = _llm_response('{"complete": true, "clarification": ""}')
@@ -115,7 +115,7 @@ async def test_enrichment_llm_history_is_capped_to_recent_turns():
         Message(role=MessageRole.candidate, content=f"turn {i}") for i in range(20)
     ]
     with patch(
-        "services.gateway.src.gateway.guardrails.input.litellm.acompletion",
+        "litellm.acompletion",
         new_callable=AsyncMock,
     ) as mock_llm:
         mock_llm.return_value = _llm_response('{"complete": true, "clarification": ""}')
@@ -237,7 +237,7 @@ async def test_llm_stage_is_skipped_when_provider_has_no_api_key():
     settings = Settings(openai_api_key="", anthropic_api_key="")
     with patch("services.gateway.src.gateway.guardrails.output.get_settings",
                return_value=settings), \
-         patch("services.gateway.src.gateway.guardrails.output.litellm.acompletion",
+         patch("litellm.acompletion",
                new_callable=AsyncMock) as mock_llm:
         leaked = await check_answer_leak(
             "Try isolating the variable.", mode=Mode.tutor, trace_id="trace-9"
@@ -251,7 +251,7 @@ async def test_llm_stage_failure_is_not_a_leak():
     settings = Settings(openai_api_key="k", anthropic_api_key="k")
     with patch("services.gateway.src.gateway.guardrails.output.get_settings",
                return_value=settings), \
-         patch("services.gateway.src.gateway.guardrails.output.litellm.acompletion",
+         patch("litellm.acompletion",
                new_callable=AsyncMock, side_effect=RuntimeError("boom")):
         leaked = await check_answer_leak(
             "Try isolating the variable.", mode=Mode.tutor, trace_id="trace-10"

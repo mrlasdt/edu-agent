@@ -192,7 +192,14 @@ services:
       dockerfile: services/agent/Dockerfile
     env_file: *env-file
     environment: *app-env
-    volumes: *app-src
+    volumes:
+      - ../services:/app/services:ro
+      - ../shared:/app/shared:ro
+      - ../config:/app/config:ro
+      - ../prompts:/app/prompts:ro
+      - ../seed:/app/seed:ro
+      # Per-turn measurement log shared with the gateway (python -m evals.turn_report)
+      - ../.turn-log:/app/.turn-log
     ports:
       - "8002:8002"
     depends_on:
@@ -241,6 +248,7 @@ services:
       - ../evals/golden/ielts_writing_prompts.jsonl:/app/evals/golden/ielts_writing_prompts.jsonl:ro
       - ../ielts-local:/app/ielts-local
       - ../.eval-ledger:/app/.eval-ledger
+      - ../.turn-log:/app/.turn-log
     ports:
       - "8000:8000"
     depends_on:

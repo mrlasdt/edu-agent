@@ -1,0 +1,32 @@
+9 turn(s), 0.00000 USD in total
+  1 turn(s) include ESTIMATED tokens (provider sent no usage)
+
+agent/mode           turns  calls  in tok  out tok   usd/turn  ttft p50  ttft p95  total p50  total p95
+-------------------------------------------------------------------------------------------------------
+quant_agent/solve        3    2.0     769      795    0.00000     1,830     1,993      5,856      6,007
+quant_agent/tutor        6    3.0    1027     2851    0.00000     5,019     8,482     31,175    150,013
+(times in ms; ttft = model time to first token of the first call)
+
+where a turn's time goes (mean ms per turn)
+  quant_agent/solve    retrieval    308   agent model  3,853   guardrail model  1,355   verify    61
+  quant_agent/tutor    retrieval    431   agent model  5,642   guardrail model 37,523   verify     0
+
+guardrail overhead per turn (mean USD)
+  quant_agent/solve    0.00000
+  quant_agent/tutor    0.00000
+
+outcomes: ok 9
+flags:    answer_leak_flagged 2
+
+turns (oldest first)
+  trace     agent/mode           calls     in   out       usd   ttft   total notes  outcome
+  d3bb16ee  quant_agent/tutor        3    999  5795   0.00000  2,682  36,984     3  ok
+  1b56e66a  quant_agent/tutor        3   1060  1261   0.00000  4,952  10,222     3  ok
+  42103b08  quant_agent/solve        2    769   777   0.00000  1,830   4,952     3  ok
+  d54b4578  quant_agent/tutor        3    989  1511   0.00000  8,482  21,376     3  ok
+  f2e038ee  quant_agent/tutor        3   1072  5660   0.00000  3,701  31,175     3  ok
+  7933c7a9  quant_agent/solve        2    769   741   0.00000  1,282   5,856     3  ok
+  033eae79  quant_agent/tutor        3    979  1364   0.00000  5,019  11,993     3  ok
+  a028f7a0  quant_agent/tutor        3   1064  1516   0.00000* 6,177 150,013     3  ok
+  d8c19c03  quant_agent/solve        2    769   867   0.00000  1,993   6,007     3  ok
+  * tokens estimated

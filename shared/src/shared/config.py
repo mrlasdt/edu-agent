@@ -74,9 +74,12 @@ class Settings(BaseSettings):
     ielts_data_dir: str = "ielts-local"
     ielts_grader_samples: int = 3
     # AI spend cap (USD) for the IELTS mock and the evals, and the ledger it is counted in.
-    # Both share the ledger, so the cap is one number; the GRE tutor's /chat is not metered.
+    # Both share the ledger, so the cap is one number; the GRE tutor's /chat is not capped.
     ai_spend_cap_usd: float = 5.0
     ai_ledger_path: str = ".eval-ledger/ledger.json"
+    # Per-turn measurement of the live chat path (shared.turn_meter): one JSON line per service
+    # per turn, read by `python -m evals.turn_report`. Recorded, never capped. Empty = off.
+    turn_log_path: str = ".turn-log/turns.jsonl"
     env: str = "dev"
     model_config_path: str = "config/model_config.dev.yaml"
 

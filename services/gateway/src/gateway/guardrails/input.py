@@ -5,12 +5,12 @@ from __future__ import annotations
 from typing import Any, cast
 
 import httpx
-import litellm
 
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
 from shared.src.shared.config import get_settings, load_model_config
 from shared.src.shared.models import MessageRole, Session
 from shared.src.shared.observability import build_llm_metadata
+from shared.src.shared.turn_meter import TurnMeter
 
 _HISTORY_TURNS = 6
 
@@ -30,12 +30,14 @@ async def check_content_safety(text: str, trace_id: str) -> tuple[bool, str]:
     return True, ""
 
 
-async def check_completeness(text: str, session: Session, trace_id: str) -> tuple[bool, str]:
+async def check_completeness(
+    text: str, session: Session, trace_id: str, meter: TurnMeter | None = None
+) -> tuple[bool, str]:
     """
     Haiku-tier LLM check: is the question complete enough to answer?
-    Returns (complete, clarification_prompt).
+    Returns (complete, clarification_prompt). With a `meter`, its model call is measured.
     """
-    result = await _call_enrichment_llm(text, session, trace_id)
+    result = await _call_enrichment_llm(text, session, trace_id, meter)
     complete = result.get("complete", True)
     clarification = result.get("clarification", "")
     label = "pass" if complete else "fail"
@@ -58,7 +60,9 @@ async def _call_moderation_api(text: str) -> dict[str, Any]:
         return {"flagged": result["flagged"], "categories": result["categories"]}
 
 
-async def _call_enrichment_llm(text: str, session: Session, trace_id: str) -> dict[str, Any]:
+async def _call_enrichment_llm(
+    text: str, session: Session, trace_id: str, meter: TurnMeter | None = None
+) -> dict[str, Any]:
     """
     Haiku-tier LLM call to detect incomplete questions.
     Returns {"complete": bool, "clarification": str}.
@@ -85,7 +89,7 @@ async def _call_enrichment_llm(text: str, session: Session, trace_id: str) -> di
         for m in session.history[-_HISTORY_TURNS:]
     ]
     version = cfg.prompt_version("orchestrator", "completeness")
-    response = await litellm.acompletion(
+    response = await (meter or TurnMeter.detached()).complete(
         model=model,
         messages=[
             {"role": "system", "content": system},
@@ -94,7 +98,6 @@ async def _call_enrichment_llm(text: str, session: Session, trace_id: str) -> di
         ],
         temperature=0,
         response_format={"type": "json_object"},
-        stream=False,
         **build_llm_metadata(trace_id=trace_id, prompt_version=version),
     )
     import json

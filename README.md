@@ -1,5 +1,7 @@
 # GRE Tutor — Agentic AI Engineering Reference Implementation
 
+> **Learning from this repo?** Start with the [walkthrough guide](docs/walkthrough/README.md): one chapter per engineering practice, each with the code to read, a measured before and after, and a command to try.
+
 A GRE test-prep tutor built as a reference implementation of agentic AI engineering techniques: RAG pipelines, MCP servers, multi-model cost tiering, layered guardrails, eval-as-CI, and k8s deployment.
 
 ## Status
@@ -11,7 +13,7 @@ cp .env.example .env   # then fill in OPENAI_API_KEY
 docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 631 Python tests (mocked LLM and Qdrant) plus 111 frontend unit tests, and `npm run test:e2e` runs browser smoke tests with `/chat` and the `/ielts` API mocked.
+That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 656 Python tests (mocked LLM and Qdrant) plus 111 frontend unit tests, and `npm run test:e2e` runs browser smoke tests with `/chat` and the `/ielts` API mocked.
 
 A recorded live check (screenshot and streamed transcript) is in [docs/mvp-demo](docs/mvp-demo/README.md).
 
@@ -229,7 +231,7 @@ Without Docker, run the gateway (`uv run uvicorn services.gateway.src.gateway.ma
 
 What happens: pick one of 8 original Task 2 questions, press Start (the server starts the 40-minute clock; refreshing the page does not reset it), write with a live word counter (it autosaves about every 10 seconds and resumes after a refresh), and submit, or let time run out and the essay is submitted for you. Marking takes under a minute: three independent marking passes whose per-criterion median is the score, deterministic checks (length, paragraphs, off-topic or copied text, instructions aimed at the marker), then a written review whose quotes are checked against your essay. The report shows the overall mock score with a range and a confidence, the four criteria each with evidence from your own text and concrete next steps, an error table, a task checklist, the three things to fix first, and the change since your last attempt.
 
-**Spend cap.** AI spend on the IELTS mock and the evals is capped at **5 USD** (`AI_SPEND_CAP_USD`), counted in one ledger (`.eval-ledger/ledger.json`, `AI_LEDGER_PATH`) that they share. The GRE tutor's `/chat` is not metered and does not count toward it. A mock costs about 0.01 USD. Every mock and eval model call is checked against the cap before it is made. Once less than a mock's worth is left, the page shows how much is spent, refuses to start a new mock and says why; if the cap is reached while you write, your essay is kept and marking can be retried after the cap is raised.
+**Spend cap.** AI spend on the IELTS mock and the evals is capped at **5 USD** (`AI_SPEND_CAP_USD`), counted in one ledger (`.eval-ledger/ledger.json`, `AI_LEDGER_PATH`) that they share. The GRE tutor's `/chat` does not count toward it and is not capped; its cost is recorded per turn instead (see "Measuring a turn"). A mock costs about 0.01 USD. Every mock and eval model call is checked against the cap before it is made. Once less than a mock's worth is left, the page shows how much is spent, refuses to start a new mock and says why; if the cap is reached while you write, your essay is kept and marking can be retried after the cap is raised.
 
 **What the mock score can and cannot be trusted for.** It is shown as **"Uncalibrated estimate"** until a labelled set passes the gate in ADR-0014, and that has not happened: there are no examiner-scored essays here. On 19 instructor-graded essays the grader landed within half a band of the instructor 84% of the time with almost no average bias, but it pulls scores toward the middle (calibration slope 0.55; only half of the 7.5+ essays were within half a band, and only two essays were below 5.5), so a very strong essay may read a band or so low. Treat it as a consistent yardstick for tracking your own progress across attempts and for finding weaknesses, not as a prediction of your exam score. Use the criterion feedback and the priorities more than the exact number; a half band either way is normal. The checks cap the score for responses that are too short (under 150 words: Task Response at 4 and every other criterion at 5.5), a single paragraph (Coherence and Cohesion at 5), off topic, copied from the question, repetitive or that try to instruct the marker, and no estimate is ever above 8.5. When a cap overrides the marking passes the confidence is shown as low, because the passes agreeing says little then.
 
@@ -406,6 +408,17 @@ Read this honestly: the fake injects a wrong key, a leaked answer, a duplicated 
 
 Not done: dedup against the bank, difficulty calibration, knowledge-base grounding, an HTTP endpoint on the agent service, persisting traces, a store behind the review queue, and Verbal or AW generation.
 
+## Measuring a turn
+
+Every `/chat` turn is measured: model calls, input and output tokens, estimated USD, time to first token, total time, notes retrieved, prompt version and the guardrail outcome. The gateway and the agent each append one JSON line per turn to `.turn-log/turns.jsonl` (gitignored, `TURN_LOG_PATH`; set it empty to switch measurement off), sharing the turn's trace id, and `evals.turn_report` joins them:
+
+```bash
+uv run python -m evals.turn_report --turns     # per-agent summary (p50/p95) plus one row per turn
+uv run python -m evals.turn_report --json      # the same numbers for scripts
+```
+
+Tokens are the provider's own usage report (streaming asks for it with `stream_options`); when a provider sends none, the meter falls back to a character-based estimate and the report marks those turns as estimated. Cost is a price-table estimate (`shared.budget.estimate_cost`). It is recorded, never capped. Code: `shared/src/shared/turn_meter.py`; chapter 1 of the [walkthrough](docs/walkthrough/01-measure-first.md) explains it.
+
 ## Guardrails (5 layers)
 
 `/chat` applies the rate-limit, input PII, content-safety, completeness (enrichment), answer-leak, citation and output PII layers. The completeness check sees the last 6 history turns so follow-ups are not flagged, and fails open if the check errors. Output content safety is not applied (see Status). Guardrail decisions that change the reply are streamed to the Candidate as bracketed notices. The answer-leak regex stage runs on the stream and stops it on a hit; the LLM stage runs once after the full reply and can only append a notice. Citation checking applies only when the agent reports a source count (the AW agent).
@@ -473,7 +486,8 @@ edu-agent/
 ├── .github/workflows/    # ci.yml + deploy.yml
 ├── docs/
 │   ├── adr/              # 14 Architectural Decision Records
-│   └── design-log/       # Trade-space analysis behind each ADR
+│   ├── design-log/       # Trade-space analysis behind each ADR
+│   └── walkthrough/      # Learning guide: one chapter per engineering practice, with measured results
 └── CONTEXT.md            # Domain glossary (canonical vocabulary)
 ```
 

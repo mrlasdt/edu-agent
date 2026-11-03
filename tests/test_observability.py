@@ -262,7 +262,8 @@ async def test_aw_solve_passes_trace_id_to_the_style_critic():
         async for _ in agent.run(_aw_session(Mode.solve), "Write an essay", trace_id="trace-aw"):
             pass
 
-    critic.assert_awaited_once_with("essay", "trace-aw")
+    critic.assert_awaited_once()
+    assert critic.await_args.args[:2] == ("essay", "trace-aw")  # then the turn meter
 
 
 @pytest.mark.asyncio
