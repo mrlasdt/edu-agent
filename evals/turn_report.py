@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from collections import Counter, defaultdict
 from collections.abc import Sequence
@@ -85,7 +86,7 @@ def percentile(values: Sequence[float], q: float) -> float | None:
     if not values:
         return None
     ordered = sorted(values)
-    return ordered[min(len(ordered) - 1, int(q * len(ordered)))]
+    return ordered[max(0, math.ceil(q * len(ordered)) - 1)]
 
 
 def _vals(turns: Sequence[dict[str, Any]], key: str) -> list[float]:

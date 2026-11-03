@@ -242,11 +242,15 @@ class TurnMeter:
         ttft_ms: float | None,
         error: str | None,
     ) -> None:
-        estimated = usage is None
-        input_tokens, output_tokens = usage or (
-            _estimate(_prompt_text(messages)),
-            _estimate(output_text),
-        )
+        no_response = usage is None and error is not None and not output_text
+        estimated = usage is None and not no_response
+        if no_response:
+            input_tokens, output_tokens = 0, 0
+        else:
+            input_tokens, output_tokens = usage or (
+                _estimate(_prompt_text(messages)),
+                _estimate(output_text),
+            )
         self._calls.append(
             CallRecord(
                 model=model,

@@ -41,7 +41,7 @@ Results: [01-turn-report.txt](results/01-turn-report.txt) (as recorded), [01-tur
 ```
 agent/mode           turns  calls  in tok  out tok   usd/turn  ttft p50  ttft p95  total p50  total p95
 quant_agent/solve        3    2.0     769      795    0.00059     1,830     1,993      5,856      6,007
-quant_agent/tutor        6    3.0    1027     2851    0.00186     5,019     8,482     31,175    150,013
+quant_agent/tutor        6    3.0    1027     2851    0.00186     4,952     8,482     21,376    150,013
 ```
 (USD here is the priced-as-gpt-4o-mini version; times in ms.)
 

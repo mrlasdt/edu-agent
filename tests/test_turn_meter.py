@@ -165,6 +165,27 @@ async def test_a_failed_call_is_still_counted_and_the_error_is_raised():
     assert record["calls"][0]["error"] == "RuntimeError"
 
 
+async def test_a_call_that_failed_before_any_response_costs_nothing():
+    messages = [{"role": "user", "content": "x" * 4000}]
+    for failing in ("stream", "complete"):
+        meter = TurnMeter("t1", "agent", "a", "tutor")
+        with patch(
+            "litellm.acompletion", new_callable=AsyncMock, side_effect=RuntimeError("401")
+        ):
+            with pytest.raises(RuntimeError):
+                if failing == "stream":
+                    async for _ in meter.stream(model=MODEL, messages=messages):
+                        pass
+                else:
+                    await meter.complete(model=MODEL, messages=messages)
+        record = meter.finish()
+        assert record["llm_calls"] == 1
+        assert (record["input_tokens"], record["output_tokens"]) == (0, 0)
+        assert record["cost_usd"] == 0
+        assert record["calls"][0]["error"] == "RuntimeError"
+        assert record["usage"] == "provider"
+
+
 async def test_mixed_usage_is_labelled_mixed():
     meter = TurnMeter("t1", "agent", "a", "solve")
     with patch("litellm.acompletion", new_callable=AsyncMock) as llm:
@@ -390,8 +411,10 @@ def test_the_report_joins_gateway_and_agent_records_by_trace_id(turn_log):
 def test_percentile_is_nearest_rank():
     assert percentile([], 0.5) is None
     assert percentile([5.0], 0.95) == 5.0
-    assert percentile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 0.5) == 6
+    assert percentile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 0.5) == 5
     assert percentile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 0.95) == 10
+    assert percentile([1, 2], 0.5) == 1
+    assert percentile([1, 2, 3], 0.5) == 2
 
 
 def test_report_cli_prints_a_summary_and_json(turn_log, capsys):
