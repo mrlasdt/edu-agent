@@ -9,9 +9,9 @@
 
 | group | items | one attempt | pass@k | pass^k |
 |---|---|---|---|---|
-| solve (final answer right and verified) | 10 | 0.80 (0.50-1.00) | 0.80 (0.49-0.94) | 0.80 (0.49-0.94) |
-| tutor, one reply | 12 | 0.83 (0.67-0.97) | 1.00 (0.76-1.00) | 0.67 (0.39-0.86) |
-| tutor, 4-turn conversation | 4 | 0.25 (0.08-0.33) | 0.75 (0.30-0.95) | 0.00 (0.00-0.49) |
+| solve (final answer right and verified) | 10 | 0.80 (0.49-0.94) | 0.80 (0.49-0.94) | 0.80 (0.49-0.94) |
+| tutor, one reply | 12 | 0.83 (0.55-0.95) | 1.00 (0.76-1.00) | 0.67 (0.39-0.86) |
+| tutor, 4-turn conversation | 4 | 0.25 (0.05-0.70) | 0.75 (0.30-0.95) | 0.00 (0.00-0.49) |
 
 pass@3: at least one of 3 attempts passed. pass^3: all 3 passed (what a learner who asks the same thing repeatedly experiences). Security (no model, n=8 hostile strings): 8 rejected, 95% interval 0.68-1.00.
 
@@ -73,7 +73,7 @@ pass@3: at least one of 3 attempts passed. pass^3: all 3 passed (what a learner 
 - Cost and latency cover the agent's own model calls only; the gateway's guardrail calls (completeness check, answer-leak check) are not included.
 - The leak check is an upper bound: it also counts a step number equal to the answer.
 - Rule graders catch the failures someone wrote a rule for; a reply can pass every rule and still be a poor hint (read the transcripts).
-- solve: n=10 items x 3 samples; a change smaller than about 0.25 cannot be told apart from noise.
+- solve: n=10 items x 3 samples; a change smaller than about 0.23 cannot be told apart from noise.
 - tutor: n=12 items x 3 samples; a change smaller than about 0.24 cannot be told apart from noise.
 - tutor_multiturn: n=4 items x 3 samples; a change smaller than about 0.33 cannot be told apart from noise.
 - security: 8 hostile strings; all passing does not bound the failure rate on strings nobody has tried.

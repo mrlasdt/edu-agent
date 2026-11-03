@@ -76,6 +76,16 @@ def test_wilson_interval_widens_as_n_shrinks():
     assert stats.rate(0, 0)["value"] is None
 
 
+def test_mean_pass_rate_interval_stays_wide_at_small_n_and_at_all_pass():
+    all_pass = stats.group_summary({f"i{n}": [True, True, True] for n in range(4)}, 3)
+    low, high = all_pass["mean_pass_rate_ci95"]
+    assert high == 1.0 and low < 0.55  # 4 items that all passed still allow a ~1 in 2 failure rate
+    assert stats.verdict_vs_baseline(0.9, all_pass["mean_pass_rate_ci95"]) == "within noise"
+    mixed = stats.group_summary({"a": [True] * 3, "b": [False] * 3, "c": [True, False, False]}, 3)
+    low, high = mixed["mean_pass_rate_ci95"]
+    assert low < mixed["mean_pass_rate"] < high and high - low > 0.4
+
+
 def test_pass_at_k_and_pass_hat_k_separate_lucky_from_reliable():
     summary = stats.group_summary(
         {"always": [True, True, True], "never": [False, False, False],

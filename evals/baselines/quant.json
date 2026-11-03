@@ -24,8 +24,8 @@
       "value": 0.8,
       "n": 10,
       "ci95": [
-        0.5,
-        1.0
+        0.4902,
+        0.9433
       ],
       "samples": 3
     },
@@ -42,8 +42,8 @@
       "value": 0.8333,
       "n": 12,
       "ci95": [
-        0.6667,
-        0.9722
+        0.5519,
+        0.953
       ],
       "samples": 3
     },
@@ -60,8 +60,8 @@
       "value": 0.25,
       "n": 4,
       "ci95": [
-        0.0833,
-        0.3333
+        0.0456,
+        0.6994
       ],
       "samples": 3
     },
@@ -94,8 +94,8 @@
         "attempts": 30,
         "mean_pass_rate": 0.8,
         "mean_pass_rate_ci95": [
-          0.5,
-          1.0
+          0.4902,
+          0.9433
         ],
         "pass_at_k": {
           "value": 0.8,
@@ -152,8 +152,8 @@
         "attempts": 36,
         "mean_pass_rate": 0.8333,
         "mean_pass_rate_ci95": [
-          0.6667,
-          0.9722
+          0.5519,
+          0.953
         ],
         "pass_at_k": {
           "value": 1.0,
@@ -222,8 +222,8 @@
         "attempts": 12,
         "mean_pass_rate": 0.25,
         "mean_pass_rate_ci95": [
-          0.0833,
-          0.3333
+          0.0456,
+          0.6994
         ],
         "pass_at_k": {
           "value": 0.75,
@@ -300,7 +300,7 @@
         "attempts": 12,
         "mean_pass_rate": 1.0,
         "mean_pass_rate_ci95": [
-          1.0,
+          0.5101,
           1.0
         ],
         "pass_at_k": {
@@ -330,8 +330,8 @@
         "attempts": 15,
         "mean_pass_rate": 0.8,
         "mean_pass_rate_ci95": [
-          0.5333,
-          1.0
+          0.3755,
+          0.9638
         ],
         "pass_at_k": {
           "value": 1.0,
@@ -363,7 +363,7 @@
         "attempts": 6,
         "mean_pass_rate": 1.0,
         "mean_pass_rate_ci95": [
-          1.0,
+          0.3424,
           1.0
         ],
         "pass_at_k": {
@@ -393,7 +393,7 @@
         "attempts": 6,
         "mean_pass_rate": 1.0,
         "mean_pass_rate_ci95": [
-          1.0,
+          0.3424,
           1.0
         ],
         "pass_at_k": {
@@ -423,8 +423,8 @@
         "attempts": 6,
         "mean_pass_rate": 0.6667,
         "mean_pass_rate_ci95": [
-          0.3333,
-          1.0
+          0.1594,
+          0.9548
         ],
         "pass_at_k": {
           "value": 1.0,
@@ -455,8 +455,8 @@
         "attempts": 12,
         "mean_pass_rate": 0.25,
         "mean_pass_rate_ci95": [
-          0.0833,
-          0.3333
+          0.0456,
+          0.6994
         ],
         "pass_at_k": {
           "value": 0.75,
@@ -491,7 +491,7 @@
         "attempts": 6,
         "mean_pass_rate": 1.0,
         "mean_pass_rate_ci95": [
-          1.0,
+          0.3424,
           1.0
         ],
         "pass_at_k": {
@@ -522,7 +522,7 @@
         "mean_pass_rate": 0.0,
         "mean_pass_rate_ci95": [
           0.0,
-          0.0
+          0.6576
         ],
         "pass_at_k": {
           "value": 0.0,
@@ -554,8 +554,8 @@
         "attempts": 9,
         "mean_pass_rate": 0.8889,
         "mean_pass_rate_ci95": [
-          0.6667,
-          1.0
+          0.3494,
+          0.9917
         ],
         "pass_at_k": {
           "value": 1.0,
@@ -611,7 +611,7 @@
       "Cost and latency cover the agent's own model calls only; the gateway's guardrail calls (completeness check, answer-leak check) are not included.",
       "The leak check is an upper bound: it also counts a step number equal to the answer.",
       "Rule graders catch the failures someone wrote a rule for; a reply can pass every rule and still be a poor hint (read the transcripts).",
-      "solve: n=10 items x 3 samples; a change smaller than about 0.25 cannot be told apart from noise.",
+      "solve: n=10 items x 3 samples; a change smaller than about 0.23 cannot be told apart from noise.",
       "tutor: n=12 items x 3 samples; a change smaller than about 0.24 cannot be told apart from noise.",
       "tutor_multiturn: n=4 items x 3 samples; a change smaller than about 0.33 cannot be told apart from noise.",
       "security: 8 hostile strings; all passing does not bound the failure rate on strings nobody has tried."

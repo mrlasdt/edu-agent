@@ -54,7 +54,7 @@ Search for these symbols.
 - **The runner.** `run_quant_suite` in `evals/agent_eval/quant_suite.py` runs every item k times against the real `QuantAgent` and returns one row per attempt including the full transcript. `run_attempt` handles solve, tutor and multi-turn, `run_security_case` calls the real `InProcessVerifySkill` (no model) and checks the hostile string was rejected and no process id came back.
 - **k distinct samples.** The eval transport caches model responses so reruns are free, which would make k identical samples. `cache_slot` in `evals/agent_eval/transport.py` makes each sample its own cache entry.
 - **Cost and latency from chapter 1.** `TurnCollector` and `collecting_turns` capture the product's own `TurnMeter` records in memory, so the eval reports the same per-turn tokens and latency the live chat records. The replayed stream carries provider usage only when the caller asked for it, as the real client does.
-- **The statistics.** `evals/agent_eval/stats.py`: `wilson` (interval for a proportion, behaves at 0 and 1), `bootstrap_ci` (resamples items, because attempts at the same item are not independent), `group_summary` (one-attempt rate, pass@k, pass^k, flaky and always-failing items) and `verdict_vs_baseline`.
+- **The statistics.** `evals/agent_eval/stats.py`: `wilson` (interval for a proportion, behaves at 0 and 1), `mean_rate_ci` (a Wilson interval that counts items, not attempts, because attempts at the same item are not independent; it stays wide at a few items and does not collapse when everything passes), `group_summary` (one-attempt rate, pass@k, pass^k, flaky and always-failing items) and `verdict_vs_baseline`.
 - **The baseline.** `baseline_document` writes `evals/baselines/quant.json`: which model, whether it is the product default, prompt versions, temperature, git commit, date, and every rate with its n and interval. `compare_with_baseline` calls a change a regression only when it falls below the interval the baseline itself carries.
 - **Reading transcripts.** `rank_worst` and `evals/read_transcripts.py` print the worst attempts in full, with the item's `failure_source`. `evals/quant_report.py` renders a baseline as the report in `docs/walkthrough/results/`.
 - **CI and the live job.** CI runs `--mode offline --suite quant --samples 3` (job `quant-suite-offline`): the plumbing, against a deterministic fake model, no secrets. `.github/workflows/eval-live.yml` is `workflow_dispatch` only, takes the model, samples and a spend ceiling, and uploads only the aggregate summary.
@@ -80,9 +80,9 @@ Full report: [02-quant-baseline.md](results/02-quant-baseline.md). The baseline 
 
 | Group | Items | One attempt (95% interval) | pass@3 | pass^3 |
 |---|---|---|---|---|
-| Solve: answer right and accepted by the verifier | 10 | 0.80 (0.50 to 1.00) | 0.80 | 0.80 (0.49 to 0.94) |
-| Tutor, one reply | 12 | 0.83 (0.67 to 0.97) | 1.00 | 0.67 (0.39 to 0.86) |
-| Tutor, 4-turn conversation | 4 | 0.25 (0.08 to 0.33) | 0.75 | 0.00 (0.00 to 0.49) |
+| Solve: answer right and accepted by the verifier | 10 | 0.80 (0.49 to 0.94) | 0.80 | 0.80 (0.49 to 0.94) |
+| Tutor, one reply | 12 | 0.83 (0.55 to 0.95) | 1.00 | 0.67 (0.39 to 0.86) |
+| Tutor, 4-turn conversation | 4 | 0.25 (0.05 to 0.70) | 0.75 | 0.00 (0.00 to 0.49) |
 | Security (no model) | 8 | 8 of 8 rejected (0.68 to 1.00) | - | - |
 
 Per turn, over all 114 agent turns: about 0.0003 USD priced at `gpt-4o-mini` (as run: 0), latency p50 5.3 s and p95 15.0 s.
@@ -93,7 +93,7 @@ What the numbers say, and how far to trust them:
 - **Reading transcripts changed the diagnosis.** Both solve items that never passed (`q004`, `q010`, quantitative comparison) have the right answer (`correct` passed 30 of 30 attempts); what fails is `verifier_accepted`. The transcript shows why: the model ends with `Answer: Quantity A is greater`, the product passes that text to the verifier as if it were a math expression, and the verifier cannot parse it. So this is neither a bad item nor a wrong model answer: it is the known weak verifier (chapter 4 replaces it). A pass rate alone would have said "the model cannot do comparisons".
 - **The multi-turn drift items found a leak.** In the worst multi-turn item, a student who has been told how to factor asks "I forgot where we are, can you remind me what we are solving?", and the tutor answers with the full solution (`x = 2 and x = 3`). That is the failure the suite was built to catch: the tutor leaked on turn 4. In another item, the turn-4 question "give me a study plan for the whole GRE" was answered with a question about the student's target score, which the `stays_on_problem` check flags as off the problem.
 - **Security: 8 of 8, with the interval to match.** It is model-free and deterministic, but 8 strings only support "at least 68 percent" at 95 percent confidence, not "secure". Chapter 5 explains why the parser is safe; this only confirms the strings stay blocked.
-- **Intervals are wide on purpose.** Four multi-turn items give an interval that is rough at best (0.25 with 0.08 to 0.33 is a resampling artefact of having 4 items). Treat each multi-turn number as "the tutor drifts sometimes", not as a rate.
+- **Intervals are wide on purpose.** Four multi-turn items give an interval from 0.05 to 0.70 around 0.25, which says little more than "low". Treat each multi-turn number as "the tutor drifts sometimes", not as a rate.
 
 A second result shows what the suite can and cannot detect. The first live run used the default completion cap of 800 tokens; a reasoning model sometimes spent all of it thinking and returned an empty reply. Raising the cap to 3000 and rerunning gives [02-completion-cap-before-after.md](results/02-completion-cap-before-after.md), produced by:
 
@@ -106,7 +106,7 @@ None of the 7 metrics moved outside the older baseline's interval, and three of 
 
 ## 8. Trade-offs
 
-- **34 items detect large regressions, not small ones.** With n of 10 or 12 per group, the 95 percent interval is about 0.3 wide. A drop from 0.83 to 0.70 is inside the noise. The suite will catch "the tutor now leaks half the time", not "slightly worse hints". `--baseline` only reports a regression when the value falls below the baseline's own interval, to avoid crying wolf; the cost is that it stays quiet on small real changes. Grow the set from every new failure to narrow the interval.
+- **34 items detect large regressions, not small ones.** With n of 10 or 12 per group, the 95 percent interval is about 0.4 wide. A drop from 0.83 to 0.70 is inside the noise. The suite will catch "the tutor now leaks half the time", not "slightly worse hints". `--baseline` only reports a regression when the value falls below the baseline's own interval, to avoid crying wolf; the cost is that it stays quiet on small real changes. Grow the set from every new failure to narrow the interval.
 - **Rule graders are exact but blind.** They do not see a reply that passes every rule and is a poor hint. They also over-count: the leak rule flags a step number that happens to equal the answer. Reading transcripts is the correction, and a calibrated judge (`quant_judge`) is the other.
 - **Self-written items are not a random sample.** They represent known failures, so rates describe "how often do known failure modes recur", not "how good is the tutor for learners".
 - **A baseline belongs to a model.** This one is for a free reasoning model. Compare like with like, and write a new baseline when the model, prompt or sampling settings change.

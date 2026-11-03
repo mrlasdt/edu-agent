@@ -24,8 +24,8 @@
       "value": 0.8333,
       "n": 10,
       "ci95": [
-        0.6,
-        1.0
+        0.5238,
+        0.9578
       ],
       "samples": 3
     },
@@ -42,8 +42,8 @@
       "value": 0.8889,
       "n": 12,
       "ci95": [
-        0.8056,
-        0.9722
+        0.6134,
+        0.9758
       ],
       "samples": 3
     },
@@ -60,8 +60,8 @@
       "value": 0.3333,
       "n": 4,
       "ci95": [
-        0.0833,
-        0.5833
+        0.0751,
+        0.7549
       ],
       "samples": 3
     },
@@ -94,8 +94,8 @@
         "attempts": 30,
         "mean_pass_rate": 0.8333,
         "mean_pass_rate_ci95": [
-          0.6,
-          1.0
+          0.5238,
+          0.9578
         ],
         "pass_at_k": {
           "value": 0.9,
@@ -153,8 +153,8 @@
         "attempts": 36,
         "mean_pass_rate": 0.8889,
         "mean_pass_rate_ci95": [
-          0.8056,
-          0.9722
+          0.6134,
+          0.9758
         ],
         "pass_at_k": {
           "value": 1.0,
@@ -223,8 +223,8 @@
         "attempts": 12,
         "mean_pass_rate": 0.3333,
         "mean_pass_rate_ci95": [
-          0.0833,
-          0.5833
+          0.0751,
+          0.7549
         ],
         "pass_at_k": {
           "value": 0.75,
@@ -301,7 +301,7 @@
         "attempts": 12,
         "mean_pass_rate": 1.0,
         "mean_pass_rate_ci95": [
-          1.0,
+          0.5101,
           1.0
         ],
         "pass_at_k": {
@@ -331,8 +331,8 @@
         "attempts": 15,
         "mean_pass_rate": 0.9333,
         "mean_pass_rate_ci95": [
-          0.8,
-          1.0
+          0.4951,
+          0.995
         ],
         "pass_at_k": {
           "value": 1.0,
@@ -363,7 +363,7 @@
         "attempts": 6,
         "mean_pass_rate": 1.0,
         "mean_pass_rate_ci95": [
-          1.0,
+          0.3424,
           1.0
         ],
         "pass_at_k": {
@@ -393,7 +393,7 @@
         "attempts": 6,
         "mean_pass_rate": 1.0,
         "mean_pass_rate_ci95": [
-          1.0,
+          0.3424,
           1.0
         ],
         "pass_at_k": {
@@ -423,7 +423,7 @@
         "attempts": 6,
         "mean_pass_rate": 1.0,
         "mean_pass_rate_ci95": [
-          1.0,
+          0.3424,
           1.0
         ],
         "pass_at_k": {
@@ -453,8 +453,8 @@
         "attempts": 12,
         "mean_pass_rate": 0.3333,
         "mean_pass_rate_ci95": [
-          0.0833,
-          0.5833
+          0.0751,
+          0.7549
         ],
         "pass_at_k": {
           "value": 0.75,
@@ -489,7 +489,7 @@
         "attempts": 6,
         "mean_pass_rate": 1.0,
         "mean_pass_rate_ci95": [
-          1.0,
+          0.3424,
           1.0
         ],
         "pass_at_k": {
@@ -519,8 +519,8 @@
         "attempts": 6,
         "mean_pass_rate": 0.1667,
         "mean_pass_rate_ci95": [
-          0.0,
-          0.3333
+          0.0125,
+          0.7592
         ],
         "pass_at_k": {
           "value": 0.5,
@@ -553,8 +553,8 @@
         "attempts": 9,
         "mean_pass_rate": 0.6667,
         "mean_pass_rate_ci95": [
-          0.6667,
-          0.6667
+          0.2077,
+          0.9385
         ],
         "pass_at_k": {
           "value": 1.0,
@@ -614,7 +614,7 @@
       "Rule graders catch the failures someone wrote a rule for; a reply can pass every rule and still be a poor hint (read the transcripts).",
       "solve: n=10 items x 3 samples; a change smaller than about 0.23 cannot be told apart from noise.",
       "tutor: n=12 items x 3 samples; a change smaller than about 0.24 cannot be told apart from noise.",
-      "tutor_multiturn: n=4 items x 3 samples; a change smaller than about 0.33 cannot be told apart from noise.",
+      "tutor_multiturn: n=4 items x 3 samples; a change smaller than about 0.34 cannot be told apart from noise.",
       "security: 8 hostile strings; all passing does not bound the failure rate on strings nobody has tried."
     ]
   }

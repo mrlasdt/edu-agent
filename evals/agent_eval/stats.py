@@ -10,20 +10,21 @@ Three ideas, all standard:
   ("can it ever do this?"), and pass^k, the share where all k passed ("will a learner always
   get this?"). pass^k is the one a tutoring product lives or dies by.
 - The mean of the per-attempt pass rates is what one learner sees on average. Attempts of the
-  same item are not independent, so its interval resamples items, not attempts (`bootstrap_ci`).
+  same item are not independent, so its interval counts items, not attempts: a Wilson interval
+  with n = number of items (`mean_rate_ci`). That is conservative, and unlike a bootstrap it
+  stays wide at a handful of items and does not collapse to a point when every attempt passes.
 """
 from __future__ import annotations
 
 import math
-import random
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 Z95 = 1.959964  # two-sided 95% normal quantile
 
 
-def wilson(successes: int, n: int, z: float = Z95) -> tuple[float, float] | None:
-    """Wilson score interval for a proportion; None when n is 0."""
+def wilson(successes: float, n: int, z: float = Z95) -> tuple[float, float] | None:
+    """Wilson score interval for a proportion (successes may be fractional); None when n is 0."""
     if n <= 0:
         return None
     p = successes / n
@@ -33,16 +34,9 @@ def wilson(successes: int, n: int, z: float = Z95) -> tuple[float, float] | None
     return max(0.0, centre - half), min(1.0, centre + half)
 
 
-def bootstrap_ci(
-    values: Sequence[float], *, resamples: int = 2000, seed: int = 42
-) -> tuple[float, float] | None:
-    """95% percentile bootstrap interval of the mean of `values` (resampling the values)."""
-    if not values:
-        return None
-    rng = random.Random(seed)
-    n = len(values)
-    means = sorted(sum(rng.choices(values, k=n)) / n for _ in range(resamples))
-    return means[int(0.025 * resamples)], means[min(resamples - 1, int(0.975 * resamples))]
+def mean_rate_ci(mean: float, n_items: int) -> tuple[float, float] | None:
+    """95% interval of a mean per-item pass rate, treating each item as one observation."""
+    return wilson(mean * n_items, n_items)
 
 
 def rate(successes: int, n: int) -> dict[str, Any]:
@@ -67,7 +61,7 @@ def group_summary(per_item: Mapping[str, Sequence[bool]], k: int) -> dict[str, A
     always = sum(1 for a in runs.values() if all(a))
     per_item_rate = [sum(a) / len(a) for a in runs.values()]
     mean = sum(per_item_rate) / n if n else None
-    ci = bootstrap_ci(per_item_rate)
+    ci = None if mean is None else mean_rate_ci(mean, n)
     return {
         "n_items": n,
         "samples": k,

@@ -125,15 +125,38 @@ def test_dockerfiles_exist_for_all_services():
         assert df.exists(), f"Missing Dockerfile for {svc}"
 
 
-def test_live_eval_workflow_is_manual_only_and_ci_stays_offline():
+def _steps(workflow: dict) -> list[tuple[str, dict]]:
+    return [
+        (job_id, step)
+        for job_id, job in workflow["jobs"].items()
+        for step in job.get("steps", [])
+    ]
+
+
+def test_live_eval_workflow_is_manual_only_and_fails_when_the_cli_fails():
     import yaml
 
     live = yaml.safe_load((ROOT / ".github/workflows/eval-live.yml").read_text())
     triggers = live.get("on", live.get(True))  # YAML reads a bare `on` key as True
     assert list(triggers) == ["workflow_dispatch"]
-    ci = "\n".join(
-        line for line in (ROOT / ".github/workflows/ci.yml").read_text().splitlines()
-        if not line.lstrip().startswith("#")
-    )
-    assert "--mode live" not in ci and "OPENAI_API_KEY" not in ci
-    assert "--mode offline --suite quant" in ci
+    (run_step,) = [
+        step for _, step in _steps(live) if "--mode live" in step.get("run", "")
+    ]
+    # `shell: bash` is what turns on pipefail; without it `... | tee` reports tee's exit code
+    # and a regression (exit 1) or aborted run (exit 2) would show as a green job.
+    assert run_step.get("shell") == "bash" or "pipefail" in run_step["run"]
+
+
+def test_ci_runs_only_the_offline_quant_suite():
+    import yaml
+
+    ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    offline_runs = [
+        step.get("run", "") for step in ci["jobs"]["quant-suite-offline"]["steps"]
+    ]
+    assert any("--mode offline --suite quant" in run for run in offline_runs)
+    for _, step in _steps(ci):
+        assert "--mode live" not in step.get("run", "")
+        referenced = repr(step.get("env", {})) + repr(step.get("with", {})) + step.get("run", "")
+        assert "OPENAI_API_KEY" not in referenced
+        assert "OPENROUTER_API_KEY" not in referenced

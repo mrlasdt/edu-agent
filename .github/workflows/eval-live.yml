@@ -44,6 +44,7 @@ jobs:
           CEILING: ${{ inputs.ceiling_usd }}
         # The printed summary is aggregate-only. Run reports hold model output and transcripts,
         # so they are not uploaded; read them locally with `python -m evals.read_transcripts`.
+        shell: bash
         run: |
           uv run python -m evals.agent_eval --mode live --suite quant \
             --model "$MODEL" --samples "$SAMPLES" --ceiling "$CEILING" \
