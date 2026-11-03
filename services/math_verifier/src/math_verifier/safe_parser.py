@@ -141,7 +141,8 @@ def parse_math(text: str) -> sp.Expr:
     Parse one math expression, or raise `MathSyntaxError`.
 
     Never evaluates Python from `text`: the allow-list rejects every name that is not a
-    listed function, constant or run of letters (split into single-letter variables), and the namespace has no builtins.
+    listed function, constant or run of letters (split into single-letter variables), and the
+    namespace has no builtins.
     """
     source = " ".join(_tokenize(text))
     try:

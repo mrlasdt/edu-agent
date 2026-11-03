@@ -143,7 +143,7 @@ Run the regression suite: `uv run pytest tests/test_math_verifier_untrusted_inpu
 ## Exercise
 
 1. Add `"sec": sp.sec` to `FUNCTIONS`. Check `verify_expression("sec(0)", "1")` is verified.
-2. Confirm `verify_expression("secx", "1")` is still rejected (a glued name is not a listed
-   function), and that the 18 strings in `HOSTILE` in the test file still all fail.
+2. Confirm `verify_expression("secx", "1")` is still read as the product `c*e*s*x` (a glued
+   name is not a listed function), and that the 18 strings in `HOSTILE` in the test file still all fail.
 3. Add one more hostile string of your own to `HOSTILE` and watch which layer rejects it: the
    tokenizer (a name or character not on the list) or the length cap.
