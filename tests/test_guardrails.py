@@ -317,3 +317,12 @@ def test_guardrail_event_includes_fail_result(caplog):
             layer="generation", name="tutor_mode_answer_leak", result="fail", trace_id="trace-100"
         )
     assert any("fail" in r.message for r in caplog.records)
+
+
+@pytest.mark.parametrize("reply", ["So x = 3", "Therefore x = 3", "Then y = -2"])
+def test_a_stated_answer_with_no_closing_punctuation_is_still_a_leak(reply):
+    """Found by the failure-seeded eval: the clause-end check required punctuation or a newline,
+    so a reply that simply ended on the answer got through."""
+    from services.gateway.src.gateway.guardrails.output import detect_answer_leak
+
+    assert detect_answer_leak(reply)

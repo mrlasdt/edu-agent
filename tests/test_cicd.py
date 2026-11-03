@@ -123,3 +123,17 @@ def test_dockerfiles_exist_for_all_services():
     for svc in services:
         df = ROOT / "services" / svc / "Dockerfile"
         assert df.exists(), f"Missing Dockerfile for {svc}"
+
+
+def test_live_eval_workflow_is_manual_only_and_ci_stays_offline():
+    import yaml
+
+    live = yaml.safe_load((ROOT / ".github/workflows/eval-live.yml").read_text())
+    triggers = live.get("on", live.get(True))  # YAML reads a bare `on` key as True
+    assert list(triggers) == ["workflow_dispatch"]
+    ci = "\n".join(
+        line for line in (ROOT / ".github/workflows/ci.yml").read_text().splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    assert "--mode live" not in ci and "OPENAI_API_KEY" not in ci
+    assert "--mode offline --suite quant" in ci
