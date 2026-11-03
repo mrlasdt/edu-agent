@@ -22,7 +22,7 @@ Rules for the content: it must be general public knowledge with public links, ne
 
 ## Roadmap
 
-This is the plan for the whole guide, kept in the repo so it is not lost. Every concept chapter meets the [chapter template](#chapter-template): a landscape table of the categories of the practice, an open-source options table, then the code. Status: **merged** (written and in the repo), **in progress** (being written in another change), **planned**. Chapters are in learning order.
+This is the plan for the whole guide, kept in the repo so it is not lost. Every concept chapter meets the [chapter template](#chapter-template): a landscape table of the categories of the practice, an open-source options table, then the code. Status: **merged** (written and in the repo), **in progress** (being written in another change), **planned**. Chapters are in learning order, not build order; a chapter without a link has not been written yet. An appendix (glossary, results index, how to rerun everything) is planned after chapter 12.
 
 | Ch | Concept | Status | Landscape categories it covers | Open-source candidates |
 |---|---|---|---|---|
@@ -45,27 +45,6 @@ Rules the roadmap runs on:
 - **Open-source adoption.** Adopt a library in code only when the concept genuinely needs it and it teaches better than the hand-rolled version. A tool that adds a new running service (for example a self-hosted tracing server) or a heavy dependency needs the owner's explicit yes before it is built. Every chapter still names the options, adopted or not, and says why.
 - **Live runs.** Live proofs and baselines use a free OpenRouter model until the owner says otherwise. Each results file names the model and says it is not the product default; baselines are re-run when the paid model is used.
 - **Content.** General public knowledge with public links only. No names or internals of any private system: this repository is public.
-
-## Table of contents
-
-Chapters are in learning order, not build order. A chapter without a link has not been written yet; it lands with the change that adds its practice.
-
-| # | Chapter | Status |
-|---|---|---|
-| 0 | [How to use this guide](00-how-to-use-this-guide.md): service map and the five-minute demo | written |
-| 1 | [Measure first](01-measure-first.md): what one tutoring turn costs and where its time goes | written |
-| 2 | Evals from real failures, reading transcripts, regression versus capability | planned |
-| 3 | [Workflows before agents](03-workflows-before-agents.md): routing, the question pipeline, evaluator-optimizer, 3-pass median | written |
-| 4 | Tool design: compute, don't guess (will carry the landscape of tool types: client functions, provider-hosted tools, code sandboxes, computer use, bash and editor, memory, tool search) | planned |
-| 5 | [Tool inputs are untrusted](05-tool-inputs-are-untrusted.md): allow-lists, subprocess isolation, and when you need a real sandbox | written |
-| 6 | Hybrid retrieval and relevance thresholds | planned |
-| 7 | Just-in-time retrieval: the model decides when to look something up | planned |
-| 8 | Context is a budget | planned |
-| 9 | Every loop needs an exit: stopping conditions and resilience | planned |
-| 10 | Make silent failures loud: reference lint | planned |
-| 11 | Guardrails and the spend cap | planned |
-| 12 | What we deliberately skipped, and why | planned |
-| A | Appendix: glossary, results index, how to rerun everything | planned |
 
 ## The source posts
 
