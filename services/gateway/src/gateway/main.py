@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import codecs
 import logging
+import time
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -32,6 +33,7 @@ from shared.src.shared.config import get_settings
 from shared.src.shared.models import Message, MessageRole, Mode, Session
 from shared.src.shared.observability import setup_observability
 from shared.src.shared.trailer import TrailerSplitter, encode
+from shared.src.shared.turn_meter import TurnMeter
 
 _log = logging.getLogger(__name__)
 
@@ -112,9 +114,16 @@ async def chat(req: ChatRequest) -> StreamingResponse:
         personal_style_enabled=req.personal_style_enabled,
     )
 
-    async def response_stream() -> AsyncGenerator[bytes, None]:
+    # Measures the gateway's share of the turn (guardrails and their model calls, outcome, time
+    # to first byte); the agent service writes its own record under the same trace id.
+    meter = TurnMeter(trace_id, "gateway", f"{req.test_type}/{req.section}", req.mode.value)
+    meter.annotate(outcome="ok")
+    flags: list[str] = ["input_pii_redacted"] if input_pii else []
+
+    async def guarded_stream() -> AsyncGenerator[bytes, None]:
         allowed, limit_message = _rate_limiter.check(req.candidate_id)
         if not allowed:
+            meter.annotate(outcome="rate_limited")
             emit_guardrail_event("candidate", "rate_limit", "fail", trace_id)
             yield f"{limit_message} Please wait a moment and try again.".encode()
             return
@@ -123,22 +132,26 @@ async def chat(req: ChatRequest) -> StreamingResponse:
 
         safe, reason = await check_content_safety(message, trace_id)
         if not safe:
+            meter.annotate(outcome="content_blocked")
             yield f"I can't help with that request ({reason}).".encode()
             return
 
         # Fail open: a broken completeness check must not block a turn that the other
         # guardrails already passed, same as the LLM stage of the answer-leak check.
         try:
-            complete, clarification = await check_completeness(message, session, trace_id)
+            complete, clarification = await check_completeness(message, session, trace_id, meter)
         except Exception:
             _log.warning("completeness check failed; skipping", exc_info=True)
+            flags.append("completeness_check_failed")
             complete, clarification = True, ""
         if not complete:
+            meter.annotate(outcome="clarification_requested")
             yield (clarification or _DEFAULT_CLARIFICATION).encode("utf-8")
             return
 
         result = await _orchestrator.process(session, message)
         if isinstance(result, ClarificationTurn):
+            meter.annotate(outcome="clarification_requested")
             yield result.prompt.encode("utf-8")
             return
 
@@ -164,19 +177,45 @@ async def chat(req: ChatRequest) -> StreamingResponse:
             if text:
                 yield text.encode("utf-8")
             if guard.stopped:
+                meter.annotate(outcome="answer_leak_blocked")
                 return
         if guard is not None:
             tail = guard.feed(trailer.feed(decoder.decode(b"", final=True))) + guard.finish()
+            if guard.stopped:
+                meter.annotate(outcome="answer_leak_blocked")
+            if guard.citations_removed:
+                flags.append("citations_trimmed")
+            if guard.pii_redacted:
+                flags.append("output_pii_redacted")
             if (
                 not guard.stopped
                 and guard.text.strip()
-                and await check_answer_leak(guard.text, req.mode, trace_id)
+                and await check_answer_leak(guard.text, req.mode, trace_id, meter)
             ):
                 tail += LLM_LEAK_NOTICE
+                flags.append("answer_leak_flagged")
             verified = trailer.meta.get("math_verified")
             if isinstance(verified, bool):
                 tail += encode({"math_verified": verified})
             if tail:
                 yield tail.encode("utf-8")
+
+    async def response_stream() -> AsyncGenerator[bytes, None]:
+        started = time.perf_counter()
+        first_byte_seen = False
+        error: str | None = None
+        try:
+            async for piece in guarded_stream():
+                if not first_byte_seen:
+                    first_byte_seen = True
+                    meter.annotate(first_byte_ms=(time.perf_counter() - started) * 1000)
+                yield piece
+        except Exception as exc:
+            error = type(exc).__name__
+            meter.annotate(outcome="error")
+            raise
+        finally:
+            meter.annotate(flags=flags)
+            meter.finish(error=error)
 
     return StreamingResponse(response_stream(), media_type="text/plain; charset=utf-8")

@@ -4,11 +4,10 @@ from __future__ import annotations
 import logging
 import re
 
-import litellm
-
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
 from shared.src.shared.config import get_settings, load_model_config
 from shared.src.shared.models import Mode
+from shared.src.shared.turn_meter import TurnMeter
 
 # PII patterns
 _EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
@@ -67,21 +66,24 @@ def detect_answer_leak(text: str) -> bool:
     return any(p.search(text) for p in _LEAK_PATTERNS)
 
 
-async def check_answer_leak(text: str, mode: Mode, trace_id: str) -> bool:
+async def check_answer_leak(
+    text: str, mode: Mode, trace_id: str, meter: TurnMeter | None = None
+) -> bool:
     """
     In Tutor mode: regex stage, then a Haiku-tier check for answer leakage.
     In Solve mode: always returns False (leaking the answer is the point).
+    With a `meter`, the LLM stage's model call is measured.
     """
     if mode != Mode.tutor:
         return False
 
-    leaked = detect_answer_leak(text) or await _call_leak_checker(text)
+    leaked = detect_answer_leak(text) or await _call_leak_checker(text, meter)
     result = "fail" if leaked else "pass"
     emit_guardrail_event("generation", "tutor_mode_answer_leak", result, trace_id)
     return leaked
 
 
-async def _call_leak_checker(text: str) -> bool:
+async def _call_leak_checker(text: str, meter: TurnMeter | None = None) -> bool:
     """
     Haiku-tier check for answer leakage. Seam for unit test patching.
     Skipped (not a leak) when the configured provider has no API key or the call fails.
@@ -93,14 +95,13 @@ async def _call_leak_checker(text: str) -> bool:
     if provider in keys and not keys[provider]:
         return False
     try:
-        response = await litellm.acompletion(
+        response = await (meter or TurnMeter.detached()).complete(
             model=cfg.litellm_model("orchestrator"),
             messages=[
                 {"role": "system", "content": _LEAK_SYSTEM},
                 {"role": "user", "content": text},
             ],
             temperature=0,
-            stream=False,
         )
     except Exception:
         _log.warning("answer-leak LLM check failed; skipping", exc_info=True)

@@ -5,8 +5,6 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from pathlib import Path
 from typing import Any
 
-import litellm
-
 from services.agent.src.agent.base import BaseAgent
 from services.agent.src.agent.critics.citation_checker import check_citations, strip_uncited_claims
 from services.agent.src.agent.critics.style_critic import run_style_critic
@@ -15,6 +13,7 @@ from services.agent.src.agent.skills.retrieve_corpus import RetrieveCorpusSkill
 from shared.src.shared.config import load_model_config
 from shared.src.shared.models import MessageRole, Mode, Session
 from shared.src.shared.observability import build_llm_metadata
+from shared.src.shared.turn_meter import TurnMeter
 
 _PROMPT_ROOT = Path("prompts/aw_agent")
 
@@ -129,22 +128,31 @@ class AWAgent(BaseAgent):
     async def run(
         self, session: Session, message: str, trace_id: str = ""
     ) -> AsyncGenerator[str | dict[str, Any], None]:
-        chunks = await self._retrieve(session, message)
-        yield {"sources": len(chunks)}
-        chunk_context = _format_chunks_for_context(chunks)
         version = self._model_config.prompt_version("aw_agent", session.mode.value)
-        obs_meta = build_llm_metadata(trace_id=trace_id, prompt_version=version)
+        meter = TurnMeter(trace_id, "agent", "aw_agent", session.mode.value, version)
+        try:
+            with meter.phase("retrieval"):
+                chunks = await self._retrieve(session, message)
+            meter.annotate(notes_retrieved=len(chunks))
+            yield {"sources": len(chunks)}
+            chunk_context = _format_chunks_for_context(chunks)
+            obs_meta = build_llm_metadata(trace_id=trace_id, prompt_version=version)
 
-        if session.mode == Mode.tutor:
-            async for item in self._tutor_turn(
-                session, message, chunk_context, chunks, version, obs_meta
-            ):
-                yield item
-        else:
-            async for item in self._solve_turn(
-                session, message, chunk_context, chunks, version, obs_meta, trace_id
-            ):
-                yield item
+            if session.mode == Mode.tutor:
+                async for item in self._tutor_turn(
+                    session, message, chunk_context, chunks, meter, version, obs_meta
+                ):
+                    yield item
+            else:
+                async for item in self._solve_turn(
+                    session, message, chunk_context, chunks, meter, version, obs_meta, trace_id
+                ):
+                    yield item
+        except Exception as exc:
+            meter.finish(error=type(exc).__name__)
+            raise
+        finally:
+            meter.finish()
 
     # ── tutor mode ────────────────────────────────────────────────────────────
 
@@ -154,6 +162,7 @@ class AWAgent(BaseAgent):
         message: str,
         chunk_context: str,
         chunks: list[Any],
+        meter: TurnMeter,
         version: str = "v1",
         obs_meta: dict[str, Any] | None = None,
     ) -> AsyncGenerator[str | dict[str, Any], None]:
@@ -163,11 +172,10 @@ class AWAgent(BaseAgent):
         temperature = self._model_config.role("aw_agent").temperature
 
         # Attempt 1
-        response = await litellm.acompletion(
+        response = meter.stream(
             model=model,
             messages=messages,
             temperature=temperature,
-            stream=True,
             **(obs_meta or {}),
         )
         tokens, full_text = await _collect_stream(response)
@@ -189,11 +197,10 @@ class AWAgent(BaseAgent):
                 ),
             }
         ]
-        response = await litellm.acompletion(
+        response = meter.stream(
             model=model,
             messages=retry_messages,
             temperature=temperature,
-            stream=True,
             **(obs_meta or {}),
         )
         tokens, full_text = await _collect_stream(response)
@@ -216,6 +223,7 @@ class AWAgent(BaseAgent):
         message: str,
         chunk_context: str,
         chunks: list[Any],
+        meter: TurnMeter,
         version: str = "v1",
         obs_meta: dict[str, Any] | None = None,
         trace_id: str = "",
@@ -233,17 +241,16 @@ class AWAgent(BaseAgent):
         messages = _build_messages(session, message, system_prompt, chunk_context, exemplar_context)
 
         # Generate essay
-        response = await litellm.acompletion(
+        response = meter.stream(
             model=model,
             messages=messages,
             temperature=temperature,
-            stream=True,
             **(obs_meta or {}),
         )
         tokens, full_text = await _collect_stream(response)
 
         # Style critic — one rewrite pass on structural violation
-        style_ok, style_feedback = await self._run_style_critic(full_text, trace_id)
+        style_ok, style_feedback = await self._run_style_critic(full_text, trace_id, meter)
         if not style_ok:
             rewrite_messages = messages + [
                 {"role": "assistant", "content": full_text},
@@ -255,11 +262,10 @@ class AWAgent(BaseAgent):
                     ),
                 },
             ]
-            response = await litellm.acompletion(
+            response = meter.stream(
                 model=model,
                 messages=rewrite_messages,
                 temperature=temperature,
-                stream=True,
                 **(obs_meta or {}),
             )
             tokens, full_text = await _collect_stream(response)
@@ -276,11 +282,10 @@ class AWAgent(BaseAgent):
                     ),
                 }
             ]
-            response = await litellm.acompletion(
+            response = meter.stream(
                 model=model,
                 messages=retry_messages,
                 temperature=temperature,
-                stream=True,
                 **(obs_meta or {}),
             )
             tokens, full_text = await _collect_stream(response)
@@ -313,8 +318,10 @@ class AWAgent(BaseAgent):
     def _check_citations(self, text: str, num_chunks: int) -> tuple[bool, list[str]]:
         return check_citations(text, num_chunks)
 
-    async def _run_style_critic(self, essay_text: str, trace_id: str = "") -> tuple[bool, str]:
-        return await run_style_critic(essay_text, self._model_config_path, trace_id)
+    async def _run_style_critic(
+        self, essay_text: str, trace_id: str = "", meter: TurnMeter | None = None
+    ) -> tuple[bool, str]:
+        return await run_style_critic(essay_text, self._model_config_path, trace_id, meter)
 
     async def _get_personal_style_exemplars(self, session: Session) -> list[str]:
         if not session.personal_style_enabled:

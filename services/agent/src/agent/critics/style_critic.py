@@ -6,11 +6,12 @@ Returns (passed: bool, feedback: str).
 
 from __future__ import annotations
 
-import litellm
+from typing import Any
 
 from shared.src.shared.config import load_model_config
 from shared.src.shared.models import Mode
 from shared.src.shared.observability import build_llm_metadata
+from shared.src.shared.turn_meter import TurnMeter
 
 _STYLE_RUBRIC = """You are a strict GRE essay structure reviewer.
 Check whether this essay follows the PEEL/MEAL paragraph structure:
@@ -27,27 +28,31 @@ Do not suggest rewrites. Only assess structure."""
 
 
 async def run_style_critic(
-    essay_text: str, model_config_path: str | None = None, trace_id: str = ""
+    essay_text: str,
+    model_config_path: str | None = None,
+    trace_id: str = "",
+    meter: TurnMeter | None = None,
 ) -> tuple[bool, str]:
     """
     Run the style critic on an essay.
     Returns (passed, feedback) where feedback is empty when passed=True.
+    With a `meter`, the call is counted in the turn's measurement.
     """
     cfg = load_model_config(model_config_path)
     model = cfg.litellm_model("style_critic")
     temperature = cfg.role("style_critic").temperature
     version = cfg.prompt_version("aw_agent", Mode.solve.value)
 
-    response = await litellm.acompletion(
-        model=model,
-        messages=[
+    call_args: dict[str, Any] = {
+        "model": model,
+        "messages": [
             {"role": "system", "content": _STYLE_RUBRIC},
             {"role": "user", "content": essay_text},
         ],
-        temperature=temperature,
-        stream=False,
+        "temperature": temperature,
         **build_llm_metadata(trace_id=trace_id, prompt_version=version),
-    )
+    }
+    response = await (meter or TurnMeter.detached()).complete(**call_args)
     result = response.choices[0].message.content.strip()
     if result.upper().startswith("PASS"):
         return True, ""

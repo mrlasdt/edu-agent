@@ -75,6 +75,14 @@ class ReplyGuard:
         self.text = ""
         self.stopped = False
 
+    @property
+    def citations_removed(self) -> int:
+        return self._citations_removed
+
+    @property
+    def pii_redacted(self) -> bool:
+        return self._pii_redacted
+
     def feed(self, text: str) -> str:
         if self.stopped:
             return ""

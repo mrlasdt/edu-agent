@@ -8,8 +8,8 @@ instead of overshooting. Free models (`:free`, `openrouter/free`) cost zero.
 
 The ceiling is the owner's AI spend cap for the IELTS mock and the evals (5 USD), which share
 one ledger, so there is one number to look at. Other model calls (the GRE tutor's /chat) are
-not metered here. `spend_ledger()` is that shared ledger as configured (`AI_LEDGER_PATH`,
-`AI_SPEND_CAP_USD`).
+not counted against it; they are measured, uncapped, in the per-turn log (`shared.turn_meter`).
+`spend_ledger()` is that shared ledger as configured (`AI_LEDGER_PATH`, `AI_SPEND_CAP_USD`).
 """
 from __future__ import annotations
 
