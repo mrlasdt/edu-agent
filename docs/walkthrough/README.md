@@ -20,6 +20,32 @@ Every concept chapter follows the same template, so you always know where to loo
 
 Rules for the content: it must be general public knowledge with public links, never the names or internals of a private system, and every "EduAgent today" cell must be true of the code at the commit that adds it. Chapter 0 is orientation and is exempt from the landscape tables.
 
+## Roadmap
+
+This is the plan for the whole guide, kept in the repo so it is not lost. Every concept chapter meets the [chapter template](#chapter-template): a landscape table of the categories of the practice, an open-source options table, then the code. Status: **merged** (written and in the repo), **in progress** (being written in another change), **planned**. Chapters are in learning order.
+
+| Ch | Concept | Status | Landscape categories it covers | Open-source candidates |
+|---|---|---|---|---|
+| 0 | How to use this guide | merged | orientation only, no landscape table | - |
+| 1 | [Measure first](01-measure-first.md) | merged | per-call usage metering; per-task records; structured logs; request tracing (spans per model and tool call); metrics and dashboards; LLM tracing platforms; cost attribution; sampling and retention | Langfuse, OpenTelemetry with OpenLLMetry, Arize Phoenix, Helicone, LiteLLM callbacks |
+| 2 | Evals from real failures | in progress | rule or code graders; model-as-judge graders; human review; capability versus regression suites; offline versus online evals; single-turn versus multi-turn and trajectory evals; pass@k versus pass^k; golden sets versus synthetic sets | Ragas, promptfoo, DeepEval, Langfuse evals, OpenAI Evals, Inspect |
+| 3 | [Workflows before agents](03-workflows-before-agents.md) | merged | prompt chaining; routing; parallelization (sectioning, voting); orchestrator-workers; evaluator-optimizer; autonomous agent loop; when a fixed workflow beats an agent | LangGraph, LangChain LCEL, LlamaIndex Workflows, CrewAI, plain Python |
+| 4 | Tool design: compute, don't guess | planned | client-defined functions (function calling); provider-hosted server tools (web search, code execution); code-execution sandbox; computer use and browser; bash and text editor; memory tool; tool search and deferred loading; MCP servers versus in-process tools; tool description and error design; bounded tool loops | MCP Python SDK, LangChain tools, SymPy (already used), Instructor or Pydantic for schemas |
+| 5 | [Tool inputs are untrusted](05-tool-inputs-are-untrusted.md) | merged | allow-list parsers; AST validation; subprocess isolation with hard kill; containers; gVisor and microVM sandboxes; WebAssembly; provider-hosted code execution; credential isolation; prompt injection through tool output | RestrictedPython, E2B, Pyodide, nsjail, Firejail, Docker |
+| 6 | Hybrid retrieval and relevance thresholds | planned | keyword (BM25); dense vectors; hybrid with rank fusion; rerankers (cross-encoders); query rewriting and HyDE; chunking strategies; metadata filters; relevance thresholds and "no answer"; retrieval evals (recall@k, MRR, nDCG, faithfulness) | Ragas, rank-bm25, sentence-transformers, pgvector, Qdrant, Chroma, LlamaIndex, LangChain retrievers |
+| 7 | Just-in-time retrieval | planned | always-retrieve RAG; tool-called retrieval (agentic RAG); pre-fetch by a router; memory and notes files; caching; when the model should decide to look things up | LangChain or LlamaIndex agents, LangGraph, MCP resources |
+| 8 | Context is a budget | planned | sliding window; running summary; tool-result clearing; structured note-taking and memory; sub-agents with clean context; prompt caching; token counting and budgets | tiktoken or tokenizers, LangChain memory classes, mem0, Letta |
+| 9 | Every loop needs an exit | planned | max-turn and max-tool caps; timeouts; retries with backoff and jitter; circuit breakers; fallbacks to cheaper or different models; graceful degradation; idempotency; spend caps | tenacity, LiteLLM router fallbacks, pybreaker |
+| 10 | Make silent failures loud | planned | lint and static checks on references and prompts; contract tests; schema validation of model output; canaries and alerts; failure budgets | Pydantic, Guardrails AI, pytest plugins, pre-commit |
+| 11 | Guardrails and the spend cap | planned | input moderation; output filters (answer leak, PII); policy classifiers; structured-output validation; rate limits; per-user and global spend caps; human escalation | NeMo Guardrails, Guardrails AI, LLM Guard, Presidio, OpenAI moderation API |
+| 12 | What we deliberately skipped, and why | planned | fine-tuning versus prompting; multi-agent frameworks; heavy platforms; when not to adopt | names each skipped option and the reason |
+
+Rules the roadmap runs on:
+
+- **Open-source adoption.** Adopt a library in code only when the concept genuinely needs it and it teaches better than the hand-rolled version. A tool that adds a new running service (for example a self-hosted tracing server) or a heavy dependency needs the owner's explicit yes before it is built. Every chapter still names the options, adopted or not, and says why.
+- **Live runs.** Live proofs and baselines use a free OpenRouter model until the owner says otherwise. Each results file names the model and says it is not the product default; baselines are re-run when the paid model is used.
+- **Content.** General public knowledge with public links only. No names or internals of any private system: this repository is public.
+
 ## Table of contents
 
 Chapters are in learning order, not build order. A chapter without a link has not been written yet; it lands with the change that adds its practice.
