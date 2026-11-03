@@ -4,7 +4,6 @@ real model call: the pipeline runs against scripted completers or the offline fa
 """
 import asyncio
 import json
-import socket
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -398,12 +397,11 @@ def test_fake_flaw_schedule_is_deterministic():
 
 
 def test_cli_offline_generation_suite_reports_before_after(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    block_network: None,
 ):
-    def deny(*a: Any, **k: Any) -> Any:
-        raise AssertionError("network access attempted")
-
-    monkeypatch.setattr(socket.socket, "connect", deny)
     code = cli.main(
         ["--mode", "offline", "--suite", "generation", "--max-items", "12",
          "--ledger", str(tmp_path / "l.json"), "--out-dir", str(tmp_path)]

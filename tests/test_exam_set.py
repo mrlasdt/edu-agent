@@ -30,7 +30,7 @@ from evals.exam_set.schema import (
     best_label_tier,
 )
 from evals.loader import _GOLDEN_DIR, EXAM_FAMILIES, load_exam_items, load_golden_set
-from services.math_verifier.src.math_verifier.sandbox import verify_expression
+from services.math_verifier.src.math_verifier.sandbox import _sync_verify, verify_expression
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -268,7 +268,9 @@ def test_sat_templates_never_emit_malformed_signs_and_agree_with_the_verifier():
             item = sat_math.generate(spec.id, seed)
             assert "+ -" not in item.prompt and "- -" not in item.prompt, (spec.id, seed)
             assert item.expression is not None and item.ground_truth is not None
-            result = asyncio.run(verify_expression(item.expression, item.ground_truth))
+            # Trusted generated input, 2,400 checks: skip the per-check child process. Isolation
+            # is covered in test_math_verifier_untrusted_input.py.
+            result = _sync_verify(item.expression, item.ground_truth)
             assert result.verified, (spec.id, seed, item.expression, item.ground_truth)
 
 

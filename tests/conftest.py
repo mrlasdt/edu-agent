@@ -1,3 +1,5 @@
+import socket
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -15,3 +17,23 @@ def no_live_corpus_service():
         new=AsyncMock(return_value=[]),
     ):
         yield
+
+
+@pytest.fixture
+def block_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Fail any test that tries to reach the network. Local Unix sockets stay open: the math
+    verifier forks each check from a helper process it talks to over one.
+    """
+    real_connect = socket.socket.connect
+
+    def connect(self: socket.socket, address: Any) -> Any:
+        if self.family == socket.AF_UNIX:
+            return real_connect(self, address)
+        raise AssertionError("network access attempted")
+
+    def refuse(*a: Any, **k: Any) -> Any:
+        raise AssertionError("network access attempted")
+
+    monkeypatch.setattr(socket.socket, "connect", connect)
+    monkeypatch.setattr(socket, "create_connection", refuse)

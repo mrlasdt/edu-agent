@@ -1,17 +1,33 @@
 from __future__ import annotations
 
 import asyncio
+import multiprocessing
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from multiprocessing.connection import Connection
 
 import sympy as sp
-from sympy.parsing.sympy_parser import (
-    implicit_multiplication_application,
-    parse_expr,
-    standard_transformations,
+
+from services.math_verifier.src.math_verifier.safe_parser import (
+    MAX_EXPRESSION_LENGTH,
+    NOT_MATH,
+    parse_math,
 )
 
-TRANSFORMS = standard_transformations + (implicit_multiplication_application,)
+# The budget covers the wait for the child's reply (parsing and solving). Starting the child
+# comes first and is not counted.
+DEFAULT_TIMEOUT = 5.0
+MAX_CONCURRENT_CHECKS = 4
+_MEMORY_LIMIT_BYTES = 1 << 30
+_CPU_LIMIT_SECONDS = 10
+
+# Each check runs in its own short-lived child forked from a "forkserver": a small helper
+# process, started once with this module (and sympy) already imported, so a fork costs
+# milliseconds instead of a cold interpreter start.
+_CTX = multiprocessing.get_context("forkserver")
+_CTX.set_forkserver_preload([__name__])
+_pool = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_CHECKS, thread_name_prefix="math-check")
 
 
 @dataclass
@@ -26,7 +42,7 @@ class VerificationResult:
 
 def _parse_safe(s: str) -> sp.Expr | None:
     try:
-        return parse_expr(s.strip(), transformations=TRANSFORMS)
+        return parse_math(s)
     except Exception:
         return None
 
@@ -63,16 +79,6 @@ def _normalize_expected(expected: str) -> set[sp.Expr]:
     return result
 
 
-_PROSE = re.compile(r"[A-Za-z]{2,}\s+[A-Za-z]{2,}")
-
-
-def _parse_value(value: str) -> sp.Expr:
-    """Strict parse of one value; words are rejected rather than read as implicit products."""
-    if _PROSE.search(value):
-        raise ValueError(f"not a math value: {value!r}")
-    return parse_expr(value, transformations=TRANSFORMS)
-
-
 def _is_value_list(expression: str) -> bool:
     """A list of two or more values ("2, -2"), not an equation to solve."""
     values = _value_list(expression)
@@ -88,8 +94,8 @@ def _solve_equation(expression: str) -> tuple[str, set[sp.Expr]]:
     if len(parts) != 2:
         raise ValueError(f"Cannot parse as equation: {expression!r}")
 
-    lhs = parse_expr(parts[0].strip(), transformations=TRANSFORMS)
-    rhs = parse_expr(parts[1].strip(), transformations=TRANSFORMS)
+    lhs = parse_math(parts[0])
+    rhs = parse_math(parts[1])
     diff = lhs - rhs
 
     free_syms = sorted(diff.free_symbols, key=str)
@@ -106,19 +112,21 @@ def _solve_equation(expression: str) -> tuple[str, set[sp.Expr]]:
 
 
 def _sync_verify(expression: str, expected: str) -> VerificationResult:
-    """Run sympy verification synchronously. Executed inside a thread executor."""
+    """Run sympy verification synchronously. Runs only inside the worker subprocess."""
     if not expression or not expression.strip():
         return VerificationResult(
             verified=False, computed="", error="parse error: empty expression"
         )
+    if len(expression) > MAX_EXPRESSION_LENGTH:
+        return VerificationResult(verified=False, computed="", error=f"parse error: {NOT_MATH}")
     try:
         if _is_value_list(expression):
-            computed_set = {sp.simplify(_parse_value(v)) for v in _value_list(expression)}
+            computed_set = {sp.simplify(parse_math(v)) for v in _value_list(expression)}
             computed_str = str(sorted(computed_set, key=str))
         elif "=" in expression:
             computed_str, computed_set = _solve_equation(expression)
         else:
-            expr = parse_expr(expression.strip(), transformations=TRANSFORMS)
+            expr = parse_math(expression)
             val = sp.simplify(expr)
             computed_str = str(val)
             computed_set = {val}
@@ -133,19 +141,67 @@ def _sync_verify(expression: str, expected: str) -> VerificationResult:
 # ── public API ────────────────────────────────────────────────────────────────
 
 
-async def verify_expression(
-    expression: str, expected: str, timeout: float = 2.0
+def _fail(error: str) -> VerificationResult:
+    return VerificationResult(verified=False, computed="", error=error)
+
+
+def _limit_resources() -> None:
+    """Backstop behind the parent's wall-clock kill. Best effort: not every OS honours these."""
+    try:
+        import resource
+
+        resource.setrlimit(resource.RLIMIT_CPU, (_CPU_LIMIT_SECONDS, _CPU_LIMIT_SECONDS))
+        resource.setrlimit(resource.RLIMIT_AS, (_MEMORY_LIMIT_BYTES, _MEMORY_LIMIT_BYTES))
+    except (ImportError, ValueError, OSError):
+        pass
+
+
+def _child_main(conn: Connection, expression: str, expected: str) -> None:
+    """Entry point of the throwaway child: verify, send the result, exit."""
+    _limit_resources()
+    result = _sync_verify(expression, expected)
+    conn.send((result.verified, result.computed, result.error))
+    conn.close()
+
+
+def verify_expression_sync(
+    expression: str, expected: str, timeout: float = DEFAULT_TIMEOUT
 ) -> VerificationResult:
     """
-    Async entry point: run sympy in a thread executor with a hard timeout.
-    Never raises — returns a VerificationResult with error set on failure.
+    Check the expression in a throwaway child process that is killed on timeout.
+    Never raises - returns a VerificationResult with error set on failure.
+
+    A thread cannot be stopped from outside, so a runaway computation would keep burning CPU
+    after its timeout. A child process can be killed, and it shares no state with the server.
     """
-    loop = asyncio.get_event_loop()
+    if len(expression) > MAX_EXPRESSION_LENGTH or len(expected) > MAX_EXPRESSION_LENGTH:
+        return _fail(f"parse error: {NOT_MATH}")
+    receive, send = _CTX.Pipe(duplex=False)
+    child = _CTX.Process(target=_child_main, args=(send, expression, expected), daemon=True)
     try:
-        result = await asyncio.wait_for(
-            loop.run_in_executor(None, _sync_verify, expression, expected),
-            timeout=timeout,
-        )
-        return result
-    except TimeoutError:
-        return VerificationResult(verified=False, computed="", error="timeout")
+        try:
+            child.start()
+        finally:
+            send.close()
+        if not receive.poll(timeout):
+            return _fail("timeout")
+        verified, computed, error = receive.recv()
+        return VerificationResult(verified=verified, computed=computed, error=error)
+    except (EOFError, OSError):
+        return _fail("verifier worker failed")
+    finally:
+        if child.pid is not None:  # the child started
+            if child.is_alive():
+                child.kill()
+            child.join()
+        receive.close()
+
+
+async def verify_expression(
+    expression: str, expected: str, timeout: float = DEFAULT_TIMEOUT
+) -> VerificationResult:
+    """Async entry point: `verify_expression_sync` on a small bounded thread pool."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        _pool, verify_expression_sync, expression, expected, timeout
+    )

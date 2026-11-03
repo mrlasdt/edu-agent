@@ -3,7 +3,6 @@ Tests for the agent-in-the-loop eval. No test makes a real model call: LLM traff
 through fakes and the offline pipeline test runs with sockets disabled.
 """
 import json
-import socket
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -198,18 +197,12 @@ def test_provider_chains_free_first_openai_last():
     assert cli.provider_chain("openai") == [cli.OPENAI_MODEL]
 
 
-def _block_network(monkeypatch: pytest.MonkeyPatch) -> None:
-    def deny(*a: Any, **k: Any) -> Any:
-        raise AssertionError("network access attempted")
-
-    monkeypatch.setattr(socket.socket, "connect", deny)
-    monkeypatch.setattr(socket, "create_connection", deny)
-
-
 def test_dry_run_makes_no_calls_and_writes_nothing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    block_network: None,
 ):
-    _block_network(monkeypatch)
     ledger = tmp_path / "l.json"
     assert cli.main(["--ledger", str(ledger), "--out-dir", str(tmp_path / "runs")]) == 0
     plan = json.loads(capsys.readouterr().out)
@@ -218,9 +211,11 @@ def test_dry_run_makes_no_calls_and_writes_nothing(
 
 
 def test_the_eval_cli_defaults_to_the_configured_spend_cap_and_ledger(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    block_network: None,
 ):
-    _block_network(monkeypatch)
     ledger = tmp_path / "shared.json"
     Ledger(ledger, 10.0).record("mock", "gpt-4.1-mini", 6.0)
     settings = Settings(ai_spend_cap_usd=10.0, ai_ledger_path=str(ledger))
@@ -234,9 +229,11 @@ def test_the_eval_cli_defaults_to_the_configured_spend_cap_and_ledger(
 
 
 def test_offline_pipeline_runs_real_agent_without_network(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    block_network: None,
 ):
-    _block_network(monkeypatch)
     code = cli.main(
         ["--mode", "offline", "--ledger", str(tmp_path / "l.json"), "--out-dir", str(tmp_path)]
     )
