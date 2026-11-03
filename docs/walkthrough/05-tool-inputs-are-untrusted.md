@@ -48,8 +48,11 @@ Read these in order. They are named by symbol so the tour survives edits.
    - `parse_math(text)` is the public function. It returns a sympy expression or raises
      `MathSyntaxError("not a math expression")`.
    - `_tokenize` is the allow-list. It accepts only numbers, `+ - * / ^ ** ! , ( )`, names in
-     `FUNCTIONS` or `CONSTANTS`, and single-letter variables. Underscores, dots, brackets, quotes,
-     `lambda`, and every other word fail here, before any parsing. It also caps length at
+     `FUNCTIONS` or `CONSTANTS`, and variables. A word of only letters that is not listed is
+     split into single-letter variables (`xy` becomes `x y`, a product); it is never looked up
+     or evaluated as a name. Two such words in a row (`import os`, `the values`) are rejected as
+     prose. Underscores, digits inside a word, dots, brackets, and quotes fail
+     here, before any parsing. It also caps length at
      `MAX_EXPRESSION_LENGTH` and rejects unbalanced parentheses and top-level commas.
    - `parse_math` rebuilds the string from the validated tokens, so the checker and the parser
      see the same stream, then calls `parse_expr` with an explicit `_NAMESPACE`. That namespace
@@ -94,11 +97,11 @@ verify", and the existing retry, escalate, degrade path runs (`verifier_fail: tr
 
 | You write | What happens | What to do |
 |---|---|---|
-| `xy` (two variables glued together) | rejected | write `x*y` or `x y` |
+| `xy`, `3xy`, `12 cm` (letters glued together) | read as a product of single-letter variables: `x*y`, `3*x*y`, `12*c*m` | nothing to do; a unit word is not recognised as a unit |
 | `1e3` | rejected | write `1000` |
 | `√2`, `×`, `÷`, `−` (Unicode) | rejected | normalise in `agent/answers.py` before the handoff |
 | `x_1`, `x1` | rejected | use single letters |
-| `sec(x)` and other functions not listed | rejected | add to `FUNCTIONS` |
+| `sec(x)` and other functions not listed | read as the product `s*e*c*x`, not the function | add to `FUNCTIONS` |
 
 To accept a new function, add one line to `FUNCTIONS` in `safe_parser.py`, for example
 `"sec": sp.sec`. To accept a new constant, add it to `CONSTANTS`. Nothing outside those two

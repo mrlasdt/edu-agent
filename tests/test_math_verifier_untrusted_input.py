@@ -95,6 +95,10 @@ def test_juxtaposed_variables_are_a_product() -> None:
         ("gcd(12, 18)", sp.Integer(6)),
         ("2(x + 1)", 2 * (sp.Symbol("x") + 1)),
         ("-(3 - 5)", sp.Integer(2)),
+        ("3xy", 3 * sp.Symbol("x") * sp.Symbol("y")),
+        ("x^2y", sp.Symbol("x") ** 2 * sp.Symbol("y")),
+        ("12 cm", 12 * sp.Symbol("c") * sp.Symbol("m")),
+        ("45 degrees", 45 * sp.Mul(*sp.symbols("d e g r e e s"))),
     ],
 )
 def test_valid_notation_still_parses(text: str, expected: sp.Expr) -> None:

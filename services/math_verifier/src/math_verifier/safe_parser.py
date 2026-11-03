@@ -8,8 +8,11 @@ between that text and sympy:
 
 1. Cap the length.
 2. Tokenize against an allow-list: numbers, a few operators, parentheses, a short list of
-   named functions and constants, and single-letter variables. Anything else (underscores,
-   attribute dots, brackets, quotes, `lambda`, any other word) is rejected before parsing.
+   named functions and constants, and variables. A word made only of letters that is not a
+   listed function or constant is split into single-letter variables (`xy` is `x*y`), but two
+   such words in a row are rejected: that is prose ("import os"), not algebra. Anything
+   else (underscores, digits inside a word, attribute dots, brackets, quotes) is rejected
+   before parsing.
 3. Rebuild the string from the validated tokens, so the checker and the parser see the same
    stream, and parse it with an explicit namespace that has no builtins.
 
@@ -93,16 +96,13 @@ class MathSyntaxError(ValueError):
         super().__init__(NOT_MATH)
 
 
-def _is_variable(name: str) -> bool:
-    return len(name) == 1 and name.isascii() and name.isalpha()
-
-
 def _tokenize(text: str) -> list[str]:
     if not text.strip() or len(text) > MAX_EXPRESSION_LENGTH:
         raise MathSyntaxError
     tokens: list[str] = []
     depth = 0
     pos = 0
+    after_word = False
     while pos < len(text):
         if not text[pos:].strip():
             break
@@ -112,8 +112,15 @@ def _tokenize(text: str) -> list[str]:
         pos = match.end()
         name, op = match.group("name"), match.group("op")
         if name is not None and name not in FUNCTIONS and name not in CONSTANTS:
-            if not _is_variable(name):
+            if not name.isalpha():
                 raise MathSyntaxError
+            is_word = len(name) > 1
+            if is_word and after_word:
+                raise MathSyntaxError
+            after_word = is_word
+            tokens.extend(name)
+            continue
+        after_word = False
         if op == "(":
             depth += 1
         elif op == ")":
@@ -134,7 +141,7 @@ def parse_math(text: str) -> sp.Expr:
     Parse one math expression, or raise `MathSyntaxError`.
 
     Never evaluates Python from `text`: the allow-list rejects every name that is not a
-    listed function, constant or single-letter variable, and the namespace has no builtins.
+    listed function, constant or run of letters (split into single-letter variables), and the namespace has no builtins.
     """
     source = " ".join(_tokenize(text))
     try:

@@ -15,7 +15,8 @@ from services.math_verifier.src.math_verifier.safe_parser import (
     parse_math,
 )
 
-# The budget covers the whole check: forking the child, parsing, solving and the reply.
+# The budget covers the wait for the child's reply (parsing and solving). Starting the child
+# comes first and is not counted.
 DEFAULT_TIMEOUT = 5.0
 MAX_CONCURRENT_CHECKS = 4
 _MEMORY_LIMIT_BYTES = 1 << 30
@@ -178,8 +179,10 @@ def verify_expression_sync(
     receive, send = _CTX.Pipe(duplex=False)
     child = _CTX.Process(target=_child_main, args=(send, expression, expected), daemon=True)
     try:
-        child.start()
-        send.close()
+        try:
+            child.start()
+        finally:
+            send.close()
         if not receive.poll(timeout):
             return _fail("timeout")
         verified, computed, error = receive.recv()
