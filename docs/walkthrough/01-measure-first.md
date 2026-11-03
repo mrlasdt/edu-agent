@@ -8,11 +8,43 @@ You ask the tutor a question and it feels slow. Or someone asks "what does one t
 
 Anthropic's post [Writing effective tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents) recommends measuring each task you run: its total runtime, how many tool calls it made, how many tokens it consumed, and how many calls errored, and then reading the transcripts to see why. The idea generalises to any LLM feature. Keep one record per task, not just an average, because averages hide the turns that cost ten times the others. And label what you measured versus what you guessed.
 
-## 3. Why EduAgent needs it
+## 3. Landscape: the ways to measure an LLM feature
+
+"Measure it" is not one technique. These are the main categories, from cheapest to heaviest. They stack: most real systems use several.
+
+| Category | What it is | Example | Trade-off | When to use | EduAgent today |
+|---|---|---|---|---|---|
+| **Per-call usage metering** | Read the token counts the provider returns with each response and price them. | `usage.prompt_tokens` and `usage.completion_tokens` on a chat completion; the OpenAI `stream_options={"include_usage": True}` flag. | Exact for tokens, but one call is not one user task. Providers differ on whether streamed responses report usage. | Always. It is the raw material for everything else. | **Used.** `TurnMeter.stream` and `TurnMeter.complete` read usage; `estimate_tokens` is the labelled fallback. |
+| **Per-task record** | One row per unit of user work (a turn, a job), joining every call, tool and step inside it. | A line such as `turn=t-9f2 llm_calls=3 in=1,840 out=212 cost=$0.0004 ttft=0.9s`. | You must define the task boundary and carry an id across services. Averages over tasks hide the expensive tail, so keep the rows. | As soon as one task makes more than one call. | **Used.** One JSON line per service per turn in `.turn-log/turns.jsonl`, joined by trace id in `evals/turn_report.py`. |
+| **Structured logs** | Log events as key-value or JSON records with stable field names and a correlation id, not free text. | `{"event": "guardrail", "name": "pii", "result": "fail", "trace_id": "..."}`. | Cheap and universal, but you must design the fields and build the queries yourself. | Any service. The correlation id is the part that matters. | **Partly.** Guardrail events carry `trace_id` (`emit_guardrail_event`), and turn records are JSON; general application logs are plain text. |
+| **Distributed tracing** | A tree of timed spans for one request across services, with propagated context. | An OpenTelemetry trace: `POST /chat` span with child spans for retrieval and each model call. | Needs instrumentation in every service plus a collector and a viewer. Excellent for "where did the time go". | Several services, or deep call trees you cannot hold in your head. | **Not used.** The gateway and the agent share a hand-passed `trace_id` and a join, which is enough for two services and one flat list of calls. |
+| **LLM-specific tracing platform** | A tool that captures prompts, completions, token counts, cost and latency per call, with a UI to browse, filter and compare them. | Langfuse, LangSmith, Arize Phoenix, Helicone. | Rich UI and prompt/version views for little code, but it stores prompt text (a privacy question) and is one more service to run or pay for. | When people need to read individual transcripts, compare prompt versions or review sessions. | **Used, opt-in.** `setup_observability` turns on the LiteLLM-to-Langfuse callback when real keys are set; Langfuse runs under the `observability` compose profile. |
+| **Metrics and dashboards** | Aggregated numeric time series (rates, percentiles) scraped and charted over time, with alerts. | Prometheus counters and histograms charted in Grafana: p95 latency, error rate, spend per hour. | Great for trends and alerting, poor for "why was this one turn slow". Needs a metrics store and dashboards to maintain. | A deployed service with traffic and an on-call. | **Not used.** [ADR-0010](../adr/0010-observability-mcp-ux.md) names Prometheus and Grafana, but the Kubernetes manifests were never applied, so nothing scrapes them. The report CLI prints p50/p95 instead. |
+| **Cost attribution** | Splitting spend by feature, prompt version, tenant or user so you know what drives it. | Tagging each call with an agent name and prompt version, then grouping. | Needs tags on every call; per-user attribution also means storing an identity next to usage. | When more than one feature shares a bill, or you price per customer. | **Partly.** The record is grouped by agent and mode and carries the prompt version. There is no per-user attribution. |
+| **Sampling** | Recording only some traffic (a fixed fraction, or only slow or failed requests) to bound storage and cost. | Head sampling (decide at the start) or tail sampling (keep the slow and failed traces). | Cheaper, but you can miss the rare turn you wanted to study. | High volume, or traces that carry large payloads. | **Not used.** Every turn is recorded because volume is one development machine and each record is a short line without message text. |
+| **Provider invoice and usage dashboards** | The provider's own billing and usage pages. | OpenAI or OpenRouter usage dashboards. | The source of truth for money, but they cannot split cost by your feature or turn. | Reconciliation: check your own estimate against the bill. | **Not integrated.** `estimate_cost` is a price table, so treat it as a comparison tool and the invoice as accounting (see Trade-offs). |
+
+## 4. Open-source options
+
+Adopt a tool when it teaches or does something the hand-rolled version cannot. The per-turn record is deliberately hand-rolled (`shared/src/shared/turn_meter.py` is about 300 lines) because the point of this chapter is to see exactly what is measured. The tools below are what you would reach for next.
+
+| Tool | What it does | EduAgent's position |
+|---|---|---|
+| [Langfuse](https://langfuse.com/docs) | Open-source LLM tracing and prompt-management platform; self-hostable; records every call with tokens, cost, latency and metadata. | **Adopted, optional.** Wired through the LiteLLM callback in `shared/src/shared/observability.py`, so it adds no code at the call sites. Off unless real keys are set, because it needs Postgres and a server (the `observability` compose profile). It complements the turn log: Langfuse answers "show me that transcript", the turn log answers "what does a turn cost on average". |
+| [OpenTelemetry](https://opentelemetry.io/docs/specs/semconv/gen-ai/) plus [OpenLLMetry](https://github.com/traceloop/openllmetry) | The vendor-neutral tracing standard, with semantic conventions for generative AI calls, and a library that auto-instruments LLM SDKs. | **Not adopted.** Two services and a flat list of calls do not need span trees, and a collector plus a backend is a new running service. Adopt it when a turn spans more services or you must send traces to an existing observability stack. |
+| [LangSmith](https://docs.smith.langchain.com) | Hosted tracing, datasets and evaluation from the LangChain team; works with or without LangChain code. | **Not adopted.** It is a hosted, closed-source service, and Langfuse already fills the same role in a self-hostable form. |
+| [Arize Phoenix](https://github.com/Arize-ai/phoenix) | Open-source tracing and evaluation UI built on OpenTelemetry conventions. | **Not adopted.** Overlaps Langfuse. A reasonable alternative if you standardise on OpenTelemetry. |
+| [Helicone](https://www.helicone.ai) | Proxy-style logging: send model traffic through it and get usage and cost for free. | **Not adopted.** [ADR-0010](../adr/0010-observability-mcp-ux.md) compared it with Langfuse and chose Langfuse for prompt versioning and comparison. A proxy also puts a new hop in the request path. |
+| [LiteLLM proxy](https://docs.litellm.ai/docs/proxy/cost_tracking) | A gateway that adds spend tracking, budgets and keys per team in front of many providers. | **Not adopted.** EduAgent uses the `litellm` library only. The proxy is the next step if several apps or people share keys and need budgets enforced centrally. |
+| [Prometheus](https://prometheus.io/docs/introduction/overview/) and [Grafana](https://grafana.com/docs/grafana/latest/) | Metrics storage with alerting, and dashboards. | **Not adopted.** Needs a deployed environment to scrape; local-only today. |
+
+No new dependency was added for this chapter: the optional adoption already exists, and nothing else on the list would teach more than the 300 lines it would replace.
+
+## 5. Why EduAgent needs it here
 
 A single "turn" (one learner message) crosses two services and can make several model calls: a completeness check, the tutor itself (or a solver with retries), and a leak check. You cannot see that from the outside. Chapters 3 to 9 add retries, tools and retrieval decisions, each of which changes the number of calls per turn; without this record you would be arguing from impressions.
 
-## 4. Code tour
+## 6. Code tour
 
 Search for these symbols.
 
@@ -26,7 +58,7 @@ Search for these symbols.
 
 Cost is recorded and not capped. The 5 USD cap (`Ledger`) still covers only the IELTS mock and the evals; a hard cap on `/chat` would stop the tutor mid-lesson.
 
-## 5. Before and after
+## 7. Before and after
 
 **Before:** nothing recorded. There was no way to answer "how many calls, tokens or seconds?" for a live turn.
 
@@ -52,7 +84,7 @@ What the numbers say, and how far to trust them:
 - **These figures come from a free reasoning model, not the default.** The live proof ran with the owner's OpenAI key rejected, so every role was pointed at OpenRouter's free `cohere/north-mini-code:free` for this run only (nothing in the committed config changed), and the OpenAI moderation call (which is not a model-token call) was skipped. The model spends many hidden reasoning tokens (a Tutor turn used up to 5,800 output tokens for a few sentences of reply) and the free tier is slow, so the token counts and latencies overstate what `gpt-4o-mini` would show, and the dollar cost as recorded is 0 because the model is free. The `--price-as gpt-4o-mini` file shows how the paid default would be computed: `(input_tokens x 0.15 + output_tokens x 0.60) / 1,000,000` USD from the price table in `shared/src/shared/budget.py`, applied to the recorded tokens. Because those tokens are inflated by reasoning, read the priced figure as an upper bound, and rerun on the real default to get the real one.
 - **One turn is flagged as estimated.** A guardrail call in that turn came back after about 139 seconds without a usage report, so the meter fell back to the character-based estimate and the report marks the turn `*`. The turn's 150 s total is also partly the load script's own 150 s timeout. This is the fallback path working as designed, not a result to quote.
 
-## 6. Trade-offs
+## 8. Trade-offs
 
 - **Estimates are not measurements.** The fallback is about four characters per token and is wrong for code, math and non-English text. It is labelled for that reason; if estimated turns become common, fix the provider setup instead of trusting them.
 - **Pricing is a table, not a bill.** `estimate_cost` can drift from real prices and falls back to a deliberately pessimistic price for unknown models. Use it to compare changes, and use the provider's invoice for accounting.
@@ -61,7 +93,7 @@ What the numbers say, and how far to trust them:
 - **Logging cost.** One short line per service per turn, no message text. Rotate or delete `.turn-log/` like any log, and do not log content here without thinking about privacy.
 - **When not to bother.** A one-off script that makes a single call does not need a per-task record. A feature that makes several calls per task and serves real users does.
 
-## 7. Try it
+## 9. Try it
 
 With the stack running and a few turns asked in the web app:
 
@@ -71,7 +103,7 @@ uv run python -m evals.turn_report --json | jq '.summary.groups'
 uv run pytest tests/test_turn_meter.py -q     # the known-usage guard tests
 ```
 
-## 8. Exercise
+## 10. Exercise
 
 Predict, then run. The checked-in log was recorded on a free model, so ask what the same tokens would cost on `gpt-4.1-mini`, whose prices are 0.40 USD per million input tokens and 1.60 per million output (see `_PRICES` in `shared/src/shared/budget.py`):
 

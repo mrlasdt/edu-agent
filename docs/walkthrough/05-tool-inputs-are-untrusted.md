@@ -27,6 +27,42 @@ model's reach for the same reason. See Anthropic's engineering post
 [Writing effective tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents)
 for the tool-design side of this.
 
+## Landscape: ways to make untrusted input safe to act on
+
+The right defence depends on what the input is allowed to *do*. Arithmetic needs far less than "run this program". These are the main categories, roughly from lightest to heaviest. Stronger layers cost more and are for stronger threats; the best systems stack a light layer on top of a heavy one.
+
+| Category | What it is | Example | Trade-off | When to use | EduAgent today |
+|---|---|---|---|---|---|
+| **Deny-list or regex filter** | Reject input that matches known-bad patterns. | Block the strings `import` and `__`. | Easy, but attackers find the spelling you did not list. Fails open. | Never as the only defence. | **Not used.** This is what the old code was closest to, and why it was unsafe. |
+| **Allow-list parser** | Accept only a small, named grammar and reject everything else before it reaches an interpreter. | Numbers, `+ - * / ^`, a short list of functions, one-letter variables. | Rejects some valid input; the safest option when the task is narrow, because the unsafe things cannot even be spelled. | The input has a small, known shape (math, dates, IDs, queries). | **Used.** `_tokenize` and `parse_math` in `safe_parser.py`. |
+| **AST validation** | Parse the input into a syntax tree with the language's own parser, then walk it and permit only listed node types. | Python's `ast` module: allow `BinOp` and `Constant`, reject `Call` and `Attribute`. | More expressive than a token list, but you must get the walk right for every node type and every language version. | Input is real code in a language you can parse, and you need more than a token list. | **Not used.** The tokenizer is stricter and simpler for arithmetic. |
+| **Restricted namespace** | Run `eval` with empty or curated builtins and globals. | `eval(text, {"__builtins__": {}}, safe_names)`. | A speed bump only: Python object introspection has well-known ways around it. | As defence in depth, never alone. | **Used as a second layer.** `_NAMESPACE` sets `"__builtins__": {}`, behind the allow-list. |
+| **Subprocess isolation with a kill** | Run the work in a separate process and kill it on a deadline. | A child process, a pipe, `poll(timeout)`, then `kill()`. | Stops runaway work that a thread cannot be stopped from; does not stop file or network access. Adds tens of milliseconds. | Any untrusted computation that might not finish. | **Used.** `verify_expression_sync` and `_child_main` in `sandbox.py`. |
+| **Resource limits** | OS limits on CPU time, memory, processes, open files. | `setrlimit(RLIMIT_CPU, ...)`, `RLIMIT_AS`; cgroup limits in containers. | Cheap backstop; enforcement varies by operating system. | Alongside any subprocess. | **Used, best effort.** `_limit_resources` sets CPU and memory limits where the OS honours them. |
+| **Container** | A namespaced process with its own filesystem view, optionally no network and no secrets. | Docker with a read-only filesystem, dropped capabilities and no network. | A real boundary, but a shared kernel: a kernel bug can cross it. Per-run containers are slow to start. | Services you deploy, and code you do not fully trust. | **Partly.** The verifier is its own container with no API keys, which limits what an escape would find. The compose file does not set a read-only filesystem or deny network, so treat it as a boundary of convenience, not hardening. |
+| **User-space kernel or microVM** | A stronger isolation boundary than a plain container: a user-space kernel or a minimal virtual machine per workload. | gVisor, Firecracker, Kata Containers. | Strong isolation for arbitrary code; more setup, some overhead and compatibility gaps. | Running genuinely arbitrary code, such as user-submitted programs. | **Not used.** The input is arithmetic, not programs. |
+| **Provider-hosted code execution** | The model provider runs the code in its own sandbox and returns the result. | Anthropic's code execution tool, OpenAI's code interpreter. | No sandbox to run, but vendor lock-in, per-use cost, and your data leaves your boundary. | You want model-written code run without operating a sandbox. | **Not used.** Our check is deterministic arithmetic, and it must stay independent of the model's provider. |
+| **WebAssembly runtime** | Compile or run code inside a WASM VM that has no host access unless you grant it. | Pyodide (Python in WASM), Wasmtime. | Small attack surface and portable; limited library and native-extension support. | Embedding untrusted code in a process where containers are too heavy. | **Not used.** sympy is a large native-dependent library. |
+| **Hosted sandbox service** | A service that creates a short-lived isolated machine per run. | E2B, Modal sandboxes. | Strong isolation with no infrastructure of your own; a dependency, network hop, and cost per run. | Agents that write and run real programs. | **Not used.** Same reason as microVMs. |
+| **Credential and identity scoping** | Keep secrets, user identity and permissions out of the arguments the model controls. | The server attaches the signed-in user; the model never supplies a user id or token. | Needs the tool server to know who is calling, which means designing that channel. | Every tool that touches user data or paid APIs. | **Partly.** The verifier takes only an expression and holds no keys. A review of the other tools' arguments is still to come. |
+
+Rule of thumb: pick the lightest layer that makes the dangerous thing *impossible to express*, then add the cheap layers (subprocess, limits, container) for the failures you cannot rule out. A heavier sandbox is the answer when you must run code you cannot constrain; an allow-list is the answer when you can constrain it.
+
+Where this sits among the types of agent tools: a **client-defined function** (what the verifier is) runs in your process or service, so you own its input checking. A **provider-hosted** code execution tool moves that burden to the provider's sandbox but also moves your data. Chapter 4 maps all the tool types.
+
+## Open-source options
+
+| Tool | What it does | EduAgent's position |
+|---|---|---|
+| [SymPy `parse_expr`](https://docs.sympy.org/latest/modules/parsing.html) | Parses a string into an expression; it calls Python `eval` under the hood, and its documentation says not to use it on untrusted input. | **Used behind the allow-list.** Only tokens that passed `_tokenize` and a namespace with no builtins reach it. |
+| [RestrictedPython](https://restrictedpython.readthedocs.io/) | Compiles Python with a restricted set of operations and guarded access, as used in the Zope ecosystem. | **Not adopted.** It restricts Python code, but our input is never Python; an allow-list parser removes the need. Reasonable if learners were to submit real code. |
+| [E2B](https://e2b.dev/docs) | Open-source sandboxed cloud environments for running AI-generated code. | **Not adopted.** A network service, an account and a cost per run, for a job that is arithmetic. |
+| [gVisor](https://gvisor.dev/docs/) and [Firecracker](https://firecracker-microvm.github.io/) | A user-space kernel and a lightweight microVM, the building blocks behind many hosted sandboxes. | **Not adopted.** Infrastructure work with no payoff when the input is constrained. The right tools if you need to run arbitrary code. |
+| [Pyodide](https://pyodide.org/en/stable/) and [Wasmtime](https://docs.wasmtime.dev/) | Python and a general runtime for WebAssembly. | **Not adopted.** Not a fit for sympy's native dependencies. |
+| [`multiprocessing`](https://docs.python.org/3/library/multiprocessing.html) and [`resource`](https://docs.python.org/3/library/resource.html) (standard library) | Child processes and OS resource limits. | **Used.** The subprocess runner needs no third-party package. |
+
+No dependency was added for this chapter. Everything in the code is the standard library plus the sympy that was already there.
+
 ## Why EduAgent needs it here
 
 The verifier's job is to be the part of the system that is *not* the model. If model text can
