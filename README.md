@@ -34,7 +34,7 @@ A Candidate submits a GRE Quant or Analytical Writing question. The system:
 
 - **Tutors by default** — scaffolds toward the answer via Socratic hints, never revealing it
 - **Solves on request** — returns a fully worked solution (Quant) or a scored sample essay (AW)
-- **Verifies math** — every Quant answer is checked by a sympy sandbox before emission; wrong answers retry → escalate → degrade gracefully
+- **Verifies math** — every Quant answer is checked by sympy before emission (the model's text is parsed with an allow-list and computed in a child process that is killed on timeout); wrong answers retry → escalate → degrade gracefully
 - **Generates practice questions** - a LangGraph pipeline plans, routes to a generator expert, verifies the key with sympy, critiques the wording and revises within a bounded retry budget (library only, see below)
 - **Cites sources** — responses reference numbered passages from the corpus; uncited claims are blocked or stripped (Quant is grounded in the seeded notes; the AW corpus must be ingested first, no ETS material is checked in)
 - **Matches your style** — opt-in personal style feature biases essay voice toward the Candidate's own writing while preserving ETS structural rubric
@@ -75,7 +75,7 @@ A Candidate submits a GRE Quant or Analytical Writing question. The system:
 | `agent` | 8002 | QuantAgent + AWAgent, Skills, post-gen critics |
 | `corpus` | 8001 | Qdrant hybrid (dense + sparse, RRF) retrieval with 3-tier ACL, optional BGE rerank (fails open to RRF order) |
 | `ingestion` | 8003 | Async document pipeline (parse → chunk → embed → index) |
-| `math-verifier` | 8090 | FastMCP server wrapping sympy sandbox |
+| `math-verifier` | 8090 | FastMCP server: sympy checks behind an allow-list parser, one killable child process per check |
 | `tei-embedder` | 8080 | BGE-M3 text embeddings (Hugging Face TEI) |
 | `web` | 5173 | React app behind nginx, proxies `/chat` to the gateway |
 | `tei-reranker` | 8081 | BGE-reranker-v2-m3 `/rerank` (Hugging Face TEI, opt-in `reranker` profile) |
@@ -459,7 +459,7 @@ edu-agent/
 │   ├── agent/            # FastAPI — QuantAgent + AWAgent + Skills + critics
 │   ├── corpus/           # FastAPI — Qdrant retrieval (RRF + rerank + ACL)
 │   ├── ingestion/        # FastAPI — async document pipeline
-│   └── math_verifier/    # FastMCP — sympy sandbox MCP server
+│   └── math_verifier/    # FastMCP — sympy verifier (allow-list parser + child-process checks)
 ├── shared/               # Pydantic models, config loader, observability
 ├── mcp_servers/          # Candidate + Admin MCP servers
 ├── web/                  # Vite + React app shell, nginx image, unit tests and a Playwright smoke test

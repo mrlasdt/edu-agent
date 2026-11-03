@@ -22,7 +22,10 @@ from services.math_verifier.src.math_verifier.sandbox import verify_expression
 
 mcp = FastMCP(
     "math-verifier",
-    instructions="sympy-backed GRE Quant answer verification with 2s timeout",
+    instructions=(
+        "sympy-backed GRE Quant answer verification: allow-listed math notation only, "
+        "each check in a child process killed after a 5s timeout"
+    ),
     host="0.0.0.0",
     port=int(os.getenv("MATH_VERIFIER_PORT", "8090")),
 )
@@ -32,6 +35,9 @@ mcp = FastMCP(
 async def verify_math(expression: str, expected: str) -> dict[str, Any]:
     """
     Verify a mathematical expression or equation against an expected answer.
+
+    Both arguments are untrusted text (often written by a language model). Only allow-listed
+    math notation is accepted; anything else returns error "parse error: not a math expression".
 
     Args:
         expression: A mathematical expression or equation.

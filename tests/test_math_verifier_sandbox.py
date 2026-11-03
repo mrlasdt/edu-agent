@@ -9,14 +9,11 @@ Behaviors under test (from issue 04 acceptance criteria):
   5. Timeout returns timeout error (no crash)
 """
 
-from unittest.mock import patch
+import multiprocessing
 
 import pytest
 
-from services.math_verifier.src.math_verifier.sandbox import (
-    VerificationResult,
-    verify_expression,
-)
+from services.math_verifier.src.math_verifier.sandbox import verify_expression
 
 # ── 1. Correct quadratic ──────────────────────────────────────────────────────
 
@@ -82,22 +79,13 @@ async def test_empty_expression_returns_parse_error():
 # ── 5. Timeout → timeout error, no crash ─────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_timeout_returns_timeout_error():
-    # Simulate slow execution by patching the sync verify function to sleep
-    import time
-
-    def slow_verify(expression, expected):
-        time.sleep(10)  # much longer than timeout
-        return VerificationResult(verified=True, computed="")
-
-    with patch(
-        "services.math_verifier.src.math_verifier.sandbox._sync_verify",
-        side_effect=slow_verify,
-    ):
-        result = await verify_expression("x = 1", "1", timeout=0.1)
+async def test_timeout_returns_timeout_error_and_kills_the_worker():
+    # A real runaway computation: the worker process must be killed, not left running.
+    result = await verify_expression("9**9**9**9", "1", timeout=0.5)
 
     assert result.verified is False
     assert result.error == "timeout"
+    assert multiprocessing.active_children() == []  # the child was killed and reaped
 
 
 # ── 6. Result carries computed value ─────────────────────────────────────────

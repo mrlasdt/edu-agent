@@ -3,7 +3,6 @@ IELTS Writing Task 2 rubric grader target: metrics, reply parsing, tier selectio
 runner and the CLI wiring. Model traffic goes through fakes; nothing here touches the network.
 """
 import json
-import socket
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -299,13 +298,6 @@ async def test_run_with_no_labelled_items_says_so():
 # ── CLI wiring ───────────────────────────────────────────────────────────────
 
 
-def _block_network(monkeypatch: pytest.MonkeyPatch) -> None:
-    def refuse(*a: Any, **k: Any) -> None:
-        raise AssertionError("network access attempted")
-
-    monkeypatch.setattr(socket.socket, "connect", refuse)
-
-
 def _seed_local(tmp_path: Path) -> Path:
     local = tmp_path / "local"
     items = [essay_item(f"s{i}", b) for i, b in enumerate([4.0, 5.5, 6.5, 8.0])]
@@ -317,9 +309,11 @@ def _seed_local(tmp_path: Path) -> Path:
 
 
 def test_offline_cli_run_reports_ielts_tier_and_n(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    block_network: None,
 ):
-    _block_network(monkeypatch)
     local = _seed_local(tmp_path)
     monkeypatch.chdir(Path(__file__).resolve().parents[1])
     code = cli.main([
@@ -412,9 +406,11 @@ async def test_report_suite_runs_the_mechanical_checks_on_a_full_offline_report(
 
 
 def test_offline_cli_runs_the_adversarial_and_report_suites(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    block_network: None,
 ):
-    _block_network(monkeypatch)
     local = _seed_local(tmp_path)
     monkeypatch.chdir(Path(__file__).resolve().parents[1])
     code = cli.main([
