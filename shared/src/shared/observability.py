@@ -84,6 +84,7 @@ def post_user_feedback(trace_id: str, vote: str, comment: str | None = None) -> 
     try:
         client = _langfuse_client()
         client.score(
+            id=f"{trace_id}-user-feedback",
             trace_id=trace_id,
             name="user-feedback",
             value=1 if vote == "up" else 0,

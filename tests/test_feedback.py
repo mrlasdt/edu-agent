@@ -237,8 +237,25 @@ def test_langfuse_score_is_posted_on_the_trace(monkeypatch):
     with patch.object(observability, "_langfuse_client", return_value=fake):
         assert observability.post_user_feedback("trace-1", "up", "nice") is True
     fake.score.assert_called_once_with(
-        trace_id="trace-1", name="user-feedback", value=1, data_type="NUMERIC", comment="nice"
+        id="trace-1-user-feedback",
+        trace_id="trace-1",
+        name="user-feedback",
+        value=1,
+        data_type="NUMERIC",
+        comment="nice",
     )
+
+
+def test_a_changed_vote_reuses_the_langfuse_score_id(monkeypatch):
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-real")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-real")
+    get_settings.cache_clear()
+    fake = MagicMock()
+    with patch.object(observability, "_langfuse_client", return_value=fake):
+        observability.post_user_feedback("trace-1", "up")
+        observability.post_user_feedback("trace-1", "down")
+    ids = {call.kwargs["id"] for call in fake.score.call_args_list}
+    assert len(fake.score.call_args_list) == 2 and len(ids) == 1
 
 
 def test_a_langfuse_failure_never_raises(monkeypatch):
