@@ -66,7 +66,9 @@ async def ensure_payload_indexes(
     reads every point's payload (a slow scan) or walks the graph and returns
     too few, mostly wrong rows; with one it picks graph search or a scan by
     the filter's size. Fields already indexed are skipped, so this is safe to
-    run at every start.
+    run at every start. Adding indexes to an already-loaded collection speeds
+    up filtering but does not restore recall on a selective filter (the graph
+    links are built at load time); re-ingest into a fresh collection for that.
     """
     existing = (await client.get_collection(collection)).payload_schema or {}
     for field in PAYLOAD_INDEX_FIELDS:
@@ -84,8 +86,7 @@ async def ensure_collection(
     """
     Create the collection if it does not yet exist (idempotent); if it exists,
     verify it has the named-vector layout (see check_collection_schema). Either
-    way, make sure the filter fields are indexed (see ensure_payload_indexes),
-    so collections created before the indexes existed gain them at startup.
+    way, make sure the filter fields are indexed (see ensure_payload_indexes).
     """
     if await client.collection_exists(collection):
         await check_collection_schema(client, collection=collection)

@@ -57,8 +57,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     existing yet is fine: retrieval degrades until ingestion creates it.
 
     An existing collection also gets the keyword payload indexes on the filter
-    fields (a no-op once present), so collections built before those indexes
-    existed are fixed by a restart instead of waiting for the next ingestion.
+    fields (a no-op once present). That fixes filter latency, but not recall on
+    a selective filter: Qdrant builds payload-aware graph links when points are
+    indexed, so a collection loaded before the indexes existed must be
+    re-ingested into a fresh collection to recover recall.
     """
     client = get_qdrant_client()
     try:
