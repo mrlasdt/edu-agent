@@ -38,7 +38,7 @@ class FeedbackRequest(BaseModel):
 
 
 @router.post("/feedback")
-async def post_feedback(
+def post_feedback(
     req: FeedbackRequest, request: Request, background: BackgroundTasks
 ) -> JSONResponse:
     client = request.client.host if request.client else "unknown"

@@ -16,6 +16,7 @@ Behaviors under test:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any
@@ -148,6 +149,25 @@ def test_feedback_is_rate_limited(turn_log):
     with patch.object(feedback_api, "_rate_limiter", RateLimiter(max_per_minute=2)):
         codes = [client.post("/feedback", json=body).status_code for _ in range(3)]
     assert codes == [200, 200, 429]
+
+
+def test_feedback_blocking_log_scan_runs_off_the_event_loop(turn_log):
+    trace_id = chat().headers["x-trace-id"]
+    real = TurnLog.last_with_trace
+    on_loop: list[bool] = []
+
+    def spy(self: TurnLog, tid: str) -> dict[str, Any] | None:
+        try:
+            asyncio.get_running_loop()
+            on_loop.append(True)
+        except RuntimeError:
+            on_loop.append(False)
+        return real(self, tid)
+
+    with patch.object(TurnLog, "last_with_trace", spy):
+        resp = client.post("/feedback", json={"trace_id": trace_id, "vote": "up"})
+    assert resp.status_code == 200
+    assert on_loop == [False]
 
 
 def test_feedback_says_so_when_it_is_switched_off(turn_log, monkeypatch):
