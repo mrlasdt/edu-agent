@@ -526,6 +526,7 @@ dependencies = [
 dev = [
     { name = "httpx" },
     { name = "mypy" },
+    { name = "numpy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-mock" },
@@ -545,6 +546,7 @@ requires-dist = [
     { name = "litellm", specifier = ">=1.40.0" },
     { name = "mcp", specifier = ">=1.0.0,<2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10.0" },
+    { name = "numpy", marker = "extra == 'dev'", specifier = ">=1.26" },
     { name = "openai", specifier = ">=1.30.0" },
     { name = "pgmq", specifier = ">=1.0.0" },
     { name = "pydantic", specifier = ">=2.7.0" },

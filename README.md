@@ -13,7 +13,7 @@ cp .env.example .env   # then fill in OPENAI_API_KEY
 docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 886 Python tests (mocked LLM and Qdrant) plus 111 frontend unit tests, and `npm run test:e2e` runs browser smoke tests with `/chat` and the `/ielts` API mocked.
+That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 900 Python tests (mocked LLM and Qdrant) plus 111 frontend unit tests, and `npm run test:e2e` runs browser smoke tests with `/chat` and the `/ielts` API mocked.
 
 A recorded live check (screenshot and streamed transcript) is in [docs/mvp-demo](docs/mvp-demo/README.md).
 
@@ -93,7 +93,7 @@ School corpus    ← Teacher uploads (per-school)              v2 only
 Candidate corpus ← Candidate uploads (private notes)         visible to owner only
 ```
 
-An empty `school_id` grants no School-tier access and an empty `candidate_id` grants no Candidate-tier access. The filter lives in `_build_acl_filter` (`services/corpus/src/corpus/retriever.py`); `tests/test_tenant_isolation.py` proves it against an in-memory Qdrant.
+An empty `school_id` grants no School-tier access and an empty `candidate_id` grants no Candidate-tier access. The filter lives in `_build_acl_filter` (`services/corpus/src/corpus/retriever.py`); `tests/test_tenant_isolation.py` proves it against an in-memory Qdrant. The filter fields carry keyword payload indexes (created by `ensure_collection`, and by corpus startup for older collections). Indexes added to an already-loaded collection fix latency but not recall on selective filters (the check below measures both), so re-ingest older collections into a fresh one. To check recall and latency of this exact filter at 100k points against a throwaway Qdrant container (needs Docker, no model calls): `uv run python -m evals.qdrant_filter_check` (`--points 20000` for a quick run).
 
 ### Model tiers (configurable via `config/model_config.dev.yaml`)
 

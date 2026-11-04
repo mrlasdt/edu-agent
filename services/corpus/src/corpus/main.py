@@ -27,6 +27,7 @@ from shared.src.shared.vectorstore import (
     DENSE_VECTOR,
     SPARSE_VECTOR,
     check_collection_schema,
+    ensure_payload_indexes,
     get_qdrant_client,
 )
 
@@ -54,11 +55,18 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     Fail startup if an existing collection predates the named dense + sparse
     layout (CollectionSchemaError). Qdrant being down or the collection not
     existing yet is fine: retrieval degrades until ingestion creates it.
+
+    An existing collection also gets the keyword payload indexes on the filter
+    fields (a no-op once present). That fixes filter latency, but not recall on
+    a selective filter: Qdrant builds payload-aware graph links when points are
+    indexed, so a collection loaded before the indexes existed must be
+    re-ingested into a fresh collection to recover recall.
     """
     client = get_qdrant_client()
     try:
         if await client.collection_exists(COLLECTION):
             await check_collection_schema(client)
+            await ensure_payload_indexes(client)
     except Exception as exc:
         if not _is_transient(exc):
             raise

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 from qdrant_client import models
 
 from shared.src.shared.sparse import encode_document, encode_query
-from shared.src.shared.vectorstore import ensure_collection
+from shared.src.shared.vectorstore import PAYLOAD_INDEX_FIELDS, ensure_collection
 
 
 def test_document_and_query_share_indices_for_same_term():
@@ -52,7 +52,12 @@ async def test_ensure_collection_is_idempotent():
         vectors={"dense": models.VectorParams(size=8, distance=models.Distance.COSINE)},
         sparse_vectors={"sparse": models.SparseVectorParams()},
     )
-    info = SimpleNamespace(config=SimpleNamespace(params=params))
+    info = SimpleNamespace(
+        config=SimpleNamespace(params=params),
+        payload_schema={f: object() for f in PAYLOAD_INDEX_FIELDS},
+    )
     client.get_collection = AsyncMock(return_value=info)
+    client.create_payload_index = AsyncMock()
     await ensure_collection(client, dim=8)
     client.create_collection.assert_not_awaited()
+    client.create_payload_index.assert_not_awaited()
