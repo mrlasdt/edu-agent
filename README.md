@@ -430,7 +430,7 @@ The Quant agent can call three exact tools instead of doing arithmetic in its he
 | Switch | Where | Effect |
 |---|---|---|
 | `MATH_TOOLS_ENABLED` | environment (default `false`) | `true` runs the tool loop with the `quant_agent_math_tools` prompts; `false` is the original single-call, streamed path with the original prompts (`quant_agent`) |
-| `--math-tools on|off` | `python -m evals.agent_eval` (default `off`, the product default) | the same switch for the eval, so both sides run on one model |
+| `--math-tools {on,off}` | `python -m evals.agent_eval` (default `off`, the product default) | the same switch for the eval, so both sides run on one model |
 
 The tools-on path uses its own prompt key (`quant_agent_math_tools`) and sends the tool definitions with every call, so it costs more input tokens and one more model call per tool round. They are off by default for that reason; re-measure on your model with `--math-tools off` then `--math-tools on` before turning them on.
 
