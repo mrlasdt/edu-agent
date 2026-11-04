@@ -14,7 +14,11 @@ from pydantic import BaseModel, Field
 
 from services.agent.src.agent.bootstrap import build_registry
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
-from services.gateway.src.gateway.guardrails.input import check_completeness, check_content_safety
+from services.gateway.src.gateway.guardrails.input import (
+    ModerationUnavailableError,
+    check_completeness,
+    check_content_safety,
+)
 from services.gateway.src.gateway.guardrails.output import check_answer_leak
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
 from services.gateway.src.gateway.guardrails.stream import (
@@ -49,6 +53,7 @@ _rate_limiter = RateLimiter()
 
 
 _DEFAULT_CLARIFICATION = "Could you share the full question so I can help?"
+_MODERATION_UNAVAILABLE = "The safety check is unavailable right now. Please try again in a moment."
 
 
 class HistoryItem(BaseModel):
@@ -130,7 +135,12 @@ async def chat(req: ChatRequest) -> StreamingResponse:
         if input_pii:
             yield INPUT_PII_NOTICE.encode()
 
-        safe, reason = await check_content_safety(message, trace_id, meter)
+        try:
+            safe, reason = await check_content_safety(message, trace_id, meter)
+        except ModerationUnavailableError:
+            meter.annotate(outcome="moderation_unavailable")
+            yield _MODERATION_UNAVAILABLE.encode()
+            return
         if not safe:
             meter.annotate(outcome="content_blocked")
             yield f"I can't help with that request ({reason}).".encode()

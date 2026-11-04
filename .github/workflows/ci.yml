@@ -53,15 +53,11 @@ jobs:
   eval-slice:
     name: Eval slice (path-gated)
     runs-on: ubuntu-latest
-    # Only run when files that affect agent behaviour change
-    if: |
-      github.event_name == 'pull_request' && (
-        contains(github.event.pull_request.changed_files, 'prompts/') ||
-        contains(github.event.pull_request.changed_files, 'services/agent/') ||
-        contains(github.event.pull_request.changed_files, 'services/gateway/') ||
-        contains(github.event.pull_request.changed_files, 'evals/') ||
-        contains(github.event.pull_request.changed_files, 'config/')
-      )
+    # Only run when files that affect agent behaviour change. The path filter lives in the
+    # `changes` job below. (`github.event.pull_request.changed_files` is a file count, not a
+    # list of paths, so a `contains()` test on it is never true.)
+    needs: changes
+    if: needs.changes.outputs.eval-relevant == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3

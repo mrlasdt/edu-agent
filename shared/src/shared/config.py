@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel
@@ -93,6 +93,10 @@ class Settings(BaseSettings):
     # costs more tokens (README, "Math tools"). true = the tool loop.
     math_tools_enabled: bool = False
     env: str = "dev"
+    # What the gateway does when the content-safety (moderation) call itself fails: "closed"
+    # answers "safety check unavailable, try again" and stops the turn, "open" lets the turn
+    # go on and records `moderation_failed_open`. Empty = closed everywhere except ENV=dev.
+    moderation_on_error: Literal["", "closed", "open"] = ""
     model_config_path: str = "config/model_config.dev.yaml"
 
 
