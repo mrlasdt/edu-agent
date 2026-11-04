@@ -236,17 +236,23 @@ async def chat(req: ChatRequest) -> StreamingResponse:
         started = time.perf_counter()
         first_byte_seen = False
         error: str | None = None
+        completed = False
         try:
             async for piece in guarded_stream():
                 if not first_byte_seen:
                     first_byte_seen = True
                     meter.annotate(first_byte_ms=(time.perf_counter() - started) * 1000)
                 yield piece
+            completed = True
         except Exception as exc:
             error = type(exc).__name__
             meter.annotate(outcome="error")
             raise
         finally:
+            # The server abandons this generator when the client disconnects (Stop, a closed
+            # tab): by cancellation, which also closes the agent request, or by closing it.
+            if not completed and error is None:
+                meter.annotate(outcome="client_cancelled")
             meter.annotate(flags=flags)
             meter.finish(error=error)
 

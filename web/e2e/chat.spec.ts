@@ -102,3 +102,30 @@ test("solve mode shows the math verifier's verdict and typeset math, not the raw
   await expect(page.locator(".message-bubble--agent sup")).toHaveText("2");
   await expect(page.locator(".message-bubble--agent .message-content")).not.toContainText("math_verified");
 });
+
+test("Stop ends a reply that never arrives and Regenerate asks again", async ({ page }) => {
+  const requests: Record<string, unknown>[] = [];
+  await page.route("**/chat", async (route) => {
+    requests.push(route.request().postDataJSON());
+    if (requests.length === 1) return; // never answered: the browser request stays open
+    await route.fulfill({
+      status: 200,
+      contentType: "text/plain; charset=utf-8",
+      body: "Here is the answer.",
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Quant" }).click();
+  await page.getByLabel("Your message").fill("Solve 2x + 3 = 11");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  await page.getByRole("button", { name: "Stop" }).click();
+  await expect(page.getByText("Stopped")).toBeVisible();
+  await expect(page.getByLabel("Your message")).toBeEnabled();
+
+  await page.getByRole("button", { name: "Regenerate" }).click();
+  await expect(page.getByText("Here is the answer.")).toBeVisible();
+  await expect(page.getByText("Stopped")).toHaveCount(0);
+  expect(requests[1]).toMatchObject({ message: "Solve 2x + 3 = 11", history: [] });
+});
