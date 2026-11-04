@@ -158,7 +158,7 @@ def _is_plain_number(value: sp.Expr) -> bool:
 
 
 def _digit_count(value: sp.Integer) -> int:
-    """Exact digit count; `str(int)` is capped at 4300 digits and `sp.log` stalls near powers of ten."""
+    """Exact digit count; `str(int)` caps at 4300 digits and `sp.log` stalls near powers of ten."""
     n = abs(int(value))
     digits = max(1, int(n.bit_length() * 0.30102999566398114))
     while n >= 10**digits:
