@@ -516,7 +516,7 @@ def write_baseline(path: str, report: dict[str, Any]) -> None:
 
 
 def compare_quant_baseline(report: dict[str, Any], baseline: dict[str, Any]) -> int:
-    """Print current vs baseline; exit 1 only for a drop outside the baseline's own interval."""
+    """Print current vs baseline; exit 1 on a drop outside its interval (any security drop)."""
     suite = report["suites"].get("quant")
     if suite is None:
         raise SystemExit("this baseline is for the quant suite; run with --suite quant")

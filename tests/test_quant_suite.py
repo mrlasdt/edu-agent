@@ -407,6 +407,21 @@ async def test_baseline_round_trip_flags_only_drops_outside_its_interval(tmp_pat
     assert verdicts["tutor.mean_pass_rate"] == "regression"
 
 
+async def test_one_accepted_hostile_string_is_a_regression_against_an_8_of_8_baseline(
+    tmp_path: Path,
+):
+    suite = await _run(tmp_path, _good, IDS)
+    clean = json.loads(json.dumps(suite))
+    clean["security"].update(successes=8, n=8, value=1.0, ci95=[0.6756, 1.0], failed_items=[])
+    doc = quant_suite.baseline_document(clean, {})
+    worse = json.loads(json.dumps(clean))
+    worse["security"].update(successes=7, value=0.875, failed_items=["s001"])
+    verdicts = {r["metric"]: r["verdict"] for r in quant_suite.compare_with_baseline(worse, doc)}
+    assert verdicts["security.pass_rate"] == "regression"
+    assert cli.compare_quant_baseline({"suites": {"quant": worse}}, doc) == 1
+    assert cli.compare_quant_baseline({"suites": {"quant": clean}}, doc) == 0
+
+
 async def test_pass_hat_k_is_not_compared_across_different_k(tmp_path: Path):
     doc = quant_suite.baseline_document(await _run(tmp_path, _good, IDS, samples=3), {})
     other = await _run(tmp_path, _good, IDS, samples=1)

@@ -376,11 +376,16 @@ def baseline_document(suite: dict[str, Any], meta: dict[str, Any]) -> dict[str, 
             "metrics": headline_metrics(suite), "summary": summary}
 
 
+DETERMINISTIC_METRICS = frozenset({"security.pass_rate"})
+
+
 def compare_with_baseline(suite: dict[str, Any], baseline: dict[str, Any]) -> list[dict[str, Any]]:
     """
     One row per baseline metric: baseline value, current value, and a verdict that is
     "regression"/"improvement" only when the current value falls outside the interval the
-    baseline carries. pass^k is skipped when k differs, since it is not comparable.
+    baseline carries. The security rate involves no model and no sampling, so any drop is a
+    regression and there is no noise band. pass^k is skipped when k differs, since it is not
+    comparable.
     """
     current = headline_metrics(suite)
     rows = []
@@ -390,9 +395,11 @@ def compare_with_baseline(suite: dict[str, Any], baseline: dict[str, Any]) -> li
             continue
         if base.get("samples") != now.get("samples") and name.endswith("pass_hat_k"):
             continue
+        exact = name in DETERMINISTIC_METRICS
+        verdict_ci = [base["value"], base["value"]] if exact else base["ci95"]
         rows.append({
             "metric": name, "baseline": base["value"], "baseline_n": base["n"],
             "baseline_ci95": base["ci95"], "current": now["value"], "current_n": now["n"],
-            "verdict": stats.verdict_vs_baseline(now["value"], base["ci95"]),
+            "verdict": stats.verdict_vs_baseline(now["value"], verdict_ci),
         })
     return rows
