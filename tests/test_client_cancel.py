@@ -79,12 +79,21 @@ class _HangingAgentStream(httpx.AsyncByteStream):
 @pytest.fixture(autouse=True)
 def gateway_model_calls_mocked():
     with (
-        patch("services.gateway.src.gateway.main.check_content_safety",
-              new_callable=AsyncMock, return_value=(True, "")),
-        patch("services.gateway.src.gateway.main.check_completeness",
-              new_callable=AsyncMock, return_value=(True, "")),
-        patch("services.gateway.src.gateway.guardrails.output._call_leak_checker",
-              new_callable=AsyncMock, return_value=False),
+        patch(
+            "services.gateway.src.gateway.main.check_content_safety",
+            new_callable=AsyncMock,
+            return_value=(True, ""),
+        ),
+        patch(
+            "services.gateway.src.gateway.main.check_completeness",
+            new_callable=AsyncMock,
+            return_value=(True, ""),
+        ),
+        patch(
+            "services.gateway.src.gateway.guardrails.output._call_leak_checker",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
     ):
         yield
 
@@ -155,9 +164,7 @@ async def test_disconnect_before_any_reply_is_recorded_too(turn_log):
         disconnect.set()
 
     with patch("services.gateway.src.gateway.main._stream_from_agent", agent_reply):
-        await asyncio.gather(
-            stop_once_waiting(), _drive(gateway_app, "/chat", _BODY, disconnect)
-        )
+        await asyncio.gather(stop_once_waiting(), _drive(gateway_app, "/chat", _BODY, disconnect))
 
     assert cancelled.is_set()
     assert [r["outcome"] for r in turn_log.read()] == ["client_cancelled"]
