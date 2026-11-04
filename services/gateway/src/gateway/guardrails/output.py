@@ -54,6 +54,12 @@ _LEAK_SYSTEM = (
 )
 
 
+# The verdict is one word (LEAK or SAFE). A reasoning model also spends hidden thinking tokens
+# against this cap, so it is sized well above the visible answer: low enough to stop a runaway
+# reply from stalling the turn's last step, high enough that a reasoning model still finishes.
+LEAK_CHECK_MAX_TOKENS = 512
+
+
 def redact_pii(text: str) -> str:
     """Replace email addresses and phone numbers with [REDACTED]."""
     text = _EMAIL_RE.sub("[REDACTED]", text)
@@ -102,9 +108,15 @@ async def _call_leak_checker(text: str, meter: TurnMeter | None = None) -> bool:
                 {"role": "user", "content": text},
             ],
             temperature=0,
+            max_tokens=LEAK_CHECK_MAX_TOKENS,
         )
     except Exception:
         _log.warning("answer-leak LLM check failed; skipping", exc_info=True)
         return False
-    content = response.choices[0].message.content.strip().upper()
-    return bool(content.startswith("LEAK"))
+    content = response.choices[0].message.content
+    if not isinstance(content, str) or not content.strip():
+        # Cut off by the token cap before any verdict (a reasoning model can spend all of it
+        # thinking): inconclusive, so skipped like a failed call, not a leak and not a crash.
+        _log.warning("answer-leak LLM check returned no verdict; skipping")
+        return False
+    return content.strip().upper().startswith("LEAK")

@@ -130,7 +130,7 @@ async def chat(req: ChatRequest) -> StreamingResponse:
         if input_pii:
             yield INPUT_PII_NOTICE.encode()
 
-        safe, reason = await check_content_safety(message, trace_id)
+        safe, reason = await check_content_safety(message, trace_id, meter)
         if not safe:
             meter.annotate(outcome="content_blocked")
             yield f"I can't help with that request ({reason}).".encode()

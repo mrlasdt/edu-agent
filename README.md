@@ -13,7 +13,7 @@ cp .env.example .env   # then fill in OPENAI_API_KEY
 docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 863 Python tests (mocked LLM and Qdrant) plus 111 frontend unit tests, and `npm run test:e2e` runs browser smoke tests with `/chat` and the `/ielts` API mocked.
+That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 886 Python tests (mocked LLM and Qdrant) plus 111 frontend unit tests, and `npm run test:e2e` runs browser smoke tests with `/chat` and the `/ielts` API mocked.
 
 A recorded live check (screenshot and streamed transcript) is in [docs/mvp-demo](docs/mvp-demo/README.md).
 
@@ -131,6 +131,16 @@ cd web && npm install && cd ..
 cp .env.example .env
 # Fill in OPENAI_API_KEY at minimum; all other values have localhost defaults.
 ```
+
+**No OpenAI key? Run on a free model.** Every service reads the model config named by `MODEL_CONFIG_PATH` (default `config/model_config.dev.yaml`). `config/model_config.free.yaml` puts every role on one OpenRouter `:free` model that supports tool calling, so the whole chat path runs with zero spend and only an OpenRouter key:
+
+```bash
+# in .env: set OPENROUTER_API_KEY, leave OPENAI_API_KEY unset, and add
+ENV=dev
+MODEL_CONFIG_PATH=config/model_config.free.yaml
+```
+
+With `ENV=dev` and no `OPENAI_API_KEY`, the gateway skips the OpenAI Moderation call (there is no key to make it with), lets the turn continue and records `moderation_skipped: true` in the turn record; with any other `ENV` the call is still made and a missing key fails the turn. Free models are rate limited, can be briefly unavailable and are slow (each guardrail model call takes several seconds), so use this for development and demos, not for judging quality or latency. Restart the gateway and agent containers after changing the config (`docker compose -f infra/docker-compose.yml restart gateway agent`); they read it once at startup.
 
 ### 3. Start the stack
 
@@ -449,7 +459,7 @@ Tokens are the provider's own usage report (streaming asks for it with `stream_o
 
 ## Guardrails (5 layers)
 
-`/chat` applies the rate-limit, input PII, content-safety, completeness (enrichment), answer-leak, citation and output PII layers. The completeness check sees the last 6 history turns so follow-ups are not flagged, and fails open if the check errors. Output content safety is not applied (see Status). Guardrail decisions that change the reply are streamed to the Candidate as bracketed notices. The answer-leak regex stage runs on the stream and stops it on a hit; the LLM stage runs once after the full reply and can only append a notice. Citation checking applies only when the agent reports a source count (the AW agent).
+`/chat` applies the rate-limit, input PII, content-safety, completeness (enrichment), answer-leak, citation and output PII layers. The completeness check sees the last 6 history turns so follow-ups are not flagged, and fails open if the check errors. Output content safety is not applied (see Status). The completeness and answer-leak model calls are both capped at 512 output tokens (`COMPLETENESS_MAX_TOKENS`, `LEAK_CHECK_MAX_TOKENS`), a ceiling for runaway replies that sits above the hidden thinking tokens of a reasoning model; a leak check cut off before a verdict counts as skipped, not as a leak. In `ENV=dev` with no OpenAI key the content-safety call is skipped (see Quickstart). Guardrail decisions that change the reply are streamed to the Candidate as bracketed notices. The answer-leak regex stage runs on the stream and stops it on a hit; the LLM stage runs once after the full reply and can only append a notice. Citation checking applies only when the agent reports a source count (the AW agent).
 
 | Layer | What it checks |
 |---|---|

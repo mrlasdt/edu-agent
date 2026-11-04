@@ -19,6 +19,20 @@ def turn_log(tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def dev_model_config(monkeypatch):
+    """
+    Tests assert on the dev model config (OpenAI roles). A developer's .env or shell may set
+    MODEL_CONFIG_PATH (for example to config/model_config.free.yaml), so pin it here.
+    """
+    from shared.src.shared.config import get_settings
+
+    monkeypatch.setenv("MODEL_CONFIG_PATH", "config/model_config.dev.yaml")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def no_live_corpus_service():
     """
     Agents build a RetrieveCorpusSkill by default; keep tests off a corpus service that

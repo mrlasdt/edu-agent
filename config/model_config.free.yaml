@@ -1,0 +1,120 @@
+# Free-tier model configuration: every role runs on ONE OpenRouter free model, so the whole stack
+# (tutor, solve, guardrail checks, critics, graders) works with no OpenAI key and zero spend.
+#
+#   MODEL_CONFIG_PATH=config/model_config.free.yaml      (in .env; needs only OPENROUTER_API_KEY)
+#
+# recursive/flint-v1.0:free was picked from OpenRouter's live model list (GET /api/v1/models):
+# prompt and completion price are 0, and it supports tools, tool_choice, response_format and
+# max_tokens. It is a reasoning model: it spends hidden thinking tokens before the visible answer,
+# which is why the gateway's guardrail token caps sit well above the visible answer size.
+# Free models are rate limited and come and go: google/gemma-4-31b-it:free (same capabilities)
+# answered 429 for the whole proof run, so check the live list and swap the model on every
+# line below (ids that end in :free) if this one is gone. Same prompt versions as
+# model_config.dev.yaml. Free models are slow and say little about quality or latency; use this
+# config for development and demos.
+
+roles:
+  # Orchestrator - lightweight classify/enrich step before every turn
+  orchestrator:
+    provider: openrouter
+    model: recursive/flint-v1.0:free
+    temperature: 0
+
+  # Main agents
+  quant_agent:
+    provider: openrouter
+    model: recursive/flint-v1.0:free
+    temperature: 0.2
+
+  aw_agent:
+    provider: openrouter
+    model: recursive/flint-v1.0:free
+    temperature: 0.5
+
+  # Math verifier retry - same model as quant_agent
+  math_retry:
+    provider: openrouter
+    model: recursive/flint-v1.0:free
+    temperature: 0.2
+
+  # Math verifier escalation (~1% of Quant turns)
+  math_escalation:
+    provider: openrouter
+    model: recursive/flint-v1.0:free
+    temperature: 1  # above math_retry so the last attempt is not a repeat of the failed ones
+
+  # Post-generation critics
+  style_critic:
+    provider: openrouter
+    model: recursive/flint-v1.0:free
+    temperature: 0
+
+  # AW eval judges
+  aw_judge_nightly:
+    provider: openrouter
+    model: recursive/flint-v1.0:free
+    temperature: 0
+
+  aw_judge_pr:
+    provider: openrouter
+    model: recursive/flint-v1.0:free
+    temperature: 0
+
+  # Question-generation pipeline (LangGraph): planner and critic are cheap, the generator
+  # experts are the main tier. Evals reroute every role to one model with write_model_config.
+  question_planner:
+    provider: openrouter
+    model: recursive/flint-v1.0:free
+    temperature: 0
+
+  question_generator:
+    provider: openrouter
+    model: recursive/flint-v1.0:free
+    temperature: 0.4
+
+  question_critic:
+    provider: openrouter
+    model: recursive/flint-v1.0:free
+    temperature: 0
+
+  # IELTS Writing mock: rubric grader and examiner-style feedback writer.
+  ielts_grader:
+    provider: openrouter
+    model: recursive/flint-v1.0:free
+    temperature: 0.3
+
+  ielts_feedback:
+    provider: openrouter
+    model: recursive/flint-v1.0:free
+    temperature: 0.3
+
+  # Background jobs
+  style_extractor:
+    provider: openrouter
+    model: recursive/flint-v1.0:free
+    temperature: 0
+
+# Active prompt version per (agent, mode). Loaded by the agents at turn time and
+# reported to Langfuse so quality/cost can be attributed to a specific version.
+# To roll a prompt forward or A/B it: add prompts/<agent>/<mode>/vN.md and point here.
+prompts:
+  quant_agent:
+    tutor: v3  # v2 plus: cite the reference note as [N], never as "your notes"
+    # v2 was v1 plus "plain-text math": the web app typesets x^2 and => but not LaTeX
+    solve: v2
+  aw_agent:
+    tutor: v1
+    solve: v1
+  # IELTS mock (prompts/<agent>/writing_t2/<version>.md)
+  ielts_grader:
+    writing_t2: v1
+  ielts_feedback:
+    writing_t2: v2  # v1 plus: both spelling conventions are correct; style is not an error
+  # Question pipeline roles (prompts/question_pipeline/<role>/<version>.md)
+  question_pipeline:
+    planner: v1
+    numeric_expert: v1
+    choice_expert: v1
+    comparison_expert: v1
+    critic: v1
+    baseline: v1
