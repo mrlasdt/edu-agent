@@ -158,8 +158,6 @@ async def chat(req: ChatRequest) -> StreamingResponse:
             emit_guardrail_event("candidate", "rate_limit", "fail", trace_id)
             yield f"{limit_message} Please wait a moment and try again.".encode()
             return
-        if input_pii:
-            yield INPUT_PII_NOTICE.encode()
 
         try:
             safe, reason = await check_content_safety(message, trace_id, meter)
@@ -175,6 +173,8 @@ async def chat(req: ChatRequest) -> StreamingResponse:
             meter.annotate(outcome="content_blocked")
             yield f"I can't help with that request ({reason}).".encode()
             return
+        if input_pii:
+            yield INPUT_PII_NOTICE.encode()
 
         # Fail open: a broken completeness check must not block a turn that the other
         # guardrails already passed, same as the LLM stage of the answer-leak check.

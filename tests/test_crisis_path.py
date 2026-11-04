@@ -74,6 +74,24 @@ def test_self_harm_hit_gets_the_supportive_reply_and_no_model_call(client, turn_
     assert record["llm_calls"] == 0
 
 
+def test_self_harm_reply_with_pii_in_the_message_is_only_the_template(client, turn_log):
+    response, _, agent = _post(
+        client,
+        {"flagged": True, "categories": {"self-harm/intent": True}},
+        message="call me at 555-123-4567, I want to end it",
+    )
+    assert response.text == SUPPORTIVE_MESSAGE
+    agent.assert_not_called()
+
+
+def test_pii_notice_still_precedes_a_normal_answer(client, turn_log):
+    response, _, _ = _post(
+        client, {"flagged": False, "categories": {}}, message="call me at 555-123-4567"
+    )
+    assert response.text.startswith("[Privacy:")
+    assert response.text.endswith("Isolate x first.")
+
+
 def test_the_template_names_emergency_services_and_988():
     assert "local emergency services" in SUPPORTIVE_MESSAGE
     assert "988" in SUPPORTIVE_MESSAGE
