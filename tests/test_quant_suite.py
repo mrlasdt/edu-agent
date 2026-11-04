@@ -44,7 +44,7 @@ def test_every_item_names_the_failure_it_came_from_and_has_what_its_kind_needs()
         assert item["tag"] and len(item["failure_source"]) > 10, item["id"]
         assert needs[item["kind"]] <= set(item), item["id"]
     assert {k: sum(1 for i in ITEMS if i["kind"] == k) for k in KINDS} == {
-        "solve": 10, "tutor": 12, "tutor_multiturn": 4, "security": 8,
+        "solve": 16, "tutor": 12, "tutor_multiturn": 4, "security": 8,
     }
     assert all(len(i["turns"]) >= 4 for i in ITEMS if i["kind"] == "tutor_multiturn")
 
@@ -542,3 +542,41 @@ def test_comparing_a_baseline_with_itself_moves_nothing(capsys):
     path = "evals/baselines/quant.json"
     assert quant_report.main([path, "--against", path]) == 0
     assert "None of the" in capsys.readouterr().out
+
+
+# ── the math-tools switch in the eval ────────────────────────────────────────
+
+
+def _offline_quant(tmp_path: Path, flag: str) -> dict[str, Any]:
+    out = tmp_path / flag
+    argv = ["--mode", "offline", "--suite", "quant", "--samples", "1", "--math-tools", flag,
+            "--ledger", str(tmp_path / f"{flag}.json"), "--out-dir", str(out)]
+    assert cli.main(argv) == 0
+    report: dict[str, Any] = json.loads(next(out.glob("*.json")).read_text())
+    return report
+
+
+def test_the_same_suite_runs_with_tools_off_and_on_and_the_report_says_which(
+    tmp_path: Path, block_network: None
+):
+    off, on = _offline_quant(tmp_path, "off"), _offline_quant(tmp_path, "on")
+    assert (off["run_meta"]["math_tools"], on["run_meta"]["math_tools"]) == ("off", "on")
+    assert off["run_meta"]["prompt_versions"] != on["run_meta"]["prompt_versions"]
+    solve_off = off["suites"]["quant"]["groups"]["solve"]["cost_latency"]
+    solve_on = on["suites"]["quant"]["groups"]["solve"]["cost_latency"]
+    assert solve_off["tool_calls_per_turn_mean"] == 0 and solve_off["tool_error_rate"] is None
+    assert solve_on["tool_calls_per_turn_mean"] > 0 and solve_on["tool_error_rate"] == 0.0
+    assert solve_on["llm_calls_per_turn_mean"] > solve_off["llm_calls_per_turn_mean"]
+
+
+def test_the_transcript_of_a_tool_turn_shows_the_calls_between_question_and_reply(
+    tmp_path: Path, block_network: None
+):
+    report = _offline_quant(tmp_path, "on")
+    attempt = next(
+        a for a in report["suites"]["quant"]["rows"]["attempts"]
+        if a["kind"] == "solve" and a["item_id"] == "q012"
+    )
+    roles = [m["role"] for m in attempt["transcript"]]
+    assert roles == ["student", "tool_call", "tutor"]
+    assert attempt["transcript"][1]["content"].startswith("math_evaluate(")

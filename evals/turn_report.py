@@ -68,6 +68,8 @@ def _merge(trace_id: str, recs: list[dict[str, Any]]) -> dict[str, Any]:
         "llm_ms": agent.get("llm_ms", 0.0),
         "guardrail_llm_ms": gateway.get("llm_ms", 0.0),
         "notes_retrieved": agent.get("notes_retrieved"),
+        "tool_calls": len(agent.get("tool_calls") or []),
+        "tool_errors": agent.get("tool_errors", 0),
         "outcome": gateway.get("outcome", "no gateway record"),
         "flags": gateway.get("flags") or [],
         "error": agent.get("error") or gateway.get("error"),
@@ -198,7 +200,7 @@ def render(
         lines += ["", "turns (oldest first)"]
         lines.append(
             f"  {'trace':<10}{'agent/mode':<20}{'calls':>6}{'in':>7}{'out':>6}{'usd':>10}"
-            f"{'ttft':>7}{'total':>8}{'notes':>6}  outcome"
+            f"{'ttft':>7}{'total':>8}{'notes':>6}{'tools':>6}  outcome"
         )
         for t in turns:
             star = "*" if t["estimated"] else " "
@@ -207,6 +209,7 @@ def render(
                 f"{t['input_tokens']:>7}{t['output_tokens']:>6}{_usd(t['cost_usd']):>10}{star}"
                 f"{_ms(t['ttft_ms']):>6}{_ms(t['total_ms']):>8}"
                 f"{'-' if t['notes_retrieved'] is None else t['notes_retrieved']:>6}"
+                f"{t['tool_calls'] if t['tool_calls'] else '-':>6}"
                 f"  {t['outcome']}"
             )
         if est:

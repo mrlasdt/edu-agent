@@ -50,7 +50,7 @@ from evals.agent_eval.budget import (
 )
 from evals.agent_eval.cache import DEFAULT_CACHE_DIR, ResponseCache
 from evals.agent_eval.judges import HeuristicJudge, JevJudge, Judge, JudgeQuestion, LLMJudge
-from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport
+from evals.agent_eval.transport import AllModelsFailedError, FakeToolCalls, MeteredTransport
 from evals.exam_set.schema import ExamItem
 from evals.loader import load_exam_items, load_golden_set, sample_golden_set
 from evals.regression import check_regression
@@ -102,7 +102,7 @@ def required_keys(provider: str, judge: str, model: str | None = None) -> list[s
     return keys + (["OPENROUTER_API_KEY"] if judge == "jev" else [])
 
 
-def _offline_model(model: str, messages: list[dict[str, Any]]) -> str:
+def _offline_model(model: str, messages: list[dict[str, Any]]) -> str | FakeToolCalls:
     """
     Deterministic fake agent: tutor replies with a hint, solver with the golden answer, and
     the question-generation roles with seeded flaws (see offline_generation).
@@ -117,6 +117,13 @@ def _offline_model(model: str, messages: list[dict[str, Any]]) -> str:
     )
     if item is None:
         return "What is the first quantity you could compute from the information given?"
+    asked_for_a_tool = any(m.get("role") == "tool" for m in messages)
+    if "math_evaluate" in system and item.get("expression") and not asked_for_a_tool:
+        # the tools prompt is in play: do what a careful model does, compute before answering
+        equation = "=" in item["expression"]
+        name = "math_solve" if equation else "math_evaluate"
+        argument = "equation" if equation else "expression"
+        return FakeToolCalls([(name, {argument: item["expression"]})])
     if "tutor" in system:
         return (
             f"Let's stay with the problem: {item['question']} "
@@ -253,6 +260,8 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 agent = QuantAgent(
                     model_config_path=runner.write_model_config(model),
                     verify_math_skill=runner.InProcessVerifySkill(),
+                    math_tools_skill=runner.InProcessMathTools(),
+                    math_tools_enabled=args.math_tools == "on",
                 )
                 solve_items = [i for i in load_golden_set("quant") if i["kind"] == "solve"]
                 rate = min(1.0, args.max_items / len(solve_items))
@@ -324,6 +333,8 @@ async def _run_quant(
         return QuantAgent(
             model_config_path=config, verify_math_skill=skill,
             retrieve_corpus_skill=quant_suite.NotesSkill(notes),
+            math_tools_skill=runner.InProcessMathTools(),
+            math_tools_enabled=args.math_tools == "on",
         )
 
     with quant_suite.collecting_turns() as collector:
@@ -348,8 +359,12 @@ def run_meta(args: argparse.Namespace, model: str, chain: list[str]) -> dict[str
         "max_tokens": args.max_tokens,
         "product_default_model": product_default,
         "is_product_default_model": model == product_default,
+        "math_tools": args.math_tools,
         "prompt_versions": {
-            mode: config.prompt_version("quant_agent", mode) for mode in ("tutor", "solve")
+            mode: config.prompt_version(
+                "quant_agent_math_tools" if args.math_tools == "on" else "quant_agent", mode
+            )
+            for mode in ("tutor", "solve")
         },
         "temperature": role.temperature,
         "git_commit": commit or None,
@@ -436,6 +451,10 @@ def main(argv: list[str] | None = None) -> int:
                             "ielts_report", "ielts_adversarial"],
                    help="quant = failure-seeded suite (rule graders, --samples attempts per "
                         "item); quant_judge = LLM-judge calibration on the solve items")
+    p.add_argument("--math-tools", choices=["on", "off"], default="off",
+                   help="the Quant agent with (on) or without (off, the product default and the "
+                        "original single-call path) the math_evaluate/math_solve/math_compare "
+                        "tools; run both on one model to measure what the tools change")
     p.add_argument("--samples", type=int, default=ielts_writing.DEFAULT_SAMPLES,
                    help="attempts per item in the quant suite (pass@k and pass^k are over these); "
                         "grader samples per essay in the IELTS suites (per-criterion median)")

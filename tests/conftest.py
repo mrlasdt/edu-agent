@@ -32,6 +32,18 @@ def no_live_corpus_service():
         yield
 
 
+@pytest.fixture(autouse=True)
+def math_tools_off_whatever_the_environment_says(monkeypatch: pytest.MonkeyPatch):
+    """
+    The product default is the original single-call streamed path, and most agent tests script
+    one streamed model reply. A developer's `.env` with MATH_TOOLS_ENABLED=true must not change
+    that. Tests of the tool path build their agent with `math_tools_enabled=True`.
+    """
+    from shared.src.shared.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "math_tools_enabled", False)
+
+
 @pytest.fixture
 def block_network(monkeypatch: pytest.MonkeyPatch) -> None:
     """

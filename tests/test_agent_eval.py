@@ -389,7 +389,7 @@ async def test_failed_run_exits_nonzero_and_emits_no_regression_metrics(
         max_items=5, max_items_given=False, samples=1, model=None, max_tokens=800,
         ledger=str(tmp_path / "l.json"), ceiling=20.0, out_dir=str(tmp_path),
         baseline=None, write_baseline=None, min_coverage=0.8,
-        cache_dir=str(tmp_path / "c"), no_cache=True,
+        cache_dir=str(tmp_path / "c"), no_cache=True, math_tools="on",
     )
     report, code = await cli.run(args)
     assert code == 2
@@ -446,3 +446,39 @@ def test_calibration_solutions_show_working():
     material = [q.material for q, _ in correctness_calibration(item)]
     assert all("x**2 - 5*x + 6 = 0" in m and "evaluates to" in m for m in material)
     assert "**Answer: 2,3**" in material[0] and "**Answer: 2,4**" in material[1]
+
+
+async def test_transport_replays_a_tool_call_and_caches_it(tmp_path: Path):
+    from evals.agent_eval.cache import ResponseCache
+
+    calls: list[dict[str, Any]] = []
+
+    def asks_for_a_tool() -> Any:
+        function = SimpleNamespace(name="math_evaluate", arguments='{"expression":"1+1"}')
+        call = SimpleNamespace(id="c1", function=function)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=None, tool_calls=[call]))],
+            usage=SimpleNamespace(prompt_tokens=30, completion_tokens=5),
+        )
+
+    async def real(**kw: Any) -> Any:
+        calls.append(kw)
+        return asks_for_a_tool()
+
+    t = MeteredTransport(
+        Ledger(tmp_path / "l.json", 1.0), "run", cache=ResponseCache(tmp_path / "c")
+    )
+    t._real = real
+    tools = [{"type": "function", "function": {"name": "math_evaluate"}}]
+    messages = [{"role": "user", "content": "1+1?"}]
+    live = await t.acompletion(model="openai/gpt-4o-mini", messages=messages, tools=tools)
+    again = await t.acompletion(model="openai/gpt-4o-mini", messages=messages, tools=tools)
+    for reply in (live, again):
+        (call,) = reply.choices[0].message.tool_calls
+        assert (call.id, call.function.name) == ("c1", "math_evaluate")
+        assert call.function.arguments == '{"expression":"1+1"}'
+        assert (reply.usage.prompt_tokens, reply.usage.completion_tokens) == (30, 5)
+    assert len(calls) == 1  # the second request came from the cache
+    # the same messages without tools are a different request: the cache must not answer it
+    await t.acompletion(model="openai/gpt-4o-mini", messages=messages)
+    assert len(calls) == 2

@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import contextvars
+import json
 import re
 import time
 from collections.abc import AsyncIterator, Callable, Coroutine, Iterator
@@ -33,7 +34,15 @@ from evals.agent_eval.cache import ResponseCache, cache_key
 # which corrupts the JSON summary the CLI prints.
 litellm.suppress_debug_info = True
 
-FakeModel = Callable[[str, list[dict[str, Any]]], str]
+
+@dataclass
+class FakeToolCalls:
+    """What an offline fake model returns instead of text when it "decides" to call tools."""
+
+    calls: list[tuple[str, dict[str, Any]]]
+
+
+FakeModel = Callable[[str, list[dict[str, Any]]], "str | FakeToolCalls"]
 
 current_tag: contextvars.ContextVar[str] = contextvars.ContextVar("eval_tag", default="agent")
 
@@ -110,8 +119,40 @@ class _ReplayStream:
             yield _usage_chunk(*self._usage)
 
 
-def _response(text: str) -> Any:
-    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=text))])
+def _tool_call(call_id: str, name: str, arguments: str) -> Any:
+    return SimpleNamespace(
+        id=call_id, type="function", function=SimpleNamespace(name=name, arguments=arguments)
+    )
+
+
+def _response(
+    text: str,
+    tool_calls: list[dict[str, str]] | None = None,
+    usage: tuple[int, int] | None = None,
+) -> Any:
+    """A non-streamed reply: text and/or the tool calls a model asked for, in litellm's shape."""
+    message = SimpleNamespace(
+        content=text or None,
+        tool_calls=[_tool_call(c["id"], c["name"], c["arguments"]) for c in tool_calls]
+        if tool_calls
+        else None,
+    )
+    reply = SimpleNamespace(choices=[SimpleNamespace(message=message)])
+    if usage is not None:
+        reply.usage = SimpleNamespace(prompt_tokens=usage[0], completion_tokens=usage[1])
+    return reply
+
+
+def _tool_calls_of(message: Any) -> list[dict[str, str]]:
+    """The tool calls on a provider's message, as plain dicts (cacheable, replayable)."""
+    return [
+        {
+            "id": str(c.id),
+            "name": str(c.function.name),
+            "arguments": str(c.function.arguments or ""),
+        }
+        for c in (getattr(message, "tool_calls", None) or [])
+    ]
 
 
 def _text_of(messages: list[dict[str, Any]]) -> str:
@@ -147,7 +188,13 @@ class MeteredTransport:
         # TurnMeter does); other callers iterate chunks and expect every chunk to have choices.
         wants_usage = bool((kw.get("stream_options") or {}).get("include_usage"))
         if self.fake_model is not None:
-            return self._wrap(self._fake(model, messages), stream)
+            reply = self._fake(model, messages)
+            if isinstance(reply, FakeToolCalls):
+                return _response("", [
+                    {"id": f"call_{n}", "name": name, "arguments": json.dumps(args)}
+                    for n, (name, args) in enumerate(reply.calls)
+                ])
+            return self._wrap(reply, stream)
         errors: list[str] = []
         chain = [model, *[m for m in self.fallbacks if m != model]]
         for candidate in chain:
@@ -162,11 +209,17 @@ class MeteredTransport:
                 temperature=kw.get("temperature"),
                 max_tokens=max_tokens,
                 **({"slot": slot} if slot else {}),
+                # a tool-offering request is a different request: its reply can be a tool call
+                **({"tools": kw["tools"], "tool_choice": kw.get("tool_choice")}
+                   if kw.get("tools") else {}),
             )
             hit = self.cache.get(key) if self.cache else None
             if hit is not None:
                 cached = hit.get("usage")
                 usage = (int(cached[0]), int(cached[1])) if cached and wants_usage else None
+                if hit.get("tool_calls") or kw.get("tools"):
+                    counts = (int(cached[0]), int(cached[1])) if cached else None
+                    return _response(str(hit["text"]), hit.get("tool_calls"), counts)
                 return self._wrap(str(hit["text"]), stream, usage)
             prompt_tokens = estimate_tokens(_text_of(messages))
             self.ledger.ensure_capacity(
@@ -200,13 +253,20 @@ class MeteredTransport:
             if response is None:
                 continue
             latency = time.perf_counter() - start
-            text = str(response.choices[0].message.content or "")
+            message = response.choices[0].message
+            text = str(message.content or "")
+            tool_calls = _tool_calls_of(message)
             usage = getattr(response, "usage", None)
             p_tok = int(getattr(usage, "prompt_tokens", 0) or prompt_tokens)
             c_tok = int(getattr(usage, "completion_tokens", 0) or estimate_tokens(text))
             self._record(candidate, p_tok, c_tok, latency)
-            if self.cache and text:  # an empty reply (a reasoning model out of tokens) is no answer
-                self.cache.put(key, {"text": text, "usage": [p_tok, c_tok]})
+            if self.cache and (text or tool_calls):  # an empty reply is no answer
+                self.cache.put(
+                    key, {"text": text, "usage": [p_tok, c_tok], "tool_calls": tool_calls}
+                )
+            if tool_calls or kw.get("tools"):
+                # the agent's tool loop reads the message and the provider's token report
+                return _response(text, tool_calls, (p_tok, c_tok))
             return self._wrap(text, stream, (p_tok, c_tok) if wants_usage else None)
         raise AllModelsFailedError("; ".join(errors))
 
@@ -223,15 +283,16 @@ class MeteredTransport:
             entry["count"] += 1
         return out
 
-    def _fake(self, model: str, messages: list[dict[str, Any]]) -> str:
+    def _fake(self, model: str, messages: list[dict[str, Any]]) -> str | FakeToolCalls:
         assert self.fake_model is not None
         start = time.perf_counter()
-        text = self.fake_model(model, messages)
+        reply = self.fake_model(model, messages)
+        text = reply if isinstance(reply, str) else json.dumps(reply.calls)
         p_tok, c_tok = estimate_tokens(_text_of(messages)), estimate_tokens(text)
         self.records.append(
             CallRecord(current_tag.get(), model, p_tok, c_tok, 0.0, time.perf_counter() - start)
         )
-        return text
+        return reply
 
     def _record(self, model: str, p_tok: int, c_tok: int, latency: float) -> None:
         cost = estimate_cost(model, p_tok, c_tok)

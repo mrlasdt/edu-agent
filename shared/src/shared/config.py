@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     # Per-turn measurement of the live chat path (shared.turn_meter): one JSON line per service
     # per turn, read by `python -m evals.turn_report`. Recorded, never capped. Empty = off.
     turn_log_path: str = ".turn-log/turns.jsonl"
+    # Math tools for the Quant agent (math_evaluate, math_solve, math_compare): the model
+    # computes with sympy instead of in its head. Off by default: a tool turn is not streamed and
+    # costs more tokens (README, "Math tools"). true = the tool loop.
+    math_tools_enabled: bool = False
     env: str = "dev"
     model_config_path: str = "config/model_config.dev.yaml"
 
