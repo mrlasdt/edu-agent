@@ -486,7 +486,7 @@ kubectl rollout status deployment/agent
 
 **CI/CD** (`.github/workflows/`):
 - Every PR: ruff + mypy + pytest, web typecheck + unit tests, plus a path-gated offline eval pipeline check (fake model, no secrets, non-blocking; it validates the harness, not model quality)
-- Merge to main: build images → push to GHCR → deploy to staging
+- Merge to main: build images → push to GHCR → deploy to staging (the deploy job runs only when the repo variable `DEPLOY_ENABLED` is `true` and the `KUBE_CONFIG_STAGING` secret is set; until a cluster exists main stays green without it)
 - Tagged release: 5% canary → 30-min monitor → auto-rollback on error spike → promote to 100%
 
 ## Extending to new test types (IELTS, GMAT, …)
