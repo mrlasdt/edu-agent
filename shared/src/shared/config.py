@@ -87,7 +87,7 @@ class Settings(BaseSettings):
     # Math tools for the Quant agent (math_evaluate, math_solve, math_compare): the model
     # computes with sympy instead of in its head. Off by default: on the model measured it gave
     # no accuracy gain for about 3x the cost per solve turn and it turns streaming off for the
-    # turn (docs/walkthrough/04-tool-design-compute-dont-guess.md). true = the tool loop.
+    # turn (README, "Math tools"). true = the tool loop.
     math_tools_enabled: bool = False
     env: str = "dev"
     model_config_path: str = "config/model_config.dev.yaml"
