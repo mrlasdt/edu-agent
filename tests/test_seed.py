@@ -3,7 +3,8 @@ Tests for the first-start corpus seed job.
 
 Behaviors under test:
   1. Every shipped seed note is an allowed, non-empty upload with a heading
-  2. An empty corpus gets every note uploaded as the global tier
+  2. An empty corpus gets every note uploaded with the admin key and no tier field (the
+     ingestion service files it under the global tier); a missing key fails before any upload
   3. A fully seeded corpus is left alone (idempotent restart)
   4. An interrupted seed is finished on the next run without re-uploading indexed notes
   5. A 4xx from ingestion fails at once; a 5xx is retried
@@ -21,7 +22,18 @@ from qdrant_client import AsyncQdrantClient, models
 from services.ingestion.src.ingestion import seed
 from services.ingestion.src.ingestion.chunker import chunk_text
 from services.ingestion.src.ingestion.parser import is_allowed, parse_bytes
+from shared.src.shared.config import ADMIN_KEY_HEADER, get_settings
 from shared.src.shared.vectorstore import COLLECTION, DENSE_VECTOR, ensure_collection
+
+ADMIN_KEY = "seed-test-key"
+
+
+@pytest.fixture(autouse=True)
+def admin_key(monkeypatch):
+    monkeypatch.setenv("INGESTION_ADMIN_KEY", ADMIN_KEY)
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 SEED_NOTES = sorted(Path("seed/gre-quant").glob("*.txt"))
 
@@ -67,13 +79,14 @@ def corpus():
 
 
 def _ingestion(responses: Callable[[str], httpx.Response] | None = None):
-    """MockTransport standing in for the ingestion service; records (filename, tier)."""
+    """MockTransport standing in for the ingestion service; records (filename, admin key sent)."""
     posted: list[tuple[str, str]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         body = request.read().decode("utf-8", errors="replace")
         name = next(n.name for n in SEED_NOTES if f'filename="{n.name}"' in body)
-        posted.append((name, "global" if 'name="tier"\r\n\r\nglobal' in body else "other"))
+        assert 'name="tier"' not in body  # the server picks the tier, never the client
+        posted.append((name, request.headers.get(ADMIN_KEY_HEADER, "")))
         if responses:
             return responses(name)
         return httpx.Response(200, json={"status": "completed"})
@@ -90,13 +103,24 @@ async def _run_main(transport: httpx.MockTransport) -> int:
 
 
 @pytest.mark.asyncio
-async def test_empty_corpus_gets_every_note_as_global_tier(corpus):
+async def test_empty_corpus_gets_every_note_uploaded_with_the_admin_key(corpus):
     transport, posted = _ingestion()
 
     assert await _run_main(transport) == 0
 
     assert [name for name, _ in posted] == [n.name for n in SEED_NOTES]
-    assert {tier for _, tier in posted} == {"global"}
+    assert {key for _, key in posted} == {ADMIN_KEY}
+
+
+@pytest.mark.asyncio
+async def test_missing_admin_key_fails_before_any_upload(corpus, monkeypatch):
+    monkeypatch.setenv("INGESTION_ADMIN_KEY", "")
+    get_settings.cache_clear()
+    transport, posted = _ingestion()
+
+    assert await _run_main(transport) == 1
+
+    assert posted == []
 
 
 @pytest.mark.asyncio

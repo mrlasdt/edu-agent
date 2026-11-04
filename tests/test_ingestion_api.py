@@ -16,11 +16,18 @@ import pytest
 from fastapi.testclient import TestClient
 
 from services.ingestion.src.ingestion.main import app
+from shared.src.shared.config import ADMIN_KEY_HEADER, get_settings
+
+ADMIN_KEY = "test-admin-key"
 
 
 @pytest.fixture
-def client():
-    return TestClient(app)
+def client(monkeypatch):
+    # The /admin routes need INGESTION_ADMIN_KEY; auth itself is covered by test_ingestion_auth.py.
+    monkeypatch.setenv("INGESTION_ADMIN_KEY", ADMIN_KEY)
+    get_settings.cache_clear()
+    yield TestClient(app, headers={ADMIN_KEY_HEADER: ADMIN_KEY})
+    get_settings.cache_clear()
 
 
 def make_upload_file(content: bytes, filename: str, content_type: str):
@@ -40,7 +47,7 @@ def test_small_txt_upload_returns_completed(client):
         response = client.post(
             "/admin/documents",
             files={"file": ("test.txt", io.BytesIO(content), "text/plain")},
-            data={"test_type": "gre", "tier": "global"},
+            data={"test_type": "gre"},
         )
 
     assert response.status_code == 200
@@ -62,7 +69,7 @@ def test_large_file_upload_returns_queued(client):
         response = client.post(
             "/admin/documents",
             files={"file": ("large.txt", io.BytesIO(large_content), "text/plain")},
-            data={"test_type": "gre", "tier": "global"},
+            data={"test_type": "gre"},
         )
 
     assert response.status_code == 202
@@ -78,7 +85,7 @@ def test_unsupported_file_type_returns_415(client):
     response = client.post(
         "/admin/documents",
         files={"file": ("image.jpg", io.BytesIO(b"fake image"), "image/jpeg")},
-        data={"test_type": "gre", "tier": "global"},
+        data={"test_type": "gre"},
     )
     assert response.status_code == 415
 
@@ -87,7 +94,7 @@ def test_exe_file_returns_415(client):
     response = client.post(
         "/admin/documents",
         files={"file": ("malware.exe", io.BytesIO(b"MZ"), "application/octet-stream")},
-        data={"test_type": "gre", "tier": "global"},
+        data={"test_type": "gre"},
     )
     assert response.status_code == 415
 
@@ -140,7 +147,7 @@ def test_uploaded_chunks_have_correct_metadata(client):
         client.post(
             "/admin/documents",
             files={"file": ("passage.txt", io.BytesIO(content), "text/plain")},
-            data={"test_type": "gre", "tier": "global"},
+            data={"test_type": "gre"},
         )
 
     assert len(captured_chunks) > 0

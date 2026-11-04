@@ -6,7 +6,7 @@ Claude Desktop session (or any MCP-capable client), without needing the
 Admin UI open.
 
 Tools:
-  - ingest_document(file_path, test_type, tier) → job_id
+  - ingest_document(file_path, test_type) → job_id
   - list_ingestion_jobs(limit) → list of jobs
   - get_job_status(job_id) → job state
 
@@ -21,7 +21,7 @@ from typing import Any, cast
 import httpx
 from mcp.server.fastmcp import FastMCP
 
-from shared.src.shared.config import get_settings
+from shared.src.shared.config import ADMIN_KEY_HEADER, get_settings
 
 mcp = FastMCP(
     "gre-tutor-admin",
@@ -35,22 +35,19 @@ mcp = FastMCP(
 async def ingest_document_tool(
     file_path: str,
     test_type: str,
-    tier: str = "global",
 ) -> dict[str, Any]:
     """
-    Ingest a document into the corpus.
+    Ingest a document into the corpus (global tier; the server decides the tier).
+    Needs INGESTION_ADMIN_KEY in this server's environment.
 
     Args:
         file_path: Absolute path to the file on the server (PDF, DOCX, or TXT)
         test_type: Test type for this document (e.g. "gre")
-        tier: Corpus tier — "global" (default) or "school"
 
     Returns:
         {"job_id": str, "status": "queued"}
     """
-    job_id = await _ingest_document(
-        file_path=file_path, test_type=test_type, tier=tier
-    )
+    job_id = await _ingest_document(file_path=file_path, test_type=test_type)
     return {"job_id": job_id, "status": "queued"}
 
 
@@ -88,9 +85,11 @@ async def get_job_status_tool(job_id: str) -> dict[str, Any]:
 # ── service seams (patched in tests) ─────────────────────────────────────────
 
 
-async def _ingest_document(
-    file_path: str, test_type: str, tier: str
-) -> str:
+def _admin_headers() -> dict[str, str]:
+    return {ADMIN_KEY_HEADER: get_settings().ingestion_admin_key}
+
+
+async def _ingest_document(file_path: str, test_type: str) -> str:
     settings = get_settings()
     content = Path(file_path).read_bytes()
     filename = Path(file_path).name
@@ -98,7 +97,8 @@ async def _ingest_document(
         r = await client.post(
             f"{settings.ingestion_service_url}/admin/documents",
             files={"file": (filename, content, "application/octet-stream")},
-            data={"test_type": test_type, "tier": tier},
+            data={"test_type": test_type},
+            headers=_admin_headers(),
         )
         r.raise_for_status()
         return str(r.json()["job_id"])
@@ -110,6 +110,7 @@ async def _list_jobs(limit: int) -> list[dict[str, Any]]:
         r = await client.get(
             f"{settings.ingestion_service_url}/admin/documents",
             params={"limit": limit},
+            headers=_admin_headers(),
         )
         r.raise_for_status()
         return cast(list[dict[str, Any]], r.json())
@@ -119,7 +120,8 @@ async def _get_job(job_id: str) -> dict[str, Any] | None:
     settings = get_settings()
     async with httpx.AsyncClient(timeout=10.0) as client:
         r = await client.get(
-            f"{settings.ingestion_service_url}/admin/documents/{job_id}"
+            f"{settings.ingestion_service_url}/admin/documents/{job_id}",
+            headers=_admin_headers(),
         )
         if r.status_code == 404:
             return None
