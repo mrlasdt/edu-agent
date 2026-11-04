@@ -317,6 +317,26 @@ def test_draft_item_is_complete_when_text_was_captured(turn_log, tmp_path, monke
     assert "question" not in item["needs"]
 
 
+def test_draft_item_ignores_an_old_capture_file_once_capture_is_off(
+    turn_log, tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setenv("TURN_CAPTURE_TEXT", "1")
+    get_settings.cache_clear()
+    trace_id = rated_turn(turn_log)
+    capture = default_capture_log()
+    assert capture is not None and capture.last_with_trace(trace_id) is not None
+
+    monkeypatch.setenv("TURN_CAPTURE_TEXT", "0")
+    get_settings.cache_clear()
+    out = tmp_path / "drafts.jsonl"
+    assert to_item_main([trace_id, "--out", str(out), "--log", str(turn_log.path)]) == 0
+    [item] = [json.loads(line) for line in out.read_text().splitlines()]
+    assert item["question"] == "" and item["reply_under_review"] == ""
+    assert "question" in item["needs"]
+    assert item["trace"]["trace_id"] == trace_id
+    assert "re-enter the question" in capsys.readouterr().out
+
+
 def test_drafting_twice_replaces_the_draft(turn_log, tmp_path):
     trace_id = rated_turn(turn_log)
     out = tmp_path / "drafts.jsonl"

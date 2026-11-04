@@ -11,9 +11,10 @@ learner's text). It is shaped like a Quant golden item (`evals/golden/gre_quant.
 failure. Nothing is added to a golden file: a draft becomes an eval item only when the owner
 completes it, checks the ground truth by hand and moves it there.
 
-The question and the reply under review are filled in only when message capture was on for that
-turn (`TURN_CAPTURE_TEXT=1`, `shared.feedback`). Without it the item is a stub: the trace id, the
-agent and the vote, and the owner re-enters the question.
+The question and the reply under review are filled in only while message capture is on
+(`TURN_CAPTURE_TEXT=1`, `shared.feedback`) and the turn was captured. Otherwise, even if an older
+capture file exists, the item is a stub: the trace id, the agent and the vote, and the owner
+re-enters the question.
 """
 from __future__ import annotations
 
@@ -123,7 +124,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 1
     capture_path = args.capture_log or settings.turn_capture_path
-    capture = TurnLog(capture_path).last_with_trace(args.trace_id) if capture_path else None
+    capture = (
+        TurnLog(capture_path).last_with_trace(args.trace_id)
+        if settings.turn_capture_text and capture_path
+        else None
+    )
 
     item = build_draft(args.trace_id, turn, vote, capture)
     out = Path(args.out)
@@ -131,8 +136,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"{'updated' if replaced else 'wrote'} draft {item['id']} in {out}")
     if capture is None:
         print(
-            "no captured text for this turn (TURN_CAPTURE_TEXT was off): "
-            "re-enter the question by hand"
+            "no captured text for this turn (TURN_CAPTURE_TEXT is off or the turn was not "
+            "captured): re-enter the question by hand"
         )
     print("still to fill in: " + ", ".join(item["needs"]))
     return 0
