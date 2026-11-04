@@ -13,9 +13,12 @@ Behaviors under test:
 """
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.skills.math_tools import (
@@ -287,3 +290,23 @@ async def test_the_skill_turns_a_failed_post_into_an_error_result() -> None:
     not_a_dict = FakeMath({})
     not_a_dict.result = ["x"]  # type: ignore[assignment]
     assert await not_a_dict.call("math_evaluate", {"expression": "1"}) == {"error": UNAVAILABLE}
+
+
+def test_the_agent_service_prints_its_tool_call_lines() -> None:
+    import logging
+
+    from services.agent.src.agent import main  # noqa: F401  (import configures logging)
+
+    assert logging.getLogger("services.agent").getEffectiveLevel() == logging.INFO
+
+
+def test_the_model_config_comes_from_model_config_path_when_no_path_is_given(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from shared.src.shared.config import get_settings, load_model_config
+
+    routed = tmp_path / "routed.yaml"
+    dev = Path("config/model_config.dev.yaml").read_text()
+    routed.write_text(dev.replace("gpt-4o-mini", "x-y"))
+    monkeypatch.setattr(get_settings(), "model_config_path", str(routed))
+    assert load_model_config().role("orchestrator").model == "x-y"

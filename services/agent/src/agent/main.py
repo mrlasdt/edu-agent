@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -14,6 +15,12 @@ from shared.src.shared.observability import setup_observability
 from shared.src.shared.trailer import encode, strip_mark
 
 app = FastAPI(title="Agent Service")
+
+# The agent's own INFO lines (one per model-called math tool) reach stderr; every other logger
+# keeps the default WARNING level, so libraries stay quiet. Uvicorn configures only its own
+# loggers, so without this the tool-call lines would never be printed.
+logging.basicConfig(level=logging.WARNING)
+logging.getLogger("services.agent").setLevel(logging.INFO)
 
 # Every LLM call in the agent service (agents, critics, question pipeline) goes
 # through litellm, so register the Langfuse callback once at import. No-op

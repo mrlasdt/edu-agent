@@ -118,6 +118,11 @@ def test_inequalities_and_systems_are_refused_with_the_way_out(equation: str) ->
     assert "error" in run_tool("math_solve", {"equation": equation})
 
 
+def test_an_equation_with_an_empty_side_says_which_side_is_missing() -> None:
+    error = run_tool("math_solve", {"equation": "x^2 = "})["error"]
+    assert "one side of the `=` is empty" in error
+
+
 # ── math_compare ─────────────────────────────────────────────────────────────
 
 

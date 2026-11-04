@@ -463,3 +463,18 @@ def test_report_can_price_recorded_tokens_as_another_model(turn_log, capsys):
     turn = json.loads(capsys.readouterr().out)["turns"][0]
     assert turn["cost_usd"] == pytest.approx(estimate_cost(MODEL, 1000, 100))
     assert turn["guardrail_cost_usd"] == pytest.approx(estimate_cost(MODEL, 200, 10))
+
+
+def test_the_turn_report_counts_the_tool_calls_of_a_turn(tmp_path):
+    from evals.turn_report import render
+
+    calls = [{"name": "math_evaluate", "ok": True}, {"name": "math_solve", "ok": False}]
+    records = [
+        {"trace_id": "t1", "source": "agent", "agent": "quant", "mode": "solve", "ts": 1.0,
+         "llm_calls": 3, "tool_calls": calls, "tool_errors": 1, "total_ms": 900.0},
+        {"trace_id": "t1", "source": "gateway", "agent": "quant", "mode": "solve", "ts": 1.0,
+         "llm_calls": 0, "total_ms": 1000.0, "outcome": "ok"},
+    ]
+    (turn,) = merge_turns(records)
+    assert (turn["tool_calls"], turn["tool_errors"]) == (2, 1)
+    assert "tools" in render(summarise([turn]), [turn], per_turn=True)

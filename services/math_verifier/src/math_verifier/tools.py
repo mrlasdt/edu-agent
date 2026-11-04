@@ -230,6 +230,8 @@ def _split_equation(equation: str) -> tuple[str, str] | str:
             "an equation has exactly one `=`; solve a system by substituting one equation "
             "into the other first."
         )
+    if not parts[0].strip() or not parts[1].strip():
+        return "one side of the `=` is empty; write both sides, for example `x^2 = 4`."
     return parts[0], parts[1]
 
 

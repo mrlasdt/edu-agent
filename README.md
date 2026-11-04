@@ -13,7 +13,7 @@ cp .env.example .env   # then fill in OPENAI_API_KEY
 docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 780 Python tests (mocked LLM and Qdrant) plus 111 frontend unit tests, and `npm run test:e2e` runs browser smoke tests with `/chat` and the `/ielts` API mocked.
+That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 859 Python tests (mocked LLM and Qdrant) plus 111 frontend unit tests, and `npm run test:e2e` runs browser smoke tests with `/chat` and the `/ielts` API mocked.
 
 A recorded live check (screenshot and streamed transcript) is in [docs/mvp-demo](docs/mvp-demo/README.md).
 
@@ -23,8 +23,9 @@ What is still missing:
 - **The corpus is tiny and Quant only.** Nine short notes written for this repo; the AW agent has no corpus (no ETS material is checked in). More documents go in through the ingestion API (see "Ingest more documents").
 - **The RAG reranker is optional.** Retrieval is hybrid (dense + a locally hashed sparse vector, fused with RRF; `HYBRID_RETRIEVAL_ENABLED=false` for dense-only). When `TEI_RERANKER_URL` is set, the top 20 fused hits are reranked by BGE-reranker-v2-m3 (leave it unset to turn reranking off); if the reranker is down or slow, retrieval logs a warning and keeps the RRF order. Retrieval quality with the reranker has not been evaluated.
 - **The Orchestrator's complexity step is a stub.** `/chat` applies the rate-limit, PII, content-safety, completeness, answer-leak and citation guardrails (see "Guardrails"), but not output content safety.
+- **Tool turns do not stream.** The Quant agent calls math tools (see "Math tools"), and a turn that may call tools is a non-streaming model call, so the learner gets the reply in one piece. `MATH_TOOLS_ENABLED=false` restores the streamed single-call path.
 - **Most agent metadata is dropped.** `/generate` streams text, an `X-Source-Count` header the gateway uses for the citation check, and (in Solve mode) a one-line trailer with the math verifier's verdict that the web app shows under the answer. Sources themselves never reach the UI. The verifier is a well-formedness check of the agent's own final answer, not an independent solve (see "Agent eval harness"), and the UI says so.
-- **Evals are small and CI never scores a real model.** 34 Quant failure-seeded items (the source for the Quant suite below) and 2 AW golden GRE items, plus 33 SAT Math, 41 IELTS Reading and 8 IELTS Writing prompt items (see "IELTS and SAT golden sets"); the IELTS Writing target needs third-party data downloaded locally and CI has none. The agent-in-the-loop harness (below) runs the real Quant agent, but CI only runs it offline against a fake model; real runs are manual. One baseline is checked in (`evals/baselines/quant.json`), measured on a free model that is not the product default, so re-run it on the default model before using it to judge a change.
+- **Evals are small and CI never scores a real model.** 40 Quant failure-seeded items (the source for the Quant suite below) and 2 AW golden GRE items, plus 33 SAT Math, 41 IELTS Reading and 8 IELTS Writing prompt items (see "IELTS and SAT golden sets"); the IELTS Writing target needs third-party data downloaded locally and CI has none. The agent-in-the-loop harness (below) runs the real Quant agent, but CI only runs it offline against a fake model; real runs are manual. One baseline is checked in (`evals/baselines/quant.json`), measured on a free model that is not the product default, so re-run it on the default model before using it to judge a change.
 - **The question-generation pipeline is a library plus an eval target.** It is not exposed over HTTP, has no UI, and has only been run for real on a handful of items on free models (see "Question-generation pipeline").
 - **Local only.** The k8s manifests have never been applied to a cluster, and Langfuse is opt-in (`--profile observability`): leave the `LANGFUSE_*` keys commented out in `.env` unless it is running, because any real key turns tracing on (the unedited `.env.example` placeholders ending in `...` are ignored).
 
@@ -77,7 +78,7 @@ A Candidate submits a GRE Quant or Analytical Writing question. The system:
 | `agent` | 8002 | QuantAgent + AWAgent, Skills, post-gen critics |
 | `corpus` | 8001 | Qdrant hybrid (dense + sparse, RRF) retrieval with 3-tier ACL, optional BGE rerank (fails open to RRF order) |
 | `ingestion` | 8003 | Async document pipeline (parse → chunk → embed → index) |
-| `math-verifier` | 8090 | FastMCP server: sympy checks behind an allow-list parser, one killable child process per check |
+| `math-verifier` | 8090 | FastMCP server: sympy checks behind an allow-list parser, one killable child process per check. Also serves the three model-called math tools (`POST /tools/{name}`) |
 | `tei-embedder` | 8080 | BGE-M3 text embeddings (Hugging Face TEI) |
 | `web` | 5173 | React app behind nginx, proxies `/chat` to the gateway |
 | `tei-reranker` | 8081 | BGE-reranker-v2-m3 `/rerank` (Hugging Face TEI, opt-in `reranker` profile) |
@@ -303,7 +304,7 @@ What it measures (Quant, `QuantAgent` unmodified, run on golden-set questions):
 
 #### The Quant failure suite (`--suite quant`)
 
-`evals/golden/gre_quant.jsonl` holds 34 self-written items, each with a `failure_source` (the commit, test or prompt line that records the failure it guards) and a `tag` (the failure class): 10 solve, 12 single-reply tutor, 4 four-turn tutor conversations (does the tutor still work on the problem at turn 4), and 8 hostile math strings for the verifier (no model needed). Rule graders (`evals/agent_eval/graders.py`) score every tutor reply for answer leak, LaTeX, citation wording and vague hand-backs. The older judge-calibration run still exists as `--suite quant_judge`.
+`evals/golden/gre_quant.jsonl` holds 40 self-written items, each with a `failure_source` (the commit, test or prompt line that records the failure it guards) and a `tag` (the failure class): 16 solve (6 of them multi-step arithmetic probes added with the math tools), 12 single-reply tutor, 4 four-turn tutor conversations (does the tutor still work on the problem at turn 4), and 8 hostile math strings for the verifier (no model needed). Rule graders (`evals/agent_eval/graders.py`) score every tutor reply for answer leak, LaTeX, citation wording and vague hand-backs. The older judge-calibration run still exists as `--suite quant_judge`.
 
 ```bash
 uv run python -m evals.agent_eval --mode offline --suite quant --samples 3     # plumbing only, fake model, what CI runs
@@ -421,6 +422,17 @@ Read this honestly: the fake injects a wrong key, a leaked answer, a duplicated 
 **Live smoke (2026-10-24, free OpenRouter chain only, 3 requests, 0 USD):** inconclusive. The free tier was mostly unavailable: 5 of the 6 units (3 baseline, 3 pipeline) were dropped because every model in the chain failed, so only one baseline item completed (it shipped a leak defect) and the pipeline completed none. An earlier attempt with a 900-token cap had every reply cut off mid-JSON by the routed model's hidden reasoning, which is why `max_tokens` is now 2500 for these roles. A pipeline item makes up to 7 calls and one failed call drops the whole item, so it is more exposed to a flaky free tier than the baseline; there is no per-call retry inside the pipeline beyond the transport's rate-limit retries and fallback chain. No measured before/after on a real model exists yet; a run on `--provider free+openai` (up to 8 calls per request across both targets, plus judge calls, at gpt-4o-mini prices) is the next step.
 
 Not done: dedup against the bank, difficulty calibration, knowledge-base grounding, an HTTP endpoint on the agent service, persisting traces, a store behind the review queue, and Verbal or AW generation.
+
+## Math tools (compute, don't guess)
+
+The Quant agent can call three exact tools instead of doing arithmetic in its head: `math_evaluate` (a value), `math_solve` (the real roots of one equation) and `math_compare` (a Quantitative Comparison verdict). They run in the math-verifier service behind the same allow-list parser and killable child process as the answer check, and the model reaches them through litellm function calling in a loop capped at 4 rounds (`services/agent/src/agent/tool_loop.py`). In tutor mode the results stay private to the model and the answer-leak guardrails still apply; each call is recorded on the turn log (`tool_calls`, `tool_errors`), not shown to the learner.
+
+| Switch | Where | Effect |
+|---|---|---|
+| `MATH_TOOLS_ENABLED` | environment (default `true`) | `false` runs the original single-call, streamed path with the original prompts (`quant_agent`) |
+| `--math-tools on|off` | `python -m evals.agent_eval` | the same switch for the eval, so both sides run on one model |
+
+The tools-on path uses its own prompt key (`quant_agent_math_tools`) and sends the tool definitions with every call, so it costs more input tokens and one more model call per tool round. On the free model it was measured on (16 solve items, 3 attempts each) the tools gave no accuracy gain (48/48 correct without, 47/48 with) for about 3x the input tokens and +6.6 s p50 per solve turn, which is why they are off by default; re-measure on your model with `--math-tools off` then `--math-tools on` before turning them on.
 
 ## Measuring a turn
 
