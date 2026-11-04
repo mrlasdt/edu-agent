@@ -186,7 +186,7 @@ The web image is a static build, so rebuild it after frontend edits (`docker com
 
 The BGE-M3 embedder and BGE reranker are amd64-only, so on Apple Silicon they run under emulation. On Apple Silicon the emulated reranker is too slow for its 2s timeout (about 20s for the 20-candidate window), so locally it times out and search uses the RRF order. Real rerank latency needs native hardware, for example an arm64 CPU TEI build or a native amd64/GPU host.
 
-Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`). To use another model or provider (for example OpenRouter: add `OPENROUTER_API_KEY` to `.env`), edit that file.
+Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`). To use another model or provider (for example OpenRouter: add `OPENROUTER_API_KEY` to `.env`), edit that file, or point `MODEL_CONFIG_PATH` at another one such as the free-model config above.
 
 ### 4. Run tests
 
