@@ -19,7 +19,7 @@ from pathlib import Path
 import httpx
 from qdrant_client import models
 
-from shared.src.shared.config import get_settings
+from shared.src.shared.config import ADMIN_KEY_HEADER, get_settings
 from shared.src.shared.vectorstore import COLLECTION, get_qdrant_client
 
 logger = logging.getLogger("seed")
@@ -67,8 +67,10 @@ async def missing_notes(notes: list[Path]) -> list[Path]:
 
 async def upload(client: httpx.AsyncClient, base_url: str, path: Path) -> None:
     """
-    Upload one note. Transport errors and 5xx (the embedder behind ingestion is not ready
-    yet) are retried until the deadline; a 4xx is a bad request and fails at once.
+    Upload one note. The ingestion service files it under the global tier; the client's
+    default headers carry the admin key. Transport errors and 5xx (the embedder behind
+    ingestion is not ready yet) are retried until the deadline; a 4xx is a bad request and
+    fails at once.
     """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + _READY_TIMEOUT_S
@@ -77,7 +79,7 @@ async def upload(client: httpx.AsyncClient, base_url: str, path: Path) -> None:
             resp = await client.post(
                 f"{base_url}/admin/documents",
                 files={"file": (path.name, path.read_bytes(), "text/plain")},
-                data={"test_type": TEST_TYPE, "tier": "global"},
+                data={"test_type": TEST_TYPE},
             )
         except httpx.TransportError as exc:
             reason = f"{type(exc).__name__}: {exc}"
@@ -104,8 +106,13 @@ async def main() -> int:
     if not todo:
         logger.info("corpus already seeded; nothing to do")
         return 0
-    base_url = get_settings().ingestion_service_url.rstrip("/")
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    settings = get_settings()
+    if not settings.ingestion_admin_key:
+        logger.error("INGESTION_ADMIN_KEY is not set; add it to .env (see .env.example)")
+        return 1
+    base_url = settings.ingestion_service_url.rstrip("/")
+    headers = {ADMIN_KEY_HEADER: settings.ingestion_admin_key}
+    async with httpx.AsyncClient(timeout=120.0, headers=headers) as client:
         for path in todo:
             try:
                 await upload(client, base_url, path)

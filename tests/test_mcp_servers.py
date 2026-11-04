@@ -162,20 +162,18 @@ async def test_get_model_essay_passes_score_tier():
 async def test_ingest_document_returns_job_id():
     with patch("mcp_servers.admin_server._ingest_document", new_callable=AsyncMock) as mock:
         mock.return_value = "job-abc-123"
-        result = await ingest_document_tool(
-            file_path="/tmp/guide.pdf", test_type="gre", tier="global"
-        )
+        result = await ingest_document_tool(file_path="/tmp/guide.pdf", test_type="gre")
     assert result["job_id"] == "job-abc-123"
     assert result["status"] == "queued"
 
 
 @pytest.mark.asyncio
-async def test_ingest_document_passes_tier():
+async def test_ingest_document_has_no_tier_argument():
+    # The ingestion server decides the tier; a caller cannot ask for one.
     with patch("mcp_servers.admin_server._ingest_document", new_callable=AsyncMock) as mock:
         mock.return_value = "job-xyz"
-        await ingest_document_tool(file_path="/tmp/notes.txt", test_type="gre", tier="global")
-    call_kwargs = mock.call_args.kwargs
-    assert call_kwargs.get("tier") == "global"
+        await ingest_document_tool(file_path="/tmp/notes.txt", test_type="gre")
+    assert mock.call_args.kwargs == {"file_path": "/tmp/notes.txt", "test_type": "gre"}
 
 
 # ── 5. list_ingestion_jobs ────────────────────────────────────────────────────

@@ -8,6 +8,9 @@ import yaml
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Request header carrying Settings.ingestion_admin_key to the ingestion service's /admin routes.
+ADMIN_KEY_HEADER = "X-Admin-Key"
+
 
 class ModelRoleConfig(BaseModel):
     provider: str
@@ -77,6 +80,9 @@ class Settings(BaseSettings):
     math_verifier_url: str = "http://localhost:8090"
     admin_username: str = "admin"
     admin_password: str = "changeme"
+    # Shared secret for the ingestion service's /admin routes (sent in ADMIN_KEY_HEADER). Empty =
+    # not configured: the routes then refuse every request (fail closed) instead of staying open.
+    ingestion_admin_key: str = ""
     # IELTS mock: attempts database and other local-only files (gitignored), and the
     # number of grader samples whose per-criterion median is reported.
     ielts_data_dir: str = "ielts-local"

@@ -9,11 +9,11 @@ A GRE test-prep tutor built as a reference implementation of agentic AI engineer
 **Working end to end locally (MVP).** One command starts the whole chat path; open http://localhost:5173, pick Quant, ask a GRE Quant question and get a tutored answer streamed from a real model, grounded in a small seeded corpus:
 
 ```bash
-cp .env.example .env   # then fill in OPENAI_API_KEY
+cp .env.example .env   # then fill in OPENAI_API_KEY and INGESTION_ADMIN_KEY (see step 2 below)
 docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 900 Python tests (mocked LLM and Qdrant) plus 111 frontend unit tests, and `npm run test:e2e` runs browser smoke tests with `/chat` and the `/ielts` API mocked.
+That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 938 Python tests (mocked LLM and Qdrant) plus 114 frontend unit tests, and `npm run test:e2e` runs browser smoke tests with `/chat` and the `/ielts` API mocked.
 
 A recorded live check (screenshot and streamed transcript) is in [docs/mvp-demo](docs/mvp-demo/README.md).
 
@@ -129,7 +129,15 @@ cd web && npm install && cd ..
 
 ```bash
 cp .env.example .env
-# Fill in OPENAI_API_KEY at minimum; all other values have localhost defaults.
+# Fill in OPENAI_API_KEY at minimum, and set INGESTION_ADMIN_KEY (next paragraph);
+# all other values have localhost defaults.
+```
+
+**Set an ingestion admin key.** The ingestion service's `/admin` routes (upload a document, read a job) refuse every request until `INGESTION_ADMIN_KEY` is set, and then accept only requests that send it in an `X-Admin-Key` header. The first-start seed job and the admin MCP server read the same variable, so one value in `.env` is enough. Generate one and put it in `.env`:
+
+```bash
+sed -i.bak '/^INGESTION_ADMIN_KEY=/d' .env && rm .env.bak   # drop the empty placeholder
+echo "INGESTION_ADMIN_KEY=$(openssl rand -hex 24)" >> .env
 ```
 
 **No OpenAI key? Run on a free model.** Every service reads the model config named by `MODEL_CONFIG_PATH` (default `config/model_config.dev.yaml`). `config/model_config.free.yaml` puts every role on one OpenRouter `:free` model that supports tool calling, so the whole chat path runs with zero spend and only an OpenRouter key:
@@ -191,10 +199,10 @@ Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`). To use anothe
 ### 4. Run tests
 
 ```bash
-# Python tests (863)
+# Python tests (938)
 uv run pytest tests/ -q
 
-# Frontend tests (111)
+# Frontend tests (114)
 cd web && npm test
 
 # Eval pipeline check (offline fake model, no network, no keys); includes the generation suite
@@ -222,11 +230,13 @@ uv run uvicorn services.agent.src.agent.main:app --port 8002 --reload
 The sample corpus is seeded automatically (step 3). To add your own:
 
 ```bash
-# Via Admin MCP server (Claude Desktop) or curl:
-curl -F "file=@path/to/notes.txt" \
-     -F "test_type=gre" -F "tier=global" \
+# Via Admin MCP server (Claude Desktop) or curl. The key is the INGESTION_ADMIN_KEY from .env:
+curl -H "X-Admin-Key: $INGESTION_ADMIN_KEY" \
+     -F "file=@path/to/notes.txt" -F "test_type=gre" \
      http://localhost:8003/admin/documents
 ```
+
+Without the header the call returns 401. There is no `tier` field: the server files every upload under the global tier (the school and candidate tiers need a signed-in learner identity, which does not exist yet), and ignores a `tier` sent by the client.
 
 ## IELTS Writing mock
 
@@ -463,11 +473,11 @@ Tokens are the provider's own usage report (streaming asks for it with `stream_o
 
 | Layer | What it checks |
 |---|---|
-| Input validation | Schema, size, content safety (OpenAI Moderation API) |
+| Input validation | Schema, size (message 4,000 chars; history 20 items of 4,000 chars; candidate id 128 chars; over a cap is a 422 before any model call), content safety (OpenAI Moderation API) |
 | Enrichment | Haiku-tier LLM detects incomplete questions → clarification reply |
 | Generation | Tutor-mode answer-leak check (Haiku); citation completeness (deterministic) |
 | Output | PII regex redaction; content safety on output text |
-| Rate/quota | 60 turns/min and 200 turns/day per Candidate (in-memory; Redis in v2) |
+| Rate/quota | 60 turns/min and 200 turns/day per Candidate (in-memory, at most 10,000 candidates tracked with the least recently seen evicted first; Redis in v2) |
 
 Every check emits a `guardrail.{layer}.{name}.{pass|fail}` structured log event with trace ID.
 

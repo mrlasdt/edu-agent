@@ -57,8 +57,7 @@ def client(store: AttemptStore, completer: Scripted, ledger: Ledger) -> Iterator
     app.dependency_overrides[ielts_api.get_store] = lambda: store
     app.dependency_overrides[ielts_api.get_completer] = lambda: completer
     app.dependency_overrides[ielts_api.get_ledger] = lambda: ledger
-    ielts_api._limiter._minute_window.clear()
-    ielts_api._limiter._day_counts.clear()
+    ielts_api._limiter.reset()
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

@@ -25,6 +25,11 @@ spec:
                 secretKeyRef:
                   name: edu-agent-secrets
                   key: database-url
+            - name: INGESTION_ADMIN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: edu-agent-secrets
+                  key: ingestion-admin-key
             - name: QDRANT_URL
               value: http://qdrant:6333
             - name: TEI_EMBEDDER_URL

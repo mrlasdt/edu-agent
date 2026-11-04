@@ -8,8 +8,9 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import httpx
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from services.agent.src.agent.bootstrap import build_registry
@@ -46,6 +47,17 @@ app.include_router(ielts_router)
 
 setup_observability()
 
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+    """
+    FastAPI's default 422 echoes each offending value back as `input`. For a rejected
+    5 MB message that would send the 5 MB straight back, so drop the echo and keep the
+    rest (type, loc, msg) of every error.
+    """
+    errors = [{k: v for k, v in e.items() if k not in ("input", "ctx")} for e in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": errors})
+
 # The orchestrator validates + routes; the registry is the same one the agent
 # service uses, so routing decisions here match what /generate will accept.
 _orchestrator = Orchestrator(registry=build_registry())
@@ -56,18 +68,28 @@ _DEFAULT_CLARIFICATION = "Could you share the full question so I can help?"
 _MODERATION_UNAVAILABLE = "The safety check is unavailable right now. Please try again in a moment."
 
 
+# Request size caps. /chat sends the message and the whole history to the model (and through
+# the PII and safety checks), so an unbounded body is an unbounded bill. A request over a cap is
+# rejected with 422 before any guardrail or model call runs.
+MAX_MESSAGE_CHARS = 4_000
+MAX_HISTORY_ITEMS = 20
+MAX_HISTORY_ITEM_CHARS = 4_000
+# candidate_id keys the rate limiter, so it must not be an arbitrarily large string either.
+MAX_CANDIDATE_ID_CHARS = 128
+
+
 class HistoryItem(BaseModel):
     role: MessageRole
-    content: str
+    content: str = Field(max_length=MAX_HISTORY_ITEM_CHARS)
 
 
 class ChatRequest(BaseModel):
-    candidate_id: str
+    candidate_id: str = Field(max_length=MAX_CANDIDATE_ID_CHARS)
     test_type: str
     section: str
-    message: str
+    message: str = Field(max_length=MAX_MESSAGE_CHARS)
     mode: Mode = Mode.tutor
-    history: list[HistoryItem] = Field(default_factory=list)
+    history: list[HistoryItem] = Field(default_factory=list, max_length=MAX_HISTORY_ITEMS)
     personal_style_enabled: bool = False
 
 
@@ -108,14 +130,14 @@ async def chat(req: ChatRequest) -> StreamingResponse:
     """
     trace_id = str(uuid.uuid4())
     message, input_pii = redact_input(req.message, trace_id)
-    history = [HistoryItem(role=h.role, content=redact_input(h.content, trace_id)[0])
+    history = [Message(role=h.role, content=redact_input(h.content, trace_id)[0])
                for h in req.history]
     session = Session(
         candidate_id=req.candidate_id,
         test_type=req.test_type,
         section=req.section,
         mode=req.mode,
-        history=[Message(role=h.role, content=h.content) for h in history],
+        history=history,
         personal_style_enabled=req.personal_style_enabled,
     )
 

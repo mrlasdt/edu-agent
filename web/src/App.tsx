@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { MessageBubble } from "./components/MessageBubble";
 import { ModeSwitch } from "./components/ModeSwitch";
 import { SubjectPicker } from "./components/SubjectPicker";
-import { streamChat } from "./chat";
+import { MAX_MESSAGE_CHARS, streamChat } from "./chat";
 import type { Message, Mode, Subject } from "./types";
 
 const SUBJECT_LABEL: Record<Subject, string> = { quant: "Quant", aw: "AW" };
@@ -94,6 +94,7 @@ export function App() {
         <input
           aria-label="Your message"
           value={draft}
+          maxLength={MAX_MESSAGE_CHARS}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Ask a question"
           disabled={busy}

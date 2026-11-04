@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import secrets
 import uuid
-from typing import Any, cast
+from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from qdrant_client import models
 
 from services.ingestion.src.ingestion.chunker import chunk_text
 from services.ingestion.src.ingestion.parser import is_allowed, parse_bytes
+from shared.src.shared.config import ADMIN_KEY_HEADER, get_settings
 from shared.src.shared.corpus import ChunkPayload, Tier
 from shared.src.shared.embedder import embed_texts
 from shared.src.shared.sparse import encode_document
@@ -28,6 +30,32 @@ _jobs: dict[str, dict[str, Any]] = {}
 # Files under this threshold are processed synchronously
 _SYNC_SIZE_LIMIT = 1 * 1024 * 1024  # 1 MB
 
+# The server, not the uploader, decides which tier a document lands in. Only the shared
+# global tier is writable for now: school and candidate tiers need an authenticated owner
+# id to scope them, which arrives with session tokens (plan chapter 18, slice E2).
+_UPLOAD_TIER: Tier = "global"
+
+
+def require_admin_key(
+    supplied: str | None = Header(default=None, alias=ADMIN_KEY_HEADER),
+) -> None:
+    """
+    Gate for the /admin routes: the request must carry INGESTION_ADMIN_KEY in the
+    X-Admin-Key header. An unset key refuses everything (503) rather than leaving the
+    routes open, so a missing configuration is loud, not a silent hole.
+    """
+    expected = get_settings().ingestion_admin_key
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="Ingestion is locked: INGESTION_ADMIN_KEY is not set on the server.",
+        )
+    if supplied is None or not secrets.compare_digest(supplied.encode(), expected.encode()):
+        raise HTTPException(status_code=401, detail="Missing or invalid admin key.")
+
+
+admin = APIRouter(prefix="/admin", dependencies=[Depends(require_admin_key)])
+
 
 # ── endpoints ─────────────────────────────────────────────────────────────────
 
@@ -37,14 +65,14 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/admin/documents")
+@admin.post("/documents")
 async def upload_document(
     file: UploadFile = File(...),
     test_type: str = Form(...),
-    tier: str = Form("global"),
 ) -> JSONResponse:
     """
-    Upload a document for ingestion into the corpus.
+    Upload a document for ingestion into the corpus (global tier; see _UPLOAD_TIER).
+    Requires the admin key.
     Files under 1 MB are processed synchronously (200 + completed).
     Larger files are queued (202 + queued).
     Unsupported types return 415.
@@ -55,7 +83,7 @@ async def upload_document(
     content = await file.read()
     job_id = str(uuid.uuid4())
     doc_metadata: dict[str, Any] = {
-        "tier": tier,
+        "tier": _UPLOAD_TIER,
         "test_type": test_type,
         "source_uri": file.filename or job_id,
         "school_id": None,
@@ -69,7 +97,7 @@ async def upload_document(
         chunk_dicts = [
             ChunkPayload(
                 text=c.text,
-                tier=cast(Tier, tier),
+                tier=_UPLOAD_TIER,
                 test_type=test_type,
                 source_uri=doc_metadata["source_uri"],
                 page_or_section=c.section_title or f"chunk-{c.chunk_index}",
@@ -109,12 +137,15 @@ async def upload_document(
     return JSONResponse(status_code=202, content={"job_id": queued_job_id, "status": "queued"})
 
 
-@app.get("/admin/documents/{job_id}")
+@admin.get("/documents/{job_id}")
 async def get_job_status(job_id: str) -> dict[str, Any]:
     job = await get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
     return job
+
+
+app.include_router(admin)
 
 
 # ── seams (patched in tests / replaced by real impls in integration) ──────────
