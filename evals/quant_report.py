@@ -81,6 +81,18 @@ def render(doc: dict[str, Any]) -> str:
     for kind, g in summary["groups"].items():
         for name, c in g["checks"].items():
             out.append(f"| {kind} | {name} | {c['passed']}/{c['total']} ({c['value']:.2f}) |")
+    wbv = summary.get("wrong_but_verified")
+    if wbv:
+        seeded, observed = wbv["seeded"], wbv["observed"]
+        out += [
+            "", "## Wrong but verified", "",
+            f"- seeded wrong answers accepted by the product check: {seeded['count']}/"
+            f"{seeded['n']} (95% interval {_ci(seeded['ci95'])})",
+            f"- real solve attempts that were wrong and still accepted: {observed['count']}/"
+            f"{observed['solve_attempts']} attempts",
+            "- the live check compares an answer with itself: it shows the answer is "
+            "well-formed, not that it is right",
+        ]
     out += [
         "", "## By failure type", "",
         "| type | items | one attempt | pass^k |", "|---|---|---|---|",

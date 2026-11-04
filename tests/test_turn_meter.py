@@ -280,6 +280,34 @@ async def test_quant_solve_with_retry_and_escalation_counts_every_call(turn_log)
     assert "verify" in record["phases_ms"]
 
 
+async def test_quant_solve_record_says_its_check_is_not_independent(turn_log):
+    agent = QuantAgent(model_config_path="config/model_config.dev.yaml")
+    with (
+        patch("litellm.acompletion", side_effect=known_usage_stream(50, 10)),
+        patch.object(
+            agent,
+            "_verify",
+            new_callable=AsyncMock,
+            return_value=VerifyMathResult(verified=True, computed="[2,3]"),
+        ),
+    ):
+        async for _ in agent.run(session(Mode.solve), "Solve x^2-5x+6=0", trace_id="trace-i"):
+            pass
+
+    (record,) = turn_log.read()
+    assert record["verified_independent"] is False
+
+
+async def test_quant_tutor_record_has_no_verification_field(turn_log):
+    agent = QuantAgent(model_config_path="config/model_config.dev.yaml")
+    with patch("litellm.acompletion", side_effect=known_usage_stream(50, 10)):
+        async for _ in agent.run(session(Mode.tutor), "Help", trace_id="trace-j"):
+            pass
+
+    (record,) = turn_log.read()
+    assert "verified_independent" not in record
+
+
 async def test_a_direct_call_without_trace_id_writes_nothing(turn_log):
     agent = QuantAgent(model_config_path="config/model_config.dev.yaml")
     with patch("litellm.acompletion", side_effect=known_usage_stream(10, 5)):

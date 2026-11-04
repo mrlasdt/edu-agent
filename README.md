@@ -6,7 +6,7 @@ What it covers today, by exam:
 
 | Exam | Tutoring chat | Also in the repo |
 |---|---|---|
-| GRE Quant | Tutor (Socratic hints) and Solve (worked solution, sympy-checked), grounded in a seeded corpus | Failure-seeded eval suite, question-generation pipeline, opt-in math tools |
+| GRE Quant | Tutor (Socratic hints) and Solve (worked solution, answer checked by sympy for well-formedness only), grounded in a seeded corpus | Failure-seeded eval suite, question-generation pipeline, opt-in math tools |
 | GRE Analytical Writing | Tutor and Solve (scored sample essay), needs an ingested corpus | 2 golden items |
 | IELTS Writing (Task 2) | Not in the chat. A separate timed mock at `/ielts-mock` with per-criterion mock scores and feedback | Grader eval suites (`ielts_writing`, `ielts_report`, `ielts_adversarial`) |
 | IELTS Reading | None | 41 golden items |
@@ -211,7 +211,7 @@ uv run python -m mcp_servers.admin_server
 - Tutoring chat for SAT Math, IELTS Reading and the other IELTS sections (only golden sets exist), and SAT Reading and Writing.
 - Login and learner identity: school and candidate corpus tiers cannot be written, and the IELTS mock is single-user.
 - Web UI beyond the chat shell: no sources panel, feedback, preferences, upload or conversation persistence (components exist but are not wired); math is typeset lightly, no LaTeX.
-- Most agent metadata is dropped on the way to the UI; the Solve-mode verifier checks the answer's well-formedness, not an independent solve.
+- Most agent metadata is dropped on the way to the UI; the Solve-mode verifier checks the answer's well-formedness, not an independent solve (the turn record says `verified_independent: false`, and the offline quant eval reports `wrong_but_verified`).
 - Orchestrator complexity classification (a stub) and output content safety.
 - Corpus beyond nine short GRE Quant notes; no AW corpus.
 - Question generation over HTTP, dedup against a bank, and difficulty calibration.
