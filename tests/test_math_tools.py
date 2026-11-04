@@ -40,6 +40,18 @@ def test_a_huge_integer_is_summarised_not_printed() -> None:
     assert len(result["value"]) < 20
 
 
+@pytest.mark.parametrize(
+    ("expression", "digits"), [("factorial(2000)", 5736), ("2^20000", 6021)]
+)
+def test_an_integer_past_the_python_digit_limit_is_still_summarised(
+    expression: str, digits: int
+) -> None:
+    result = run_tool("math_evaluate", {"expression": expression})
+    assert result["exact"] == f"an integer with {digits} digits"
+    assert "error" not in result
+    assert len(result["value"]) < 40
+
+
 def test_an_expression_with_a_variable_comes_back_simplified_and_says_so() -> None:
     result = run_tool("math_evaluate", {"expression": "(x+1)^2 - x^2"})
     assert result["value"] == "2*x + 1"
@@ -130,6 +142,14 @@ def test_a_numeric_comparison_gives_a_verdict_and_the_values() -> None:
     result = run_tool("math_compare", {"quantity_a": "3^2", "quantity_b": "2^3"})
     assert (result["verdict"], result["a"], result["b"]) == ("A", "9", "8")
     assert result["why"] == "A - B = 1"
+
+
+def test_comparing_an_integer_past_the_python_digit_limit_works() -> None:
+    result = run_tool("math_compare", {"quantity_a": "factorial(2000)", "quantity_b": "1"})
+    assert "error" not in result
+    assert result["verdict"] == "A"
+    assert len(result["a"]) < 40
+    assert len(result["why"]) < 80
 
 
 def test_equal_quantities_are_c() -> None:

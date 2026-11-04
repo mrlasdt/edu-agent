@@ -162,10 +162,10 @@ def _describe(value: sp.Expr) -> dict[str, str]:
     if value.free_symbols or not _is_plain_number(value):
         return {"value": _text(value)}  # symbolic or complex: nothing to round
     if value.is_Integer:
-        digits = len(str(abs(int(value))))
-        if digits > _MAX_DIGITS_SHOWN:
-            return {"value": _decimal(value), "exact": f"an integer with {digits} digits"}
-        return {"value": str(value)}
+        if abs(value) < 10**_MAX_DIGITS_SHOWN:
+            return {"value": str(value)}
+        digits = int(sp.floor(sp.log(abs(value), 10))) + 1
+        return {"value": _decimal(value), "exact": f"an integer with {digits} digits"}
     decimal = _decimal(value)
     exact = _text(value)
     return {"value": decimal} if decimal == exact else {"value": decimal, "exact": exact}
