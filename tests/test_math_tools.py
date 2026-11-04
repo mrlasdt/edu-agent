@@ -41,7 +41,13 @@ def test_a_huge_integer_is_summarised_not_printed() -> None:
 
 
 @pytest.mark.parametrize(
-    ("expression", "digits"), [("factorial(2000)", 5736), ("2^20000", 6021)]
+    ("expression", "digits"),
+    [
+        ("factorial(2000)", 5736),
+        ("2^20000", 6021),
+        ("10^1000 - 1", 1000),
+        ("10^1000 + 1", 1001),
+    ],
 )
 def test_an_integer_past_the_python_digit_limit_is_still_summarised(
     expression: str, digits: int

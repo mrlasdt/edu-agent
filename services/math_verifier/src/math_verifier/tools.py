@@ -157,6 +157,17 @@ def _is_plain_number(value: sp.Expr) -> bool:
     return bool(value.is_number and value.is_real)
 
 
+def _digit_count(value: sp.Integer) -> int:
+    """Exact digit count; `str(int)` is capped at 4300 digits and `sp.log` stalls near powers of ten."""
+    n = abs(int(value))
+    digits = max(1, int(n.bit_length() * 0.30102999566398114))
+    while n >= 10**digits:
+        digits += 1
+    while digits > 1 and n < 10 ** (digits - 1):
+        digits -= 1
+    return digits
+
+
 def _describe(value: sp.Expr) -> dict[str, str]:
     """`value` is what to quote; `exact` is added only when it says more than `value` does."""
     if value.free_symbols or not _is_plain_number(value):
@@ -164,8 +175,7 @@ def _describe(value: sp.Expr) -> dict[str, str]:
     if value.is_Integer:
         if abs(value) < 10**_MAX_DIGITS_SHOWN:
             return {"value": str(value)}
-        digits = int(sp.floor(sp.log(abs(value), 10))) + 1
-        return {"value": _decimal(value), "exact": f"an integer with {digits} digits"}
+        return {"value": _decimal(value), "exact": f"an integer with {_digit_count(value)} digits"}
     decimal = _decimal(value)
     exact = _text(value)
     return {"value": decimal} if decimal == exact else {"value": decimal, "exact": exact}
