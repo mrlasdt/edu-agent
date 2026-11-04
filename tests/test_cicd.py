@@ -40,6 +40,16 @@ def test_deploy_workflow_is_valid_yaml():
     assert isinstance(data, dict)
 
 
+def test_deploy_workflow_has_no_prod_canary_job():
+    """
+    The removed canary targeted a deployment no manifest defines and read a Prometheus metric
+    nothing exports, so it could never work. Do not bring it back without both.
+    """
+    data = yaml.safe_load((ROOT / ".github/workflows/deploy.yml").read_text())
+    assert not [name for name in data["jobs"] if "canary" in name]
+    assert "gateway-canary" not in (ROOT / ".github/workflows/deploy.yml").read_text()
+
+
 # ── 2. Path-gated eval in CI ──────────────────────────────────────────────────
 
 def test_ci_workflow_has_path_filter_for_eval():

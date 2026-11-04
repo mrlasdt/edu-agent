@@ -217,7 +217,7 @@ The math verifier (port 8090) is a cluster-internal service, not a client-facing
 
 ## Deployment
 
-`infra/k8s/` holds Deployment and Service manifests for gateway, agent, corpus, ingestion and math-verifier; unit tests check their structure. `.github/workflows/deploy.yml` builds images to GHCR on merge to main and deploys to staging only when the repo variable `DEPLOY_ENABLED` is `true` and the `KUBE_CONFIG_STAGING` secret is set.
+`infra/k8s/` holds Deployment and Service manifests for gateway, agent, corpus, ingestion and math-verifier; unit tests check their structure. `.github/workflows/deploy.yml` builds images to GHCR on merge to main and deploys to staging only when the repo variable `DEPLOY_ENABLED` is `true` and the `KUBE_CONFIG_STAGING` secret is set. There is no production deploy job, canary or automatic rollback: the workflow stops at staging, and there is no metrics backend to judge a canary by.
 
 ## Adding an exam or section
 
