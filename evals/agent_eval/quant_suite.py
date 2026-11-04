@@ -6,7 +6,7 @@ Every item in `evals/golden/gre_quant.jsonl` comes from a failure EduAgent reall
 so ("none yet") and works as a capability probe. Items have a `kind` that decides how they run:
 
   solve            the real QuantAgent in solve mode; pass = the final answer is right (sympy,
-                   never the agent's own claim) AND the product's verifier accepted it
+                   never the agent's own claim) AND the product's well-formedness check accepted it
   tutor            one real tutor reply; pass = no answer leak, no LaTeX, citations written as
                    [N] (never "your notes"), and a concrete next step (see `graders`)
   tutor_multiturn  a scripted student talks to the real tutor for several turns; pass = every

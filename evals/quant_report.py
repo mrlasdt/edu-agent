@@ -22,7 +22,7 @@ from evals.loader import load_golden_set
 
 DEFAULT_BASELINE = Path("evals/baselines/quant.json")
 GROUP_LABELS = {
-    "solve": "solve (final answer right and verified)",
+    "solve": "solve (final answer right and well-formed)",
     "tutor": "tutor, one reply",
     "tutor_multiturn": "tutor, 4-turn conversation",
 }
