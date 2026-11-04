@@ -27,6 +27,6 @@ def is_self_harm_reason(reason: str) -> bool:
     """True when a moderation reason names a self-harm category."""
     if not reason.startswith(_FLAGGED_PREFIX):
         return False
-    named = reason[len(_FLAGGED_PREFIX):].split(",")
+    named = reason[len(_FLAGGED_PREFIX) :].split(",")
     categories = {c.strip().lower().replace("_", "-") for c in named}
     return not categories.isdisjoint(SELF_HARM_CATEGORIES)
