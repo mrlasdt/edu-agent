@@ -40,7 +40,9 @@ jobs:
     name: Deploy to staging
     runs-on: ubuntu-latest
     needs: build-and-push
-    if: github.ref == 'refs/heads/main'
+    # Off until a cluster exists: set the repo variable DEPLOY_ENABLED=true (and the
+    # KUBE_CONFIG_STAGING secret) to turn it on. Without it every push to main failed here.
+    if: github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true'
     environment: staging
     steps:
       - uses: actions/checkout@v4
