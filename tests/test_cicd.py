@@ -58,6 +58,17 @@ def test_ci_workflow_has_path_filter_for_eval():
     assert "prompts" in content or "paths" in content
 
 
+def test_ci_workflow_audits_dependencies_and_scans_for_secrets():
+    jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
+    steps = {
+        name: " ".join(str(step.get("run", "")) for step in job["steps"])
+        for name, job in jobs.items()
+    }
+    assert "pip-audit" in steps["audit-python"]
+    assert "npm audit --audit-level=high" in steps["audit-web"]
+    assert "gitleaks detect" in steps["secret-scan"]
+
+
 # ── 3. k8s manifests ─────────────────────────────────────────────────────────
 
 def test_k8s_directory_exists():
