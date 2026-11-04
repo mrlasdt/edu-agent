@@ -8,6 +8,7 @@ Read this once. It gives you the map of the system, the five-minute demo that ma
 - **Follow symbols, not line numbers.** The tour names files and symbols (`TurnMeter`, `QuantAgent._solve_turn`). Search for the name; the line will have moved.
 - **Trust the result files, not the prose.** Numbers in a chapter come from a file under [results/](results/) that a named command wrote. Rerun the command to see whether it still says the same thing.
 - **Do the exercise.** Each is a few lines of change with a result you can predict. Predict first.
+- **Read the Landscape table before the code.** Each concept chapter opens with a table of all the ways to apply its practice, with a column saying whether EduAgent uses each one and why not. The code tour then shows the one that was chosen. The follow-on table of open-source options says which libraries were adopted, which were left out, and why. The full chapter template is in the [README](README.md#chapter-template).
 
 ## Map of the services
 
