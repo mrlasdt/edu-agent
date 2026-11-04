@@ -10,7 +10,7 @@ Tools:
   - list_ingestion_jobs(limit) → list of jobs
   - get_job_status(job_id) → job state
 
-Run with:
+Run with (stdio by default; MCP_TRANSPORT=sse serves SSE on 127.0.0.1:8092):
     python -m mcp_servers.admin_server
 """
 from __future__ import annotations
@@ -21,12 +21,13 @@ from typing import Any, cast
 import httpx
 from mcp.server.fastmcp import FastMCP
 
+from mcp_servers.launch import bind_host, run
 from shared.src.shared.config import ADMIN_KEY_HEADER, get_settings
 
 mcp = FastMCP(
     "gre-tutor-admin",
     instructions="GRE corpus ingestion management",
-    host="0.0.0.0",
+    host=bind_host(),
     port=8092,
 )
 
@@ -130,4 +131,4 @@ async def _get_job(job_id: str) -> dict[str, Any] | None:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="sse")
+    run(mcp)

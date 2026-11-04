@@ -28,7 +28,7 @@ mcp = FastMCP(
         "math_compare tools the Quant agent calls: allow-listed math notation only, "
         "each check in a child process killed after a 5s timeout"
     ),
-    host="0.0.0.0",
+    host=os.getenv("MATH_VERIFIER_HOST", "127.0.0.1"),
     port=int(os.getenv("MATH_VERIFIER_PORT", "8090")),
 )
 
