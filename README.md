@@ -13,7 +13,7 @@ cp .env.example .env   # then fill in OPENAI_API_KEY
 docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 779 Python tests (mocked LLM and Qdrant) plus 111 frontend unit tests, and `npm run test:e2e` runs browser smoke tests with `/chat` and the `/ielts` API mocked.
+That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 780 Python tests (mocked LLM and Qdrant) plus 111 frontend unit tests, and `npm run test:e2e` runs browser smoke tests with `/chat` and the `/ielts` API mocked.
 
 A recorded live check (screenshot and streamed transcript) is in [docs/mvp-demo](docs/mvp-demo/README.md).
 
@@ -178,7 +178,7 @@ Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`). To use anothe
 ### 4. Run tests
 
 ```bash
-# Python tests (779)
+# Python tests (780)
 uv run pytest tests/ -q
 
 # Frontend tests (111)
@@ -313,7 +313,7 @@ uv run python -m evals.quant_report                    # the checked-in baseline
 uv run python -m evals.quant_report NEW.json --against evals/baselines/quant.json
 ```
 
-`--samples k` asks every item k times and reports one-attempt pass rate, pass@k (any attempt passed) and pass^k (every attempt passed), each with n and a 95% interval, plus per-turn cost and latency read from the product's own turn meter. `--baseline` calls a metric a regression only when it falls below the interval the baseline carries. A manual `eval-live` GitHub workflow (`workflow_dispatch`, needs a repository secret) runs the live suite; CI runs it offline only. Chapter: `docs/walkthrough/02-evals-from-real-failures.md`.
+`--samples k` asks every item k times and reports one-attempt pass rate, pass@k (any attempt passed) and pass^k (every attempt passed), each with n and a 95% interval, plus per-turn cost and latency read from the product's own turn meter. `--baseline` calls a sampled metric a regression only when it falls below the interval the baseline carries; the model-free security rate has no noise band, so any hostile string accepted is a regression (exit 1). A manual `eval-live` GitHub workflow (`workflow_dispatch`, needs a repository secret) runs the live suite; CI runs it offline only. Chapter: `docs/walkthrough/02-evals-from-real-failures.md`.
 
 The `generation` suite is described under "Question-generation pipeline" below. What it does **not** measure: AW agent output (the AW agent needs the corpus service; AW is judge calibration only), retrieval quality, or anything a small sample is too small to support statistically (the `quant` suite reports its n and intervals for that reason). Offline numbers are plumbing checks, not quality. The free tier is heavily rate-limited: in the one smoke run (2 Quant items, free models, 0 USD) most units were dropped as unavailable and are counted in `units_dropped_model_unavailable`, so treat any free-model number as noisy and check that count. Real calls are made non-streaming and replayed to the agent as a stream, so time-to-first-token is not measured.
 
