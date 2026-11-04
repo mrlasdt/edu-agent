@@ -28,6 +28,10 @@ from services.gateway.src.gateway.guardrails.stream import (
     ReplyGuard,
     redact_input,
 )
+from services.gateway.src.gateway.guardrails.supportive import (
+    SUPPORTIVE_MESSAGE,
+    is_self_harm_reason,
+)
 from services.gateway.src.gateway.ielts_api import router as ielts_router
 from services.gateway.src.gateway.orchestrator import (
     ClarificationTurn,
@@ -162,6 +166,10 @@ async def chat(req: ChatRequest) -> StreamingResponse:
         except ModerationUnavailableError:
             meter.annotate(outcome="moderation_unavailable")
             yield _MODERATION_UNAVAILABLE.encode()
+            return
+        if not safe and is_self_harm_reason(reason):
+            meter.annotate(outcome="supportive_reply")
+            yield SUPPORTIVE_MESSAGE.encode()
             return
         if not safe:
             meter.annotate(outcome="content_blocked")

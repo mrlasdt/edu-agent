@@ -103,6 +103,9 @@ class Settings(BaseSettings):
     # answers "safety check unavailable, try again" and stops the turn, "open" lets the turn
     # go on and records `moderation_failed_open`. Empty = closed everywhere except ENV=dev.
     moderation_on_error: Literal["", "closed", "open"] = ""
+    # Dev-only: a message containing this text is treated as a self-harm moderation hit, so the
+    # supportive reply can be tried without a paid moderation key. Ignored unless ENV=dev.
+    safety_test_trigger: str = ""
     model_config_path: str = "config/model_config.dev.yaml"
 
 
