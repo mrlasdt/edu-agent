@@ -79,7 +79,7 @@ export function App() {
   return (
     <main className="app">
       <header className="app-header">
-        <h1>GRE Tutor: {SUBJECT_LABEL[subject]}</h1>
+        <h1>Edu Agent: GRE {SUBJECT_LABEL[subject]}</h1>
         <ModeSwitch
           mode={mode}
           onToggle={() => setMode((m) => (m === "tutor" ? "solve" : "tutor"))}

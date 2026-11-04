@@ -27,7 +27,7 @@ _Avoid_: Project mode, plan mode, expert mode
 ## Roles
 
 **Candidate**:
-The end user of the agent — a GRE test-taker preparing for the General Test. Adult, English-proficient by definition (GRE is administered in English). May be a native English speaker or not. v1 makes no distinction between sub-populations.
+The end user of the agent — a test-taker preparing for a supported exam (GRE General Test in the chat; IELTS Writing in the mock). Adult, English-proficient by definition (the supported exams are administered in English). May be a native English speaker or not. v1 makes no distinction between sub-populations.
 _Avoid_: Student, user, learner, test-taker
 
 **Teacher**:
@@ -109,7 +109,7 @@ A plugin registry inside the Agent service. Agents register by `(test_type, sect
 _Avoid_: Agent factory, agent map, agent pool
 
 **Test type**:
-The standardised test a Candidate is preparing for. A first-class field on session state and corpus document metadata from v1. v1 supports `gre` only; v2 adds further values. Determines which agents, prompts, corpus documents, and golden set items apply to a session.
+The standardised test a Candidate is preparing for. A first-class field on session state and corpus document metadata from v1. The chat serves `gre` only; `ielts` exists for the Writing mock and corpus metadata, and `sat` for the eval set. Determines which agents, prompts, corpus documents, and golden set items apply to a session.
 _Avoid_: Exam type, test, product type
 
 **Clarification turn**:
@@ -171,7 +171,7 @@ _Avoid_: Test set, answer key
 ## Eval
 
 **Golden set**:
-The closed, hand-curated set of GRE items used as the offline eval baseline: ~150 Quant problems (proportional across question types i–iv) and 24 AW prompts (12 Issue + 12 Argument), all sourced from publicly released ETS materials. The single source of truth for "did this change improve or regress quality?"
+The closed, hand-curated set of GRE items (alongside the separate IELTS and SAT sets) used as the offline eval baseline: ~150 Quant problems (proportional across question types i–iv) and 24 AW prompts (12 Issue + 12 Argument), all sourced from publicly released ETS materials. The single source of truth for "did this change improve or regress quality?"
 _Avoid_: Eval set, test set, fixtures
 
 **Anchor essays**:

@@ -1,4 +1,4 @@
-## GRE Tutor v1 - Implementation Progress
+## Edu Agent v1 - Implementation Progress
 
 Status: working end to end locally (MVP). `docker compose -f infra/docker-compose.yml up -d --build`
 starts the web app, backend services, Qdrant and the embedder and seeds a small GRE Quant

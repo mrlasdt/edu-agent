@@ -186,7 +186,7 @@ export function IeltsMock({ pollMs = POLL_MS, autosaveMs }: IeltsMockProps) {
       <header className="app-header">
         <h1>IELTS Writing mock</h1>
         <a className="ielts-home" href="/">
-          GRE tutor
+          Tutor chat
         </a>
       </header>
       {notice && (

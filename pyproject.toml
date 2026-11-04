@@ -1,7 +1,7 @@
 [project]
 name = "edu-agent"
 version = "0.1.0"
-description = "GRE test-prep tutor — agentic AI engineering reference implementation"
+description = "Multi-exam tutor (GRE Quant and AW chat, IELTS Writing mock) - agentic AI engineering reference implementation"
 requires-python = ">=3.12"
 dependencies = [
     # LLM
