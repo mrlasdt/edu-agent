@@ -15,10 +15,14 @@ build_llm_metadata(trace_id, prompt_version, ...) — call per LLM invocation.
 """
 from __future__ import annotations
 
+import logging
 import os
+from functools import lru_cache
 from typing import Any
 
 from shared.src.shared.config import get_settings
+
+_log = logging.getLogger(__name__)
 
 
 def _is_set(key: str) -> bool:
@@ -48,6 +52,49 @@ def setup_observability() -> None:
         litellm.success_callback.append("langfuse")
     if "langfuse" not in litellm.failure_callback:
         litellm.failure_callback.append("langfuse")
+
+
+def langfuse_enabled() -> bool:
+    """True when real Langfuse keys are configured, the same test `setup_observability` uses."""
+    settings = get_settings()
+    return _is_set(settings.langfuse_public_key) and _is_set(settings.langfuse_secret_key)
+
+
+@lru_cache(maxsize=1)
+def _langfuse_client() -> Any:
+    from langfuse import Langfuse
+
+    settings = get_settings()
+    return Langfuse(
+        public_key=settings.langfuse_public_key,
+        secret_key=settings.langfuse_secret_key,
+        host=settings.langfuse_host,
+    )
+
+
+def post_user_feedback(trace_id: str, vote: str, comment: str | None = None) -> bool:
+    """
+    Attach the learner's thumbs to the Langfuse trace as a `user-feedback` score (1 up, 0 down).
+    The trace id is the gateway's: `build_llm_metadata` passes it to Langfuse as the trace id.
+    Blocking (the SDK flushes over HTTP), so callers run it off the event loop. A no-op that
+    returns False without Langfuse keys; any failure is logged, never raised.
+    """
+    if not langfuse_enabled():
+        return False
+    try:
+        client = _langfuse_client()
+        client.score(
+            trace_id=trace_id,
+            name="user-feedback",
+            value=1 if vote == "up" else 0,
+            data_type="NUMERIC",
+            comment=comment or None,
+        )
+        client.flush()
+        return True
+    except Exception:
+        _log.warning("langfuse user-feedback score not posted", exc_info=True)
+        return False
 
 
 def build_llm_metadata(

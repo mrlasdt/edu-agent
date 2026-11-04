@@ -19,6 +19,10 @@ export interface Message {
   // Whether the math verifier accepted the final answer; absent when it did not run (tutor mode).
   mathVerified?: boolean;
   citation_stripped?: boolean;
+  // The gateway's id for the turn that produced this reply; feedback is filed against it.
+  traceId?: string;
+  vote?: "up" | "down";
+  feedbackError?: string;
 }
 
 export interface Session {

@@ -178,6 +178,12 @@ describe("MessageBubble — feedback", () => {
     expect(screen.queryByRole("button", { name: /thumbs up/i })).not.toBeInTheDocument();
   });
 
+  it("marks the chosen vote as pressed", () => {
+    render(<MessageBubble message={{ ...baseMsg, vote: "down" }} onFeedback={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /thumbs down/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /thumbs up/i })).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("calls onFeedback with 'up' on thumbs up click", async () => {
     const onFeedback = vi.fn();
     render(<MessageBubble message={baseMsg} onFeedback={onFeedback} />);

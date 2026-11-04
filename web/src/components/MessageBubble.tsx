@@ -85,6 +85,7 @@ export function MessageBubble({ message, onCitationClick, onFeedback, onRegenera
         <div className="feedback-buttons" role="group" aria-label="feedback">
           <button
             aria-label="Thumbs up"
+            aria-pressed={message.vote === "up"}
             className="feedback-btn feedback-btn--up"
             onClick={() => onFeedback("up")}
           >
@@ -92,12 +93,18 @@ export function MessageBubble({ message, onCitationClick, onFeedback, onRegenera
           </button>
           <button
             aria-label="Thumbs down"
+            aria-pressed={message.vote === "down"}
             className="feedback-btn feedback-btn--down"
             onClick={() => onFeedback("down")}
           >
             👎
           </button>
         </div>
+      )}
+      {isAgent && message.feedbackError && (
+        <p className="feedback-error" role="status">
+          {message.feedbackError}
+        </p>
       )}
     </div>
   );

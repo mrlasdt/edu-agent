@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from services.agent.src.agent.bootstrap import build_registry
+from services.gateway.src.gateway.feedback_api import router as feedback_router
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
 from services.gateway.src.gateway.guardrails.input import (
     ModerationUnavailableError,
@@ -39,15 +40,17 @@ from services.gateway.src.gateway.orchestrator import (
     RouteResult,
 )
 from shared.src.shared.config import get_settings
+from shared.src.shared.feedback import capture_turn, default_capture_log
 from shared.src.shared.models import Message, MessageRole, Mode, Session
 from shared.src.shared.observability import setup_observability
-from shared.src.shared.trailer import TrailerSplitter, encode
+from shared.src.shared.trailer import MARK, TrailerSplitter, encode
 from shared.src.shared.turn_meter import TurnMeter
 
 _log = logging.getLogger(__name__)
 
 app = FastAPI(title="Gateway Service")
 app.include_router(ielts_router)
+app.include_router(feedback_router)
 
 setup_observability()
 
@@ -67,6 +70,9 @@ async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResp
 _orchestrator = Orchestrator(registry=build_registry())
 _rate_limiter = RateLimiter()
 
+
+# Response header carrying the turn's trace id, so the browser can attach feedback to it.
+TRACE_ID_HEADER = "X-Trace-Id"
 
 _DEFAULT_CLARIFICATION = "Could you share the full question so I can help?"
 _MODERATION_UNAVAILABLE = "The safety check is unavailable right now. Please try again in a moment."
@@ -240,16 +246,23 @@ async def chat(req: ChatRequest) -> StreamingResponse:
             if tail:
                 yield tail.encode("utf-8")
 
+    # Opt-in (TURN_CAPTURE_TEXT=1): keep the question (as the model saw it, PII redacted) and
+    # the reply in a local file keyed by trace id, so a thumbs-down can become a draft eval item.
+    capture_log = default_capture_log()
+
     async def response_stream() -> AsyncGenerator[bytes, None]:
         started = time.perf_counter()
         first_byte_seen = False
         error: str | None = None
         completed = False
+        sent: list[bytes] = []
         try:
             async for piece in guarded_stream():
                 if not first_byte_seen:
                     first_byte_seen = True
                     meter.annotate(first_byte_ms=(time.perf_counter() - started) * 1000)
+                if capture_log is not None:
+                    sent.append(piece)
                 yield piece
             completed = True
         except Exception as exc:
@@ -263,5 +276,12 @@ async def chat(req: ChatRequest) -> StreamingResponse:
                 meter.annotate(outcome="client_cancelled")
             meter.annotate(flags=flags)
             meter.finish(error=error)
+            if capture_log is not None:
+                reply = b"".join(sent).decode("utf-8", errors="replace").partition(MARK)[0]
+                capture_turn(capture_log, trace_id, message, reply)
 
-    return StreamingResponse(response_stream(), media_type="text/plain; charset=utf-8")
+    return StreamingResponse(
+        response_stream(),
+        media_type="text/plain; charset=utf-8",
+        headers={TRACE_ID_HEADER: trace_id},
+    )

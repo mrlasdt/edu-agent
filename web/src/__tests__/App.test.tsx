@@ -4,8 +4,9 @@ import userEvent from "@testing-library/user-event";
 import { App } from "../App";
 import { MAX_HISTORY_ITEMS, MAX_HISTORY_ITEM_CHARS, MAX_MESSAGE_CHARS } from "../chat";
 
-function stubGateway(reply = "ok") {
-  const fetchMock = vi.fn().mockImplementation(async () => {
+function stubGateway(reply = "ok", traceId?: string, feedbackStatus = 200) {
+  const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+    if (url === "/feedback") return { ok: feedbackStatus === 200, status: feedbackStatus };
     const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -13,7 +14,8 @@ function stubGateway(reply = "ok") {
         controller.close();
       },
     });
-    return { ok: true, status: 200, body };
+    const headers = new Headers(traceId ? { "X-Trace-Id": traceId } : {});
+    return { ok: true, status: 200, body, headers };
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
@@ -213,5 +215,46 @@ describe("App regenerate", () => {
     expect(screen.queryByText("Half an ans")).not.toBeInTheDocument();
     expect(lastRequest(fetchMock)).toMatchObject({ message: "Help me", history: [] });
     expect(stalled).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("App feedback", () => {
+  const feedbackCalls = (fetchMock: ReturnType<typeof stubGateway>) =>
+    fetchMock.mock.calls.filter(([url]) => url === "/feedback");
+
+  it("files a thumbs-down against the trace id the gateway sent", async () => {
+    const fetchMock = stubGateway("ok", "trace-abc");
+    const user = await openQuant();
+    await send(user, "question");
+    await user.click(await screen.findByRole("button", { name: "Thumbs down" }));
+    expect(feedbackCalls(fetchMock)).toHaveLength(1);
+    expect(JSON.parse(feedbackCalls(fetchMock)[0][1].body as string)).toEqual({
+      trace_id: "trace-abc",
+      vote: "down",
+    });
+    expect(screen.getByRole("button", { name: "Thumbs down" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+  });
+
+  it("offers no thumbs when the gateway sent no trace id", async () => {
+    stubGateway("ok");
+    const user = await openQuant();
+    await send(user, "question");
+    await screen.findByText("ok");
+    expect(screen.queryByRole("button", { name: "Thumbs down" })).not.toBeInTheDocument();
+  });
+
+  it("takes the vote back and says so when feedback could not be sent", async () => {
+    stubGateway("ok", "trace-abc", 404);
+    const user = await openQuant();
+    await send(user, "question");
+    await user.click(await screen.findByRole("button", { name: "Thumbs up" }));
+    expect(await screen.findByText(/could not send feedback/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Thumbs up" })).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    );
   });
 });

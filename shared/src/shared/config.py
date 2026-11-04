@@ -94,6 +94,14 @@ class Settings(BaseSettings):
     # Per-turn measurement of the live chat path (shared.turn_meter): one JSON line per service
     # per turn, read by `python -m evals.turn_report`. Recorded, never capped. Empty = off.
     turn_log_path: str = ".turn-log/turns.jsonl"
+    # Thumbs up/down from the web app (POST /feedback), one JSON line each, keyed by trace id.
+    # No message text. Empty = /feedback is switched off.
+    feedback_log_path: str = ".turn-log/feedback.jsonl"
+    # Opt-in local capture of the learner's question and the reply, keyed by trace id, so a
+    # thumbs-down can become a complete draft eval item (evals.feedback_to_item). Off by default:
+    # the turn log never holds message text. The file is local and gitignored, never sent anywhere.
+    turn_capture_text: bool = False
+    turn_capture_path: str = ".turn-log/capture.jsonl"
     # Math tools for the Quant agent (math_evaluate, math_solve, math_compare): the model
     # computes with sympy instead of in its head. Off by default: a tool turn is not streamed and
     # costs more tokens (README, "Math tools"). true = the tool loop.
