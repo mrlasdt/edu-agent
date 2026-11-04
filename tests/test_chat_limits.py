@@ -110,6 +110,28 @@ def test_requests_exactly_at_the_caps_are_accepted(pipeline):
     assert len(sent[0]["history"]) == MAX_HISTORY_ITEMS
 
 
+def test_redaction_that_lengthens_text_past_a_cap_is_not_rejected(pipeline):
+    sent, safety = pipeline
+    emails = "a@b.co " * 571
+    assert len(emails) < MAX_MESSAGE_CHARS
+    body = {
+        **BODY,
+        "message": emails,
+        "history": [{"role": "candidate", "content": emails}],
+    }
+
+    resp = client.post("/chat", json=body)
+
+    assert resp.status_code == 200
+    assert resp.text.endswith("ok")
+    assert len(sent) == 1
+    for redacted in (sent[0]["message"], sent[0]["history"][0]["content"]):
+        assert "a@b.co" not in redacted
+        assert redacted.count("[REDACTED]") == 571
+        assert len(redacted) > MAX_HISTORY_ITEM_CHARS
+    assert "a@b.co" not in safety.call_args.args[0]
+
+
 # ── 2. Bounded rate limiter ───────────────────────────────────────────────────
 
 

@@ -130,14 +130,14 @@ async def chat(req: ChatRequest) -> StreamingResponse:
     """
     trace_id = str(uuid.uuid4())
     message, input_pii = redact_input(req.message, trace_id)
-    history = [HistoryItem(role=h.role, content=redact_input(h.content, trace_id)[0])
+    history = [Message(role=h.role, content=redact_input(h.content, trace_id)[0])
                for h in req.history]
     session = Session(
         candidate_id=req.candidate_id,
         test_type=req.test_type,
         section=req.section,
         mode=req.mode,
-        history=[Message(role=h.role, content=h.content) for h in history],
+        history=history,
         personal_style_enabled=req.personal_style_enabled,
     )
 
