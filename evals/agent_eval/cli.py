@@ -451,8 +451,8 @@ def main(argv: list[str] | None = None) -> int:
                             "ielts_report", "ielts_adversarial"],
                    help="quant = failure-seeded suite (rule graders, --samples attempts per "
                         "item); quant_judge = LLM-judge calibration on the solve items")
-    p.add_argument("--math-tools", choices=["on", "off"], default="on",
-                   help="the Quant agent with (on, the product default) or without (off, the "
+    p.add_argument("--math-tools", choices=["on", "off"], default="off",
+                   help="the Quant agent with (on) or without (off, the product default and the "
                         "original single-call path) the math_evaluate/math_solve/math_compare "
                         "tools; run both on one model to measure what the tools change")
     p.add_argument("--samples", type=int, default=ielts_writing.DEFAULT_SAMPLES,

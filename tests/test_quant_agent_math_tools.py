@@ -258,7 +258,12 @@ async def test_with_the_flag_off_the_agent_streams_one_call_and_offers_no_tools(
 # ── 6. defaults and files ────────────────────────────────────────────────────
 
 
-def test_the_product_default_is_tools_on() -> None:
+def test_the_product_default_is_tools_off_and_one_switch_turns_them_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # off: no measured accuracy gain for ~3x the cost per solve turn, and no streaming
+    assert Settings(_env_file=None).math_tools_enabled is False  # type: ignore[call-arg]
+    monkeypatch.setenv("MATH_TOOLS_ENABLED", "true")
     assert Settings(_env_file=None).math_tools_enabled is True  # type: ignore[call-arg]
 
 

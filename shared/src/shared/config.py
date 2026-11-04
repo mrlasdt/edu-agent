@@ -85,8 +85,10 @@ class Settings(BaseSettings):
     # per turn, read by `python -m evals.turn_report`. Recorded, never capped. Empty = off.
     turn_log_path: str = ".turn-log/turns.jsonl"
     # Math tools for the Quant agent (math_evaluate, math_solve, math_compare): the model
-    # computes with sympy instead of in its head. false = the original single-call path.
-    math_tools_enabled: bool = True
+    # computes with sympy instead of in its head. Off by default: on the model measured it gave
+    # no accuracy gain for about 3x the cost per solve turn and it turns streaming off for the
+    # turn (docs/walkthrough/04-tool-design-compute-dont-guess.md). true = the tool loop.
+    math_tools_enabled: bool = False
     env: str = "dev"
     model_config_path: str = "config/model_config.dev.yaml"
 
