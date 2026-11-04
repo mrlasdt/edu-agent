@@ -85,6 +85,9 @@ class TurnCollector(TurnLog):
             "input_tokens": sum(r.get("input_tokens", 0) for r in recs),
             "output_tokens": sum(r.get("output_tokens", 0) for r in recs),
             "llm_calls": sum(r.get("llm_calls", 0) for r in recs),
+            "tool_calls": sum(len(r.get("tool_calls", [])) for r in recs),
+            "tool_errors": sum(r.get("tool_errors", 0) for r in recs),
+            "tool_budget_exhausted": any(r.get("tool_budget_exhausted") for r in recs),
             "latency_ms": sum(r.get("total_ms", 0.0) for r in recs),
             "estimated": any(r.get("usage") in ("estimate", "mixed") for r in recs),
         }
@@ -123,14 +126,21 @@ async def _converse(
     for n, text in enumerate(messages):
         trace_id = f"{trace_prefix}-t{n}"
         parts: list[str] = []
+        tool_lines: list[dict[str, str]] = []
         with tagged("agent"):
             async for out in agent.run(session, text, trace_id=trace_id):
                 if isinstance(out, str):
                     parts.append(out)
                 else:
                     verifier_fail = out.get("verifier_fail", verifier_fail)
+                    tool_lines += [
+                        {"role": "tool_call", "content": f"{c['name']}({c['arguments']}) -> "
+                         f"{c['result']}"}
+                        for c in out.get("tool_trace", [])
+                    ]
         reply = "".join(parts)
-        transcript += [{"role": "student", "content": text}, {"role": "tutor", "content": reply}]
+        transcript += [{"role": "student", "content": text}, *tool_lines,
+                       {"role": "tutor", "content": reply}]
         usage.append(collector.turn(trace_id))
         session = session.append_message(MessageRole.candidate, text).append_message(
             MessageRole.agent, reply
@@ -225,6 +235,13 @@ def _cost_block(rows: list[dict[str, Any]]) -> dict[str, Any]:
             ), 6,
         ),
         "llm_calls_per_turn_mean": round(statistics.fmean(t["llm_calls"] for t in turns), 2),
+        "tool_calls_per_turn_mean": round(statistics.fmean(t["tool_calls"] for t in turns), 2),
+        "turns_with_tool_calls": sum(1 for t in turns if t["tool_calls"]),
+        "tool_error_rate": (
+            round(sum(t["tool_errors"] for t in turns) / sum(t["tool_calls"] for t in turns), 4)
+            if sum(t["tool_calls"] for t in turns) else None
+        ),
+        "turns_tool_budget_exhausted": sum(1 for t in turns if t["tool_budget_exhausted"]),
         "input_tokens_per_turn_mean": round(statistics.fmean(t["input_tokens"] for t in turns), 1),
         "output_tokens_per_turn_mean": round(
             statistics.fmean(t["output_tokens"] for t in turns), 1

@@ -44,7 +44,7 @@ def test_every_item_names_the_failure_it_came_from_and_has_what_its_kind_needs()
         assert item["tag"] and len(item["failure_source"]) > 10, item["id"]
         assert needs[item["kind"]] <= set(item), item["id"]
     assert {k: sum(1 for i in ITEMS if i["kind"] == k) for k in KINDS} == {
-        "solve": 10, "tutor": 12, "tutor_multiturn": 4, "security": 8,
+        "solve": 16, "tutor": 12, "tutor_multiturn": 4, "security": 8,
     }
     assert all(len(i["turns"]) >= 4 for i in ITEMS if i["kind"] == "tutor_multiturn")
 

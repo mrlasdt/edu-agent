@@ -389,7 +389,7 @@ async def test_failed_run_exits_nonzero_and_emits_no_regression_metrics(
         max_items=5, max_items_given=False, samples=1, model=None, max_tokens=800,
         ledger=str(tmp_path / "l.json"), ceiling=20.0, out_dir=str(tmp_path),
         baseline=None, write_baseline=None, min_coverage=0.8,
-        cache_dir=str(tmp_path / "c"), no_cache=True,
+        cache_dir=str(tmp_path / "c"), no_cache=True, math_tools="on",
     )
     report, code = await cli.run(args)
     assert code == 2

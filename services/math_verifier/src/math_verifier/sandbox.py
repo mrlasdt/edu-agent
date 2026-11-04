@@ -3,12 +3,15 @@ from __future__ import annotations
 import asyncio
 import multiprocessing
 import re
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from multiprocessing.connection import Connection
+from typing import Any
 
 import sympy as sp
 
+from services.math_verifier.src.math_verifier import tools
 from services.math_verifier.src.math_verifier.safe_parser import (
     MAX_EXPRESSION_LENGTH,
     NOT_MATH,
@@ -156,45 +159,88 @@ def _limit_resources() -> None:
         pass
 
 
-def _child_main(conn: Connection, expression: str, expected: str) -> None:
-    """Entry point of the throwaway child: verify, send the result, exit."""
-    _limit_resources()
+def _verify_task(expression: str, expected: str) -> tuple[bool, str, str | None]:
     result = _sync_verify(expression, expected)
-    conn.send((result.verified, result.computed, result.error))
+    return result.verified, result.computed, result.error
+
+
+# What a child process may be asked to do, by name. Names (not functions) cross the process
+# boundary, so the parent never sends code, only a key into this table.
+_TASKS: dict[str, Callable[..., Any]] = {"verify": _verify_task, "tool": tools.run_tool}
+
+
+def _child_main(conn: Connection, task: str, args: tuple[Any, ...]) -> None:
+    """Entry point of the throwaway child: run one task, send its result, exit."""
+    _limit_resources()
+    conn.send(_TASKS[task](*args))
     conn.close()
 
 
-def verify_expression_sync(
-    expression: str, expected: str, timeout: float = DEFAULT_TIMEOUT
-) -> VerificationResult:
+class IsolatedFailureError(Exception):
+    """The child did not return a result: it ran out of time or died."""
+
+
+def run_isolated(task: str, args: tuple[Any, ...], timeout: float = DEFAULT_TIMEOUT) -> Any:
     """
-    Check the expression in a throwaway child process that is killed on timeout.
-    Never raises - returns a VerificationResult with error set on failure.
+    Run `_TASKS[task](*args)` in a throwaway child process that is killed on timeout.
+    Raises `IsolatedFailureError("timeout")` or `("verifier worker failed")`.
 
     A thread cannot be stopped from outside, so a runaway computation would keep burning CPU
     after its timeout. A child process can be killed, and it shares no state with the server.
     """
-    if len(expression) > MAX_EXPRESSION_LENGTH or len(expected) > MAX_EXPRESSION_LENGTH:
-        return _fail(f"parse error: {NOT_MATH}")
     receive, send = _CTX.Pipe(duplex=False)
-    child = _CTX.Process(target=_child_main, args=(send, expression, expected), daemon=True)
+    child = _CTX.Process(target=_child_main, args=(send, task, args), daemon=True)
     try:
         try:
             child.start()
         finally:
             send.close()
         if not receive.poll(timeout):
-            return _fail("timeout")
-        verified, computed, error = receive.recv()
-        return VerificationResult(verified=verified, computed=computed, error=error)
-    except (EOFError, OSError):
-        return _fail("verifier worker failed")
+            raise IsolatedFailureError("timeout")
+        return receive.recv()
+    except (EOFError, OSError) as exc:
+        raise IsolatedFailureError("verifier worker failed") from exc
     finally:
         if child.pid is not None:  # the child started
             if child.is_alive():
                 child.kill()
             child.join()
         receive.close()
+
+
+def verify_expression_sync(
+    expression: str, expected: str, timeout: float = DEFAULT_TIMEOUT
+) -> VerificationResult:
+    """Check the expression in a throwaway child process. Never raises."""
+    if len(expression) > MAX_EXPRESSION_LENGTH or len(expected) > MAX_EXPRESSION_LENGTH:
+        return _fail(f"parse error: {NOT_MATH}")
+    try:
+        verified, computed, error = run_isolated("verify", (expression, expected), timeout)
+    except IsolatedFailureError as exc:
+        return _fail(str(exc))
+    return VerificationResult(verified=verified, computed=computed, error=error)
+
+
+def run_math_tool_sync(
+    name: str, arguments: dict[str, Any], timeout: float = DEFAULT_TIMEOUT
+) -> dict[str, Any]:
+    """
+    One model-called math tool, in a throwaway child. Never raises: a timeout or a dead child
+    becomes an error the model can read. A malformed call is answered before any child starts.
+    """
+    problem = tools.check_arguments(name, arguments)
+    if problem:
+        return {"error": problem}
+    try:
+        result: dict[str, Any] = run_isolated("tool", (name, arguments), timeout)
+        return result
+    except IsolatedFailureError as exc:
+        if str(exc) == "timeout":
+            return {
+                "error": f"`{name}` took longer than {timeout:g} s and was stopped; simplify "
+                "the expression or split the problem into smaller steps."
+            }
+        return {"error": f"`{name}` failed inside the math service; try again with a simpler form."}
 
 
 async def verify_expression(
@@ -205,3 +251,11 @@ async def verify_expression(
     return await loop.run_in_executor(
         _pool, verify_expression_sync, expression, expected, timeout
     )
+
+
+async def run_math_tool(
+    name: str, arguments: dict[str, Any], timeout: float = DEFAULT_TIMEOUT
+) -> dict[str, Any]:
+    """Async entry point for the model-called tools: same bounded pool as the verifier."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_pool, run_math_tool_sync, name, arguments, timeout)

@@ -41,8 +41,9 @@ from evals.agent_eval.transport import (
 from evals.judges.quant_judge import grade_quant_item
 from evals.loader import load_golden_set, sample_golden_set
 from services.agent.src.agent.agents.quant import QuantAgent
+from services.agent.src.agent.skills.math_tools import MathToolsSkill
 from services.agent.src.agent.skills.verify_math import VerifyMathSkill
-from services.math_verifier.src.math_verifier.sandbox import verify_expression
+from services.math_verifier.src.math_verifier.sandbox import run_math_tool, verify_expression
 from shared.src.shared.models import Mode, Session
 
 AW_SCALE = [
@@ -69,6 +70,16 @@ class InProcessVerifySkill(VerifyMathSkill):
     async def _call_mcp_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         result = await verify_expression(arguments["expression"], arguments["expected"])
         return {"verified": result.verified, "computed": result.computed, "error": result.error}
+
+
+class InProcessMathTools(MathToolsSkill):
+    """The product's math-tools skill, with the HTTP hop replaced by the same sympy sandbox."""
+
+    def __init__(self) -> None:
+        pass
+
+    async def _post(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        return await run_math_tool(name, arguments)
 
 
 def write_model_config(model: str, base_path: str = "config/model_config.dev.yaml") -> str:

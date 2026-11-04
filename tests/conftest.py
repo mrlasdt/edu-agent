@@ -32,6 +32,18 @@ def no_live_corpus_service():
         yield
 
 
+@pytest.fixture(autouse=True)
+def math_tools_off_by_default(monkeypatch: pytest.MonkeyPatch):
+    """
+    The product runs the Quant agent with the math tools on; most agent tests script one
+    streamed model reply, which is the original single-call path ("the before"). Tests of the
+    tool path build their agent with `math_tools_enabled=True`.
+    """
+    from shared.src.shared.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "math_tools_enabled", False)
+
+
 @pytest.fixture
 def block_network(monkeypatch: pytest.MonkeyPatch) -> None:
     """

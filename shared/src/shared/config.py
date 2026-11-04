@@ -38,10 +38,14 @@ class ModelConfig(BaseModel):
         return self.prompts.get(agent, {}).get(mode, "v1")
 
 
-@lru_cache
 def load_model_config(path: str | None = None) -> ModelConfig:
-    resolved = Path(path) if path else Path("config/model_config.dev.yaml")
-    raw: dict[str, Any] = yaml.safe_load(resolved.read_text())
+    """The model config at `path`, else the one `MODEL_CONFIG_PATH` names (default: dev)."""
+    return _load_model_config(path or get_settings().model_config_path)
+
+
+@lru_cache
+def _load_model_config(path: str) -> ModelConfig:
+    raw: dict[str, Any] = yaml.safe_load(Path(path).read_text())
     return ModelConfig(**raw)
 
 
@@ -80,6 +84,9 @@ class Settings(BaseSettings):
     # Per-turn measurement of the live chat path (shared.turn_meter): one JSON line per service
     # per turn, read by `python -m evals.turn_report`. Recorded, never capped. Empty = off.
     turn_log_path: str = ".turn-log/turns.jsonl"
+    # Math tools for the Quant agent (math_evaluate, math_solve, math_compare): the model
+    # computes with sympy instead of in its head. false = the original single-call path.
+    math_tools_enabled: bool = True
     env: str = "dev"
     model_config_path: str = "config/model_config.dev.yaml"
 
