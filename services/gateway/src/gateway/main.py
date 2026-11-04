@@ -28,6 +28,10 @@ from services.gateway.src.gateway.guardrails.stream import (
     ReplyGuard,
     redact_input,
 )
+from services.gateway.src.gateway.guardrails.supportive import (
+    SUPPORTIVE_MESSAGE,
+    is_self_harm_reason,
+)
 from services.gateway.src.gateway.ielts_api import router as ielts_router
 from services.gateway.src.gateway.orchestrator import (
     ClarificationTurn,
@@ -154,8 +158,6 @@ async def chat(req: ChatRequest) -> StreamingResponse:
             emit_guardrail_event("candidate", "rate_limit", "fail", trace_id)
             yield f"{limit_message} Please wait a moment and try again.".encode()
             return
-        if input_pii:
-            yield INPUT_PII_NOTICE.encode()
 
         try:
             safe, reason = await check_content_safety(message, trace_id, meter)
@@ -163,10 +165,16 @@ async def chat(req: ChatRequest) -> StreamingResponse:
             meter.annotate(outcome="moderation_unavailable")
             yield _MODERATION_UNAVAILABLE.encode()
             return
+        if not safe and is_self_harm_reason(reason):
+            meter.annotate(outcome="supportive_reply")
+            yield SUPPORTIVE_MESSAGE.encode()
+            return
         if not safe:
             meter.annotate(outcome="content_blocked")
             yield f"I can't help with that request ({reason}).".encode()
             return
+        if input_pii:
+            yield INPUT_PII_NOTICE.encode()
 
         # Fail open: a broken completeness check must not block a turn that the other
         # guardrails already passed, same as the LLM stage of the answer-leak check.

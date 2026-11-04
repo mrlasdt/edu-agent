@@ -8,6 +8,7 @@ from typing import Any, cast
 import httpx
 
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
+from services.gateway.src.gateway.guardrails.supportive import flagged_reason
 from shared.src.shared.config import get_settings, load_model_config
 from shared.src.shared.models import MessageRole, Session
 from shared.src.shared.observability import build_llm_metadata
@@ -52,8 +53,19 @@ async def check_content_safety(
     If the call fails (outage, timeout, bad status), MODERATION_ON_ERROR decides: "open" lets the
     turn go on and records `moderation_failed_open`; "closed" raises ModerationUnavailableError. The
     default is closed, except open in ENV=dev. Either way the failure is logged as an event.
+
+    In ENV=dev, a non-empty SAFETY_TEST_TRIGGER found in the text reports a self-harm hit with no
+    moderation call, so the supportive path can be tried without a paid key. Outside dev it is
+    ignored.
     """
     settings = get_settings()
+    trigger = settings.safety_test_trigger.strip().lower()
+    if settings.env.lower() == "dev" and trigger and trigger in text.lower():
+        reason = flagged_reason(["self-harm"])
+        emit_guardrail_event(
+            "input", "content_safety", "fail", trace_id, reason=reason, source="test_trigger"
+        )
+        return False, reason
     if settings.env.lower() == "dev" and not settings.openai_api_key:
         emit_guardrail_event(
             "input", "content_safety", "skipped", trace_id, reason="no_openai_key_in_dev"
@@ -78,7 +90,7 @@ async def check_content_safety(
         return True, ""
     if result.get("flagged"):
         flagged_cats = [k for k, v in result.get("categories", {}).items() if v]
-        reason = f"content flagged: {', '.join(flagged_cats)}"
+        reason = flagged_reason(flagged_cats)
         emit_guardrail_event("input", "content_safety", "fail", trace_id, reason=reason)
         return False, reason
     emit_guardrail_event("input", "content_safety", "pass", trace_id)
