@@ -93,7 +93,7 @@ School corpus    ← Teacher uploads (per-school)              v2 only
 Candidate corpus ← Candidate uploads (private notes)         visible to owner only
 ```
 
-An empty `school_id` grants no School-tier access and an empty `candidate_id` grants no Candidate-tier access. The filter lives in `_build_acl_filter` (`services/corpus/src/corpus/retriever.py`); `tests/test_tenant_isolation.py` proves it against an in-memory Qdrant.
+An empty `school_id` grants no School-tier access and an empty `candidate_id` grants no Candidate-tier access. The filter lives in `_build_acl_filter` (`services/corpus/src/corpus/retriever.py`); `tests/test_tenant_isolation.py` proves it against an in-memory Qdrant. The filter fields carry keyword payload indexes (created by `ensure_collection`, and by corpus startup for older collections). To check recall and latency of this exact filter at 100k points against a throwaway Qdrant container (needs Docker, no model calls): `uv run python -m evals.qdrant_filter_check` (`--points 20000` for a quick run).
 
 ### Model tiers (configurable via `config/model_config.dev.yaml`)
 

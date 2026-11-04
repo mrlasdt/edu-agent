@@ -372,7 +372,7 @@ async def test_run_ingestion_pipeline_empty_short_circuits(mock_embed):
 
 def _collection_info(vectors, sparse_vectors=None):
     params = SimpleNamespace(vectors=vectors, sparse_vectors=sparse_vectors)
-    return SimpleNamespace(config=SimpleNamespace(params=params))
+    return SimpleNamespace(config=SimpleNamespace(params=params), payload_schema={})
 
 
 _LEGACY = _collection_info(models.VectorParams(size=4, distance=models.Distance.COSINE))
