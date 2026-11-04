@@ -14,12 +14,34 @@ from shared.src.shared.turn_meter import TurnMeter
 
 _HISTORY_TURNS = 6
 
+# The completeness check answers with one short JSON object (a boolean and, when incomplete, one
+# clarifying question). A reasoning model also spends hidden thinking tokens against this cap, so
+# it is sized well above the visible answer: low enough to stop a runaway reply from delaying
+# every turn before the tutor starts, high enough that a reasoning model still finishes. If the
+# reply is cut off it does not parse and the check fails open (the question is treated as
+# complete).
+COMPLETENESS_MAX_TOKENS = 512
 
-async def check_content_safety(text: str, trace_id: str) -> tuple[bool, str]:
+
+async def check_content_safety(
+    text: str, trace_id: str, meter: TurnMeter | None = None
+) -> tuple[bool, str]:
     """
     Call the OpenAI Moderation API.
     Returns (safe, reason) — reason is empty when safe=True.
+
+    In ENV=dev with no OpenAI key (a free-model setup, see config/model_config.free.yaml) the
+    call is skipped, the turn goes on, and `moderation_skipped` is recorded in the turn record
+    when a `meter` is given. In any other ENV a missing key is not special-cased: the call fails.
     """
+    settings = get_settings()
+    if settings.env.lower() == "dev" and not settings.openai_api_key:
+        emit_guardrail_event(
+            "input", "content_safety", "skipped", trace_id, reason="no_openai_key_in_dev"
+        )
+        if meter is not None:
+            meter.annotate(moderation_skipped=True)
+        return True, ""
     result = await _call_moderation_api(text)
     if result.get("flagged"):
         flagged_cats = [k for k, v in result.get("categories", {}).items() if v]
@@ -97,6 +119,7 @@ async def _call_enrichment_llm(
             {"role": "user", "content": text},
         ],
         temperature=0,
+        max_tokens=COMPLETENESS_MAX_TOKENS,
         response_format={"type": "json_object"},
         **build_llm_metadata(trace_id=trace_id, prompt_version=version),
     )

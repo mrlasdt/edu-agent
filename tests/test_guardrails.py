@@ -18,10 +18,12 @@ import pytest
 
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
 from services.gateway.src.gateway.guardrails.input import (
+    COMPLETENESS_MAX_TOKENS,
     check_completeness,
     check_content_safety,
 )
 from services.gateway.src.gateway.guardrails.output import (
+    LEAK_CHECK_MAX_TOKENS,
     check_answer_leak,
     redact_pii,
 )
@@ -30,6 +32,9 @@ from services.gateway.src.gateway.guardrails.rate_limit import (
 )
 from shared.src.shared.config import Settings
 from shared.src.shared.models import Message, MessageRole, Mode, Session
+from shared.src.shared.turn_meter import TurnMeter
+
+_INPUT = "services.gateway.src.gateway.guardrails.input"
 
 
 def make_session(mode: Mode = Mode.tutor) -> Session:
@@ -40,8 +45,8 @@ def make_session(mode: Mode = Mode.tutor) -> Session:
 
 @pytest.mark.asyncio
 async def test_unsafe_input_blocked():
-    with patch("services.gateway.src.gateway.guardrails.input._call_moderation_api",
-               new_callable=AsyncMock) as mock_mod:
+    with patch(f"{_INPUT}.get_settings", return_value=Settings(env="dev", openai_api_key="k")), \
+         patch(f"{_INPUT}._call_moderation_api", new_callable=AsyncMock) as mock_mod:
         mock_mod.return_value = {"flagged": True, "categories": {"violence": True}}
         safe, reason = await check_content_safety("I want to hurt someone", "trace-1")
     assert safe is False
@@ -50,11 +55,47 @@ async def test_unsafe_input_blocked():
 
 @pytest.mark.asyncio
 async def test_safe_input_passes():
-    with patch("services.gateway.src.gateway.guardrails.input._call_moderation_api",
-               new_callable=AsyncMock) as mock_mod:
+    with patch(f"{_INPUT}.get_settings", return_value=Settings(env="dev", openai_api_key="k")), \
+         patch(f"{_INPUT}._call_moderation_api", new_callable=AsyncMock) as mock_mod:
         mock_mod.return_value = {"flagged": False, "categories": {}}
         safe, reason = await check_content_safety("Solve x^2 - 5x + 6 = 0", "trace-2")
     assert safe is True
+
+
+@pytest.mark.asyncio
+async def test_moderation_is_skipped_and_recorded_in_dev_without_an_openai_key():
+    meter = TurnMeter("trace-skip", "gateway", "gre/quant", "tutor")
+    with patch(f"{_INPUT}.get_settings", return_value=Settings(env="dev", openai_api_key="")), \
+         patch(f"{_INPUT}._call_moderation_api", new_callable=AsyncMock) as mock_mod:
+        safe, reason = await check_content_safety("Solve x + 1 = 2", "trace-skip", meter)
+    mock_mod.assert_not_called()
+    assert (safe, reason) == (True, "")
+    assert meter.snapshot()["moderation_skipped"] is True
+
+
+@pytest.mark.asyncio
+async def test_moderation_still_runs_in_dev_when_the_key_is_set():
+    meter = TurnMeter("trace-key", "gateway", "gre/quant", "tutor")
+    with patch(f"{_INPUT}.get_settings", return_value=Settings(env="dev", openai_api_key="k")), \
+         patch(f"{_INPUT}._call_moderation_api", new_callable=AsyncMock) as mock_mod:
+        mock_mod.return_value = {"flagged": False, "categories": {}}
+        await check_content_safety("Solve x + 1 = 2", "trace-key", meter)
+    mock_mod.assert_awaited_once()
+    assert "moderation_skipped" not in meter.snapshot()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("env", ["prod", "staging"])
+async def test_moderation_is_never_skipped_outside_dev(env):
+    # Production behaviour is unchanged: no key means the moderation call is made (and fails).
+    meter = TurnMeter("trace-prod", "gateway", "gre/quant", "tutor")
+    with patch(f"{_INPUT}.get_settings", return_value=Settings(env=env, openai_api_key="")), \
+         patch(f"{_INPUT}._call_moderation_api", new_callable=AsyncMock) as mock_mod:
+        mock_mod.side_effect = RuntimeError("401 no key")
+        with pytest.raises(RuntimeError):
+            await check_content_safety("Solve x + 1 = 2", "trace-prod", meter)
+    mock_mod.assert_awaited_once()
+    assert "moderation_skipped" not in meter.snapshot()
 
 
 # ── 2. Incomplete question enrichment ────────────────────────────────────────
@@ -106,6 +147,14 @@ async def test_enrichment_llm_sees_history_and_carries_trace_metadata():
     assert kwargs["messages"][-1]["content"] == "why did we subtract 3?"
     assert kwargs["metadata"]["trace_id"] == "trace-hist"
     assert "prompt_version" in kwargs["metadata"]
+
+
+@pytest.mark.asyncio
+async def test_completeness_check_caps_its_output_tokens():
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = _llm_response('{"complete": true, "clarification": ""}')
+        await check_completeness("Solve 2x = 8.", make_session(), "trace-max")
+    assert mock_llm.call_args.kwargs["max_tokens"] == COMPLETENESS_MAX_TOKENS
 
 
 @pytest.mark.asyncio
@@ -243,6 +292,35 @@ async def test_llm_stage_is_skipped_when_provider_has_no_api_key():
             "Try isolating the variable.", mode=Mode.tutor, trace_id="trace-9"
         )
     mock_llm.assert_not_called()
+    assert leaked is False
+
+
+@pytest.mark.asyncio
+async def test_leak_check_caps_its_output_tokens():
+    settings = Settings(openai_api_key="k", anthropic_api_key="k")
+    with patch("services.gateway.src.gateway.guardrails.output.get_settings",
+               return_value=settings), \
+         patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = _llm_response("SAFE")
+        leaked = await check_answer_leak(
+            "Try isolating the variable.", mode=Mode.tutor, trace_id="trace-cap"
+        )
+    assert mock_llm.call_args.kwargs["max_tokens"] == LEAK_CHECK_MAX_TOKENS
+    assert leaked is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content", [None, "", "  "])
+async def test_leak_check_cut_off_before_a_verdict_is_not_a_leak_or_a_crash(content):
+    # A reasoning model can spend the whole cap thinking and return no content at all.
+    settings = Settings(openai_api_key="k", anthropic_api_key="k")
+    with patch("services.gateway.src.gateway.guardrails.output.get_settings",
+               return_value=settings), \
+         patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = _llm_response(content)
+        leaked = await check_answer_leak(
+            "Try isolating the variable.", mode=Mode.tutor, trace_id="trace-cut"
+        )
     assert leaked is False
 
 

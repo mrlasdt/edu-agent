@@ -38,10 +38,18 @@ class ModelConfig(BaseModel):
         return self.prompts.get(agent, {}).get(mode, "v1")
 
 
-@lru_cache
 def load_model_config(path: str | None = None) -> ModelConfig:
-    resolved = Path(path) if path else Path("config/model_config.dev.yaml")
-    raw: dict[str, Any] = yaml.safe_load(resolved.read_text())
+    """
+    The model config at `path`; without one, the file named by MODEL_CONFIG_PATH (default
+    config/model_config.dev.yaml), so every service honours the same switch (for example
+    config/model_config.free.yaml to run the stack on a free OpenRouter model).
+    """
+    return _load_model_config(path or get_settings().model_config_path)
+
+
+@lru_cache
+def _load_model_config(path: str) -> ModelConfig:
+    raw: dict[str, Any] = yaml.safe_load(Path(path).read_text())
     return ModelConfig(**raw)
 
 
