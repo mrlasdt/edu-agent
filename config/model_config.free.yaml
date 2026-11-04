@@ -102,6 +102,11 @@ prompts:
     tutor: v3  # v2 plus: cite the reference note as [N], never as "your notes"
     # v2 was v1 plus "plain-text math": the web app typesets x^2 and => but not LaTeX
     solve: v2
+  # The Quant agent's prompts when the math tools are on (MATH_TOOLS_ENABLED): the same prompts as
+  # above plus a "Math tools" section (prompts/quant_agent_math_tools/<mode>/<version>.md).
+  quant_agent_math_tools:
+    tutor: v1  # tutor v3 plus: compute privately with the tools, never state a tool result
+    solve: v1  # solve v2 plus: use the tools for every calculation, quote their values
   aw_agent:
     tutor: v1
     solve: v1
