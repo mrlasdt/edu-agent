@@ -7,12 +7,20 @@ verify_math tool. In unit tests, _call_mcp_tool is patched.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, cast
 
 import httpx
 
 from shared.src.shared.config import get_settings
+
+_log = logging.getLogger(__name__)
+
+# `VerifyMathResult.error` when the verifier service cannot be reached (connection refused,
+# timeout, HTTP error status). The turn degrades to "unable to verify" (ADR-0011) instead of
+# failing.
+VERIFIER_UNREACHABLE = "verifier unreachable"
 
 
 @dataclass
@@ -40,12 +48,18 @@ class VerifyMathSkill:
     async def verify(self, expression: str, expected: str) -> VerifyMathResult:
         """
         Verify a mathematical expression against an expected answer.
-        Never raises — returns VerifyMathResult with error set on failure.
+        Never raises — returns VerifyMathResult with error set on failure. A verifier outage
+        (any httpx.HTTPError) comes back as verified=False, error="verifier unreachable", which
+        the Quant solve loop treats like any failed verification and degrades.
         """
-        raw = await self._call_mcp_tool(
-            tool_name="verify_math",
-            arguments={"expression": expression, "expected": expected},
-        )
+        try:
+            raw = await self._call_mcp_tool(
+                tool_name="verify_math",
+                arguments={"expression": expression, "expected": expected},
+            )
+        except httpx.HTTPError as exc:
+            _log.warning("math verifier unreachable: %s: %s", type(exc).__name__, exc)
+            return VerifyMathResult(verified=False, computed="", error=VERIFIER_UNREACHABLE)
         return VerifyMathResult(
             verified=bool(raw.get("verified", False)),
             computed=str(raw.get("computed", "")),

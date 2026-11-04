@@ -11,8 +11,10 @@ Behaviors under test:
   4. Propagates timeout from the server response
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from services.agent.src.agent.skills.verify_math import (
@@ -113,3 +115,65 @@ async def test_skill_calls_tool_with_correct_args():
         tool_name="verify_math",
         arguments={"expression": "2 + 3 * 4", "expected": "14"},
     )
+
+
+# ── 6. Verifier outage degrades instead of raising ────────────────────────────
+
+@pytest.mark.asyncio
+async def test_unreachable_verifier_returns_an_error_instead_of_raising():
+    # Nothing listens on port 9, so this is a real ConnectError, not a mocked one.
+    skill = VerifyMathSkill(server_url="http://127.0.0.1:9")
+
+    result = await skill.verify("2, 3", "2, 3")
+
+    assert result.verified is False
+    assert result.error == "verifier unreachable"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "exc",
+    [
+        httpx.ConnectError("All connection attempts failed"),
+        httpx.ReadTimeout("timed out"),
+        httpx.HTTPStatusError(
+            "502", request=httpx.Request("POST", "http://v/tools/x"),
+            response=httpx.Response(502),
+        ),
+    ],
+)
+async def test_any_http_error_from_the_verifier_is_reported_not_raised(exc):
+    skill = VerifyMathSkill(server_url="http://localhost:8090")
+
+    with patch.object(skill, "_call_mcp_tool", new_callable=AsyncMock) as mock_call:
+        mock_call.side_effect = exc
+        result = await skill.verify("2 + 2", "4")
+
+    assert result.verified is False
+    assert result.error == "verifier unreachable"
+
+
+@pytest.mark.asyncio
+async def test_quant_solve_turn_degrades_when_the_verifier_is_down():
+    """ADR-0011: an unreachable verifier degrades to 'unable to verify', the turn still answers."""
+    from services.agent.src.agent.agents.quant import QuantAgent
+    from shared.src.shared.models import Mode, Session
+
+    reply = "Factor it.\n**Answer: 2, 3**"
+
+    async def respond(*args, **kwargs):
+        async def stream():
+            yield SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=reply))])
+
+        return stream()
+
+    agent = QuantAgent(
+        model_config_path="config/model_config.dev.yaml",
+        verify_math_skill=VerifyMathSkill(server_url="http://127.0.0.1:9"),
+    )
+    session = Session(candidate_id="c1", test_type="gre", section="quant", mode=Mode.solve)
+    with patch("litellm.acompletion", new=AsyncMock(side_effect=respond)):
+        items = [i async for i in agent.run(session, "Solve x^2 - 5x + 6 = 0")]
+
+    assert "Factor it." in "".join(i for i in items if isinstance(i, str))
+    assert {"verifier_fail": True} in [i for i in items if isinstance(i, dict)]
