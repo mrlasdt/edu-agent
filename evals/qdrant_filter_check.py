@@ -321,7 +321,9 @@ def upload(client: QdrantClient, corpus: Corpus, collection: str) -> None:
 VARIANTS = {
     "no-index": "collection as it was created before the fix: payload indexes removed",
     "ensure-then-load": "ensure_collection first (creates the indexes), then load the points",
-    "load-then-ensure": "load points unindexed, then ensure_collection (retrofit of an old collection)",
+    "load-then-ensure": (
+        "load points unindexed, then ensure_collection (retrofit of an old collection)"
+    ),
 }
 
 
