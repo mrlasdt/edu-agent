@@ -1,6 +1,6 @@
 # Edu Agent
 
-An LLM-powered GRE test-prep tutor that helps Candidates improve their score on the GRE General Test. v1 is English-only and section-scoped (see below); the system is architected for multilingual extension and additional test types in v2. Deployed as a web chat.
+An LLM-powered exam-prep tutor. The tutoring chat helps Candidates improve their score on the GRE General Test (Quant and AW). v1 is English-only and section-scoped (see below); the system is architected for multilingual extension and additional test types in v2. IELTS Writing (a separate timed mock) and SAT Math and IELTS Reading (golden sets only) exist outside the chat. Deployed as a web chat.
 
 ## Language
 

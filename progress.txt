@@ -4,7 +4,7 @@ Status: working end to end locally (MVP). `docker compose -f infra/docker-compos
 starts the web app, backend services, Qdrant and the embedder and seeds a small GRE Quant
 corpus; a Quant question asked at http://localhost:5173 gets a grounded, streamed answer
 from gpt-4o-mini. A real turn needs OPENAI_API_KEY in .env (content safety calls the OpenAI
-Moderation API). See README "Status" for what is still missing.
+Moderation API). See README "Not built yet" for what is still missing.
 
 ### Slices 01-17 (components, services and tests written)
 - [x] 01 Local dev stack (pyproject.toml, docker-compose, config, .env.example)
@@ -50,7 +50,7 @@ Moderation API). See README "Status" for what is still missing.
   live check in docs/mvp-demo
 
 ### Current counts
-- Python and frontend (Vitest) test counts: README "4. Run tests"
+- Python and frontend (Vitest) test counts: README "Test and eval"
 - Browser smoke test (mocked /chat): cd web && npm run test:e2e (Playwright)
 - CI checks: ruff, mypy (strict), pytest, web typecheck + vitest + vite build + Playwright
 
@@ -73,7 +73,7 @@ Moderation API). See README "Status" for what is still missing.
   AW is judge calibration only. No baseline is measured/checked in; CI runs it offline only.
 - QuantAgent._verify still compares the agent's answer to itself (parse/well-formedness only);
   multi-value and prose answers no longer spuriously fail it. Independent verification needs a
-  design decision (see README Eval pipeline).
+  design decision (see README "Evals").
 - No ETS corpus is checked in, so AW citations have nothing to cite until one is ingested.
 - k8s manifests and deploy workflow were never applied to a cluster.
 - Question-generation pipeline: library + eval target only (no HTTP endpoint, UI, dedup, difficulty

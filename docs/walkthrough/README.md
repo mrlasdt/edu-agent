@@ -1,6 +1,6 @@
 # EduAgent walkthrough
 
-A guide for a person who wants to learn how to apply industrial LLM engineering practices by reading a small, working system. EduAgent is a GRE tutor, but the product is the excuse: each chapter takes one practice, shows the problem you would feel without it, points at the exact code that applies it, and shows a number from this repo that proves what it did.
+A guide for a person who wants to learn how to apply industrial LLM engineering practices by reading a small, working system. EduAgent is an exam-prep tutor (GRE Quant and AW chat, plus IELTS and SAT eval sets), but the product is the excuse: each chapter takes one practice, shows the problem you would feel without it, points at the exact code that applies it, and shows a number from this repo that proves what it did.
 
 It is a guide, not a spec. The decisions live in [docs/adr](../adr/); this explains how to read the code and why it looks the way it does. The guide grows one chapter per change that adds a practice, so a chapter always matches the code it describes and carries the numbers measured when that code landed.
 
