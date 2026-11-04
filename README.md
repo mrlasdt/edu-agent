@@ -13,7 +13,7 @@ cp .env.example .env   # then fill in OPENAI_API_KEY and INGESTION_ADMIN_KEY (se
 docker compose -f infra/docker-compose.yml up -d --build
 ```
 
-That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 937 Python tests (mocked LLM and Qdrant) plus 111 frontend unit tests, and `npm run test:e2e` runs browser smoke tests with `/chat` and the `/ielts` API mocked.
+That brings up the web app (nginx, port 5173), gateway, agent, corpus, ingestion, math verifier, Qdrant and the BGE-M3 embedder, then ingests nine self-written GRE Quant notes (`seed/gre-quant/`, about 2,200 words) as the global corpus on first start. `up` returns once the seed job has finished. The first start is slow (image builds plus a ~2GB embedder model download, then emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and the seeded Qdrant volume. Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`), so a tutoring turn costs a fraction of a cent. The Quant agent retrieves the top 3 notes for each question and the guardrails apply as usual (answer-leak, citation, PII, content safety, rate limit). Backend services are also covered by 938 Python tests (mocked LLM and Qdrant) plus 114 frontend unit tests, and `npm run test:e2e` runs browser smoke tests with `/chat` and the `/ielts` API mocked.
 
 A recorded live check (screenshot and streamed transcript) is in [docs/mvp-demo](docs/mvp-demo/README.md).
 
@@ -199,10 +199,10 @@ Every role runs on `gpt-4o-mini` (`config/model_config.dev.yaml`). To use anothe
 ### 4. Run tests
 
 ```bash
-# Python tests (863)
+# Python tests (938)
 uv run pytest tests/ -q
 
-# Frontend tests (111)
+# Frontend tests (114)
 cd web && npm test
 
 # Eval pipeline check (offline fake model, no network, no keys); includes the generation suite
@@ -473,11 +473,11 @@ Tokens are the provider's own usage report (streaming asks for it with `stream_o
 
 | Layer | What it checks |
 |---|---|
-| Input validation | Schema, size, content safety (OpenAI Moderation API) |
+| Input validation | Schema, size (message 4,000 chars; history 20 items of 4,000 chars; candidate id 128 chars; over a cap is a 422 before any model call), content safety (OpenAI Moderation API) |
 | Enrichment | Haiku-tier LLM detects incomplete questions → clarification reply |
 | Generation | Tutor-mode answer-leak check (Haiku); citation completeness (deterministic) |
 | Output | PII regex redaction; content safety on output text |
-| Rate/quota | 60 turns/min and 200 turns/day per Candidate (in-memory; Redis in v2) |
+| Rate/quota | 60 turns/min and 200 turns/day per Candidate (in-memory, at most 10,000 candidates tracked with the least recently seen evicted first; Redis in v2) |
 
 Every check emits a `guardrail.{layer}.{name}.{pass|fail}` structured log event with trace ID.
 
