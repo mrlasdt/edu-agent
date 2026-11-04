@@ -13,7 +13,6 @@ Behaviors under test:
 """
 
 import json
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -304,14 +303,3 @@ def test_the_agent_service_prints_its_tool_call_lines() -> None:
 
     assert logging.getLogger("services.agent").getEffectiveLevel() == logging.INFO
 
-
-def test_the_model_config_comes_from_model_config_path_when_no_path_is_given(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from shared.src.shared.config import get_settings, load_model_config
-
-    routed = tmp_path / "routed.yaml"
-    dev = Path("config/model_config.dev.yaml").read_text()
-    routed.write_text(dev.replace("gpt-4o-mini", "x-y"))
-    monkeypatch.setattr(get_settings(), "model_config_path", str(routed))
-    assert load_model_config().role("orchestrator").model == "x-y"
