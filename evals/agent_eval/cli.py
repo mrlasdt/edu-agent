@@ -5,6 +5,9 @@ Agent-in-the-loop eval CLI.
   python -m evals.agent_eval --mode offline        # full pipeline on a fake model, no network
   python -m evals.agent_eval --mode live --suite generation   # LangGraph pipeline vs baseline
   python -m evals.agent_eval --mode live --provider free
+  python -m evals.agent_eval --mode offline --suite quant --samples 3   # failure-seeded suite
+  python -m evals.agent_eval --mode live --suite quant --samples 3 --model openrouter/<id>:free \
+      --write-baseline evals/baselines/quant.json    # one named model; checked-in baseline
   python -m evals.agent_eval --mode live --suite ielts_writing --max-items 6   # needs local data
   python -m evals.agent_eval --mode live --suite ielts_report --suite ielts_adversarial
 
@@ -23,6 +26,7 @@ import asyncio
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import uuid
@@ -30,7 +34,14 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from evals.agent_eval import generation, ielts_writing, offline_generation, runner
+from evals.agent_eval import (
+    generation,
+    ielts_writing,
+    offline_generation,
+    quant_suite,
+    runner,
+    transport,
+)
 from evals.agent_eval.budget import (
     BudgetExceededError,
     Ledger,
@@ -41,12 +52,13 @@ from evals.agent_eval.cache import DEFAULT_CACHE_DIR, ResponseCache
 from evals.agent_eval.judges import HeuristicJudge, JevJudge, Judge, JudgeQuestion, LLMJudge
 from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport
 from evals.exam_set.schema import ExamItem
-from evals.loader import load_exam_items, load_golden_set
+from evals.loader import load_exam_items, load_golden_set, sample_golden_set
 from evals.regression import check_regression
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.ielts import llm
 from services.agent.src.agent.pipeline.factory import build_baseline, build_pipeline
 from services.agent.src.agent.pipeline.schema import GenerationRequest
+from shared.src.shared.config import load_model_config
 
 # Order matters: openrouter/free is OpenRouter's router over whichever free model is up, so it
 # is the most reliable first choice; the pinned models are fallbacks for when it errors.
@@ -62,8 +74,13 @@ SEED = 42
 DEFAULT_MIN_COVERAGE = 0.8
 
 
-def provider_chain(provider: str) -> list[str]:
-    """Ordered model chain: free OpenRouter first, OpenAI only where the provider allows it."""
+def provider_chain(provider: str, model: str | None = None) -> list[str]:
+    """
+    Ordered model chain: free OpenRouter first, OpenAI only where the provider allows it.
+    `model` pins one litellm model string and no fallbacks: a baseline is one named model.
+    """
+    if model:
+        return [model]
     if provider == "free":
         return list(FREE_MODELS)
     if provider == "openai":
@@ -71,10 +88,17 @@ def provider_chain(provider: str) -> list[str]:
     return [*FREE_MODELS, OPENAI_MODEL]  # "free+openai": free first, OpenAI as the fallback
 
 
-def required_keys(provider: str, judge: str) -> list[str]:
-    keys = {"free": ["OPENROUTER_API_KEY"], "openai": ["OPENAI_API_KEY"]}.get(
-        provider, ["OPENROUTER_API_KEY", "OPENAI_API_KEY"]
-    )
+def required_keys(provider: str, judge: str, model: str | None = None) -> list[str]:
+    if model:
+        keys = [
+            {"openrouter": "OPENROUTER_API_KEY", "openai": "OPENAI_API_KEY"}.get(
+                model.partition("/")[0], "OPENROUTER_API_KEY"
+            )
+        ]
+    else:
+        keys = {"free": ["OPENROUTER_API_KEY"], "openai": ["OPENAI_API_KEY"]}.get(
+            provider, ["OPENROUTER_API_KEY", "OPENAI_API_KEY"]
+        )
     return keys + (["OPENROUTER_API_KEY"] if judge == "jev" else [])
 
 
@@ -88,9 +112,16 @@ def _offline_model(model: str, messages: list[dict[str, Any]]) -> str:
         return generated
     system = str(messages[0]["content"]).lower()
     convo = "\n".join(str(m["content"]) for m in messages[1:])
-    item = next((i for i in load_golden_set("quant") if i["question"] in convo), None)
-    if "tutor" in system or item is None:
+    item = next(
+        (i for i in load_golden_set("quant") if i.get("question") and i["question"] in convo), None
+    )
+    if item is None:
         return "What is the first quantity you could compute from the information given?"
+    if "tutor" in system:
+        return (
+            f"Let's stay with the problem: {item['question']} "
+            "What is the first quantity you could work out from it?"
+        )
     return f"1. Compute it.\n**Answer: {item['ground_truth']}**"
 
 
@@ -108,15 +139,38 @@ def _ielts_items(args: argparse.Namespace) -> list[ExamItem]:
     return load_exam_items(exam="ielts", include_local=True, local_directory=args.local_dir)
 
 
+def selected_quant_items(
+    args: argparse.Namespace, items: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Every failure-seeded item, unless --max-items asked for a deterministic subset."""
+    if not args.max_items_given:
+        return items
+    return runner.select_items("quant", args.max_items, SEED)
+
+
+def quant_item_count(args: argparse.Namespace, items: list[dict[str, Any]]) -> int:
+    return len(selected_quant_items(args, items))
+
+
 def plan(args: argparse.Namespace, chain: list[str], ledger: Ledger) -> dict[str, Any]:
-    n_quant = min(args.max_items, len(load_golden_set("quant"))) if "quant" in args.suite else 0
+    quant_items = load_golden_set("quant")
+    n_quant_cases = quant_item_count(args, quant_items) if "quant" in args.suite else 0
+    quant_agent_calls = 0
+    if "quant" in args.suite:
+        quant_agent_calls = sum(
+            (len(i["turns"]) if i["kind"] == "tutor_multiturn" else 1) * args.samples
+            for i in selected_quant_items(args, quant_items)
+            if i["kind"] in quant_suite.MODEL_KINDS
+        )
+    solve_items = [i for i in quant_items if i["kind"] == "solve"]
+    n_quant = min(args.max_items, len(solve_items)) if "quant_judge" in args.suite else 0
     n_aw = min(args.max_items, len(load_golden_set("aw"))) if "aw" in args.suite else 0
     n_gen = (
         min(args.max_items, len(load_golden_set("quant_generation")))
         if "generation" in args.suite
         else 0
     )
-    agent_calls = n_quant * 5  # 2 tutor probes + up to 3 solve attempts
+    agent_calls = n_quant * 5 + quant_agent_calls  # judge suite: 2 tutor probes + up to 3 solves
     agent_calls += n_gen * (1 + 7)  # baseline 1; pipeline planner + 3 x (generate + critic)
     n_ielts = n_report = n_adversarial = 0
     if {"ielts_writing", "ielts_report"} & set(args.suite):
@@ -139,9 +193,11 @@ def plan(args: argparse.Namespace, chain: list[str], ledger: Ledger) -> dict[str
         "model_chain": chain,
         "judge": args.judge,
         "items": {
-            "quant": n_quant, "aw": n_aw, "generation": n_gen, "ielts_writing": n_ielts,
+            "quant": n_quant_cases, "quant_judge": n_quant, "aw": n_aw, "generation": n_gen,
+            "ielts_writing": n_ielts,
             "ielts_report": n_report, "ielts_adversarial": n_adversarial,
         },
+        "samples_per_quant_item": args.samples if "quant" in args.suite else None,
         "max_agent_calls": agent_calls,
         "max_judge_calls": judge_calls,
         "worst_case_usd_first_model": per_call * (agent_calls + judge_calls),
@@ -152,13 +208,14 @@ def plan(args: argparse.Namespace, chain: list[str], ledger: Ledger) -> dict[str
 
 async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     ledger = spend_ledger(args.ledger, args.ceiling)
-    chain = provider_chain(args.provider)
+    chain = provider_chain(args.provider, args.model)
     if args.mode == "dry-run":
         return plan(args, chain, ledger), 0
 
     offline = args.mode == "offline"
     if not offline:
-        missing = [k for k in required_keys(args.provider, args.judge) if not os.environ.get(k)]
+        needed = required_keys(args.provider, args.judge, args.model)
+        missing = [k for k in needed if not os.environ.get(k)]
         if missing:
             raise SystemExit(f"missing environment keys (names only): {', '.join(missing)}")
     run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
@@ -168,6 +225,7 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         run_id,
         fallbacks=chain[1:],
         fake_model=_offline_model if offline else None,
+        max_tokens=args.max_tokens,
         cache=cache,
     )
     model = OFFLINE_MODEL if offline else chain[0]
@@ -182,17 +240,24 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     report: dict[str, Any] = {
         "run_id": run_id, "mode": args.mode, "model_chain": chain if not offline else [model],
         "judge": judge.name, "seed": SEED, "suites": {},
+        "run_meta": run_meta(args, model, chain if not offline else [model]),
     }
     exit_code = 0
     with transport.installed():
         try:
             if "quant" in args.suite:
+                report["suites"]["quant"] = await _run_quant(
+                    args, model, run_id, selected_quant_items(args, load_golden_set("quant"))
+                )
+            if "quant_judge" in args.suite:
                 agent = QuantAgent(
                     model_config_path=runner.write_model_config(model),
                     verify_math_skill=runner.InProcessVerifySkill(),
                 )
-                items = runner.select_items("quant", args.max_items, SEED)
-                report["suites"]["quant"] = await runner.run_quant(items, agent, judge)
+                solve_items = [i for i in load_golden_set("quant") if i["kind"] == "solve"]
+                rate = min(1.0, args.max_items / len(solve_items))
+                items = sample_golden_set(solve_items, rate, seed=SEED)
+                report["suites"]["quant_judge"] = await runner.run_quant(items, agent, judge)
             if "aw" in args.suite:
                 items = runner.select_items("aw", args.max_items, SEED)
                 report["suites"]["aw"] = await runner.run_aw(items, judge)
@@ -248,6 +313,50 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     return report, exit_code
 
 
+async def _run_quant(
+    args: argparse.Namespace, model: str, run_id: str, items: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """The failure-seeded suite on `model`: real agent, rule graders, `--samples` attempts."""
+    config = runner.write_model_config(model)
+    skill = runner.InProcessVerifySkill()
+
+    def factory(notes: list[str]) -> QuantAgent:
+        return QuantAgent(
+            model_config_path=config, verify_math_skill=skill,
+            retrieve_corpus_skill=quant_suite.NotesSkill(notes),
+        )
+
+    with quant_suite.collecting_turns() as collector:
+        return await quant_suite.run_quant_suite(
+            items, agent_factory=factory, verify_skill=skill, samples=args.samples,
+            collector=collector, run_prefix=run_id,
+        )
+
+
+def run_meta(args: argparse.Namespace, model: str, chain: list[str]) -> dict[str, Any]:
+    """Provenance of a run: which model produced the numbers, and whether it is the default."""
+    config = load_model_config()
+    role = config.role("quant_agent")
+    product_default = f"{role.provider}/{role.model}"
+    commit = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=False
+    ).stdout.strip()
+    return {
+        "model": model,
+        "model_chain": chain,
+        "samples": args.samples,
+        "max_tokens": args.max_tokens,
+        "product_default_model": product_default,
+        "is_product_default_model": model == product_default,
+        "prompt_versions": {
+            mode: config.prompt_version("quant_agent", mode) for mode in ("tutor", "solve")
+        },
+        "temperature": role.temperature,
+        "git_commit": commit or None,
+        "date_utc": time.strftime("%Y-%m-%d", time.gmtime()),
+    }
+
+
 async def _run_generation(
     max_items: int, model: str, judge: Judge, transport: MeteredTransport
 ) -> dict[str, Any]:
@@ -268,7 +377,7 @@ async def _run_generation(
 def regression_metrics(report: dict[str, Any]) -> dict[str, float]:
     """Higher-is-better metrics suitable for check_regression."""
     out: dict[str, float] = {}
-    quant = report["suites"].get("quant")
+    quant = report["suites"].get("quant_judge")
     if quant:
         pairs = {
             "quant_solve_accuracy": quant["solve"]["accuracy"],
@@ -323,10 +432,16 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Agent-in-the-loop eval")
     p.add_argument("--mode", choices=["dry-run", "offline", "live"], default="dry-run")
     p.add_argument("--suite", action="append", default=[],
-                   choices=["quant", "aw", "generation", "ielts_writing", "ielts_report",
-                            "ielts_adversarial"])
+                   choices=["quant", "quant_judge", "aw", "generation", "ielts_writing",
+                            "ielts_report", "ielts_adversarial"],
+                   help="quant = failure-seeded suite (rule graders, --samples attempts per "
+                        "item); quant_judge = LLM-judge calibration on the solve items")
     p.add_argument("--samples", type=int, default=ielts_writing.DEFAULT_SAMPLES,
-                   help="grader samples per essay in the IELTS suites (per-criterion median)")
+                   help="attempts per item in the quant suite (pass@k and pass^k are over these); "
+                        "grader samples per essay in the IELTS suites (per-criterion median)")
+    p.add_argument("--model", default=None,
+                   help="pin one litellm model string for every role (no fallbacks), e.g. "
+                        "openrouter/<id>:free; overrides --provider")
     p.add_argument("--provider", choices=["free", "free+openai", "openai"], default="free")
     p.add_argument("--judge", choices=["llm", "jev"], default="llm")
     p.add_argument("--judge-model", default=None, help="litellm model string for the llm judge")
@@ -340,7 +455,11 @@ def main(argv: list[str] | None = None) -> int:
                    help="fail (exit 2) if a suite completes fewer than this share of its units")
     p.add_argument("--cache-dir", default=str(DEFAULT_CACHE_DIR))
     p.add_argument("--no-cache", action="store_true", help="always call the model")
-    p.add_argument("--max-items", type=int, default=5)
+    p.add_argument("--max-tokens", type=int, default=transport.DEFAULT_MAX_TOKENS,
+                   help="completion cap per model call; the product sets none, so raise this "
+                        "for a reasoning model whose hidden thinking would otherwise cut replies")
+    p.add_argument("--max-items", type=int, default=None,
+                   help="items per suite (default 5; the quant suite defaults to all of them)")
     p.add_argument("--ledger", default=None, help="spend ledger (default AI_LEDGER_PATH)")
     p.add_argument("--ceiling", type=float, default=None,
                    help="spend cap in USD (default AI_SPEND_CAP_USD)")
@@ -348,7 +467,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--baseline", default=None, help="JSON of metrics to regression-check against")
     p.add_argument("--write-baseline", default=None, help="write measured metrics to this path")
     args = p.parse_args(argv)
-    args.suite = args.suite or ["quant", "aw", "generation"]
+    args.suite = args.suite or ["quant", "quant_judge", "aw", "generation"]
+    args.max_items_given = args.max_items is not None
+    args.max_items = args.max_items if args.max_items is not None else 5
+    if args.samples < 1:
+        raise SystemExit("--samples must be at least 1")
     if not Path("prompts/quant_agent").exists():
         raise SystemExit("run from the repository root (prompts/ not found)")
 
@@ -365,12 +488,46 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(summary(report), indent=2))
     if args.mode == "live" and code == 0:
         if args.write_baseline:
-            Path(args.write_baseline).write_text(json.dumps(report["regression_metrics"], indent=2))
+            write_baseline(args.write_baseline, report)
         if args.baseline and Path(args.baseline).exists():
-            reg = check_regression(
-                report["regression_metrics"], json.loads(Path(args.baseline).read_text())
-            )
+            baseline = json.loads(Path(args.baseline).read_text())
+            if baseline.get("schema") == quant_suite.BASELINE_SCHEMA:
+                return compare_quant_baseline(report, baseline)
+            reg = check_regression(report["regression_metrics"], baseline)
             if reg.has_regression:
                 print(f"REGRESSION: {reg.details}", file=sys.stderr)
                 return 1
     return code
+
+
+def write_baseline(path: str, report: dict[str, Any]) -> None:
+    """
+    A quant-only run writes the interval-carrying baseline (`evals/baselines/quant.json`);
+    any other run writes the flat metric dict the older suites compare against.
+    """
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    if "quant" in report["suites"]:
+        if set(report["suites"]) != {"quant"}:
+            raise SystemExit("write the quant baseline from a run with --suite quant only")
+        doc = quant_suite.baseline_document(report["suites"]["quant"], report["run_meta"])
+        Path(path).write_text(json.dumps(doc, indent=2) + "\n")
+    else:
+        Path(path).write_text(json.dumps(report["regression_metrics"], indent=2))
+
+
+def compare_quant_baseline(report: dict[str, Any], baseline: dict[str, Any]) -> int:
+    """Print current vs baseline; exit 1 on a drop outside its interval (any security drop)."""
+    suite = report["suites"].get("quant")
+    if suite is None:
+        raise SystemExit("this baseline is for the quant suite; run with --suite quant")
+    rows = quant_suite.compare_with_baseline(suite, baseline)
+    for row in rows:
+        print(
+            f"{row['metric']}: baseline {row['baseline']:.3f} (n={row['baseline_n']}, "
+            f"95% {row['baseline_ci95']}) -> now {row['current']:.3f}: {row['verdict']}",
+            file=sys.stderr,
+        )
+    if any(r["verdict"] == "regression" for r in rows):
+        print("REGRESSION: a metric fell below the interval its baseline carries", file=sys.stderr)
+        return 1
+    return 0

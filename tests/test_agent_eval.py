@@ -239,11 +239,15 @@ def test_offline_pipeline_runs_real_agent_without_network(
     )
     assert code == 0
     out = json.loads(capsys.readouterr().out)
-    quant = out["suites"]["quant"]
+    quant = out["suites"]["quant_judge"]
     assert quant["solve"]["accuracy"] == 1.0  # fake model returns the golden answer
     assert quant["tutor"]["leak_rate_rule"] == 0.0
     assert out["cost_latency"]["total_usd"] == 0.0
     assert "rows" not in quant  # printed summary is aggregate-only
+    seeded = out["suites"]["quant"]  # the failure-seeded suite runs by default too
+    assert seeded["security"]["value"] == 1.0
+    assert seeded["groups"]["solve"]["pass_hat_k"]["value"] == 1.0
+    assert "rows" not in seeded
     assert not (tmp_path / "l.json").exists()  # free/offline never touches the ledger
 
 
@@ -382,7 +386,8 @@ async def test_failed_run_exits_nonzero_and_emits_no_regression_metrics(
     monkeypatch.setattr("litellm.acompletion", down)
     args = cli.argparse.Namespace(
         mode="live", suite=["quant", "aw"], provider="openai", judge="llm", judge_model=None,
-        max_items=5, ledger=str(tmp_path / "l.json"), ceiling=20.0, out_dir=str(tmp_path),
+        max_items=5, max_items_given=False, samples=1, model=None, max_tokens=800,
+        ledger=str(tmp_path / "l.json"), ceiling=20.0, out_dir=str(tmp_path),
         baseline=None, write_baseline=None, min_coverage=0.8,
         cache_dir=str(tmp_path / "c"), no_cache=True,
     )
@@ -421,7 +426,7 @@ async def test_golden_qc_labels_agree_with_their_expressions():
     from evals.loader import load_golden_set
 
     for item in load_golden_set("quant"):
-        if item["question_type"] == "quantitative_comparison":
+        if item["kind"] == "solve" and item["question_type"] == "quantitative_comparison":
             assert item["ground_truth"] in "ABCD"
             assert (await grade_quant_item(item, candidate_answer=item["ground_truth"])).correct
 

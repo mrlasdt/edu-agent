@@ -1,0 +1,621 @@
+{
+  "schema": "eval-baseline/1",
+  "suite": "quant",
+  "meta": {
+    "model": "openrouter/cohere/north-mini-code:free",
+    "model_chain": [
+      "openrouter/cohere/north-mini-code:free"
+    ],
+    "samples": 3,
+    "product_default_model": "openai/gpt-4o-mini",
+    "is_product_default_model": false,
+    "prompt_versions": {
+      "tutor": "v3",
+      "solve": "v2"
+    },
+    "temperature": 0.2,
+    "git_commit": "592069b",
+    "date_utc": "2026-11-03",
+    "max_tokens": 800
+  },
+  "note": "Measured on the model named in meta.model. That is NOT the product default (openai/gpt-4o-mini); re-run with the default model before comparing a change against these numbers. Every rate carries its n and 95% interval; a difference inside an interval is noise.",
+  "metrics": {
+    "solve.mean_pass_rate": {
+      "value": 0.8333,
+      "n": 10,
+      "ci95": [
+        0.5238,
+        0.9578
+      ],
+      "samples": 3
+    },
+    "solve.pass_hat_k": {
+      "value": 0.8,
+      "n": 10,
+      "ci95": [
+        0.4902,
+        0.9433
+      ],
+      "samples": 3
+    },
+    "tutor.mean_pass_rate": {
+      "value": 0.8889,
+      "n": 12,
+      "ci95": [
+        0.6134,
+        0.9758
+      ],
+      "samples": 3
+    },
+    "tutor.pass_hat_k": {
+      "value": 0.6666666666666666,
+      "n": 12,
+      "ci95": [
+        0.3906,
+        0.8619
+      ],
+      "samples": 3
+    },
+    "tutor_multiturn.mean_pass_rate": {
+      "value": 0.3333,
+      "n": 4,
+      "ci95": [
+        0.0751,
+        0.7549
+      ],
+      "samples": 3
+    },
+    "tutor_multiturn.pass_hat_k": {
+      "value": 0.0,
+      "n": 4,
+      "ci95": [
+        0.0,
+        0.4899
+      ],
+      "samples": 3
+    },
+    "security.pass_rate": {
+      "value": 1.0,
+      "n": 8,
+      "ci95": [
+        0.6756,
+        1.0
+      ],
+      "samples": 1
+    }
+  },
+  "summary": {
+    "samples": 3,
+    "n_items": 34,
+    "groups": {
+      "solve": {
+        "n_items": 10,
+        "samples": 3,
+        "attempts": 30,
+        "mean_pass_rate": 0.8333,
+        "mean_pass_rate_ci95": [
+          0.5238,
+          0.9578
+        ],
+        "pass_at_k": {
+          "value": 0.9,
+          "successes": 9,
+          "n": 10,
+          "ci95": [
+            0.5958,
+            0.9821
+          ]
+        },
+        "pass_hat_k": {
+          "value": 0.8,
+          "successes": 8,
+          "n": 10,
+          "ci95": [
+            0.4902,
+            0.9433
+          ]
+        },
+        "flaky_items": [
+          "q010"
+        ],
+        "always_failing_items": [
+          "q004"
+        ],
+        "checks": {
+          "correct": {
+            "passed": 29,
+            "total": 30,
+            "value": 0.9667
+          },
+          "verifier_accepted": {
+            "passed": 25,
+            "total": 30,
+            "value": 0.8333
+          }
+        },
+        "cost_latency": {
+          "turns": 30,
+          "usd_total": 0.0,
+          "usd_per_turn_mean": 0.0,
+          "usd_per_turn_p95": 0.0,
+          "usd_per_turn_if_gpt_4o_mini": 0.000468,
+          "llm_calls_per_turn_mean": 1.47,
+          "input_tokens_per_turn_mean": 341.3,
+          "output_tokens_per_turn_mean": 695.2,
+          "latency_ms_p50": 6376.4178,
+          "latency_ms_p95": 19604.1991,
+          "turns_with_estimated_tokens": 0
+        }
+      },
+      "tutor": {
+        "n_items": 12,
+        "samples": 3,
+        "attempts": 36,
+        "mean_pass_rate": 0.8889,
+        "mean_pass_rate_ci95": [
+          0.6134,
+          0.9758
+        ],
+        "pass_at_k": {
+          "value": 1.0,
+          "successes": 12,
+          "n": 12,
+          "ci95": [
+            0.7575,
+            1.0
+          ]
+        },
+        "pass_hat_k": {
+          "value": 0.6666666666666666,
+          "successes": 8,
+          "n": 12,
+          "ci95": [
+            0.3906,
+            0.8619
+          ]
+        },
+        "flaky_items": [
+          "t004",
+          "t008",
+          "t009",
+          "t010"
+        ],
+        "always_failing_items": [],
+        "checks": {
+          "citations_ok": {
+            "passed": 33,
+            "total": 36,
+            "value": 0.9167
+          },
+          "moves_forward": {
+            "passed": 35,
+            "total": 36,
+            "value": 0.9722
+          },
+          "no_latex": {
+            "passed": 36,
+            "total": 36,
+            "value": 1.0
+          },
+          "no_leak": {
+            "passed": 36,
+            "total": 36,
+            "value": 1.0
+          }
+        },
+        "cost_latency": {
+          "turns": 36,
+          "usd_total": 0.0,
+          "usd_per_turn_mean": 0.0,
+          "usd_per_turn_p95": 0.0,
+          "usd_per_turn_if_gpt_4o_mini": 0.000365,
+          "llm_calls_per_turn_mean": 1.0,
+          "input_tokens_per_turn_mean": 412.2,
+          "output_tokens_per_turn_mean": 504.7,
+          "latency_ms_p50": 4686.1192,
+          "latency_ms_p95": 13001.0714,
+          "turns_with_estimated_tokens": 0
+        }
+      },
+      "tutor_multiturn": {
+        "n_items": 4,
+        "samples": 3,
+        "attempts": 12,
+        "mean_pass_rate": 0.3333,
+        "mean_pass_rate_ci95": [
+          0.0751,
+          0.7549
+        ],
+        "pass_at_k": {
+          "value": 0.75,
+          "successes": 3,
+          "n": 4,
+          "ci95": [
+            0.3006,
+            0.9544
+          ]
+        },
+        "pass_hat_k": {
+          "value": 0.0,
+          "successes": 0,
+          "n": 4,
+          "ci95": [
+            0.0,
+            0.4899
+          ]
+        },
+        "flaky_items": [
+          "m002",
+          "m003",
+          "m004"
+        ],
+        "always_failing_items": [
+          "m001"
+        ],
+        "checks": {
+          "citations_ok": {
+            "passed": 8,
+            "total": 12,
+            "value": 0.6667
+          },
+          "moves_forward": {
+            "passed": 11,
+            "total": 12,
+            "value": 0.9167
+          },
+          "no_latex": {
+            "passed": 11,
+            "total": 12,
+            "value": 0.9167
+          },
+          "no_leak": {
+            "passed": 9,
+            "total": 12,
+            "value": 0.75
+          },
+          "stays_on_problem": {
+            "passed": 10,
+            "total": 12,
+            "value": 0.8333
+          }
+        },
+        "cost_latency": {
+          "turns": 48,
+          "usd_total": 0.0,
+          "usd_per_turn_mean": 0.0,
+          "usd_per_turn_p95": 0.0,
+          "usd_per_turn_if_gpt_4o_mini": 0.000229,
+          "llm_calls_per_turn_mean": 1.0,
+          "input_tokens_per_turn_mean": 484.5,
+          "output_tokens_per_turn_mean": 260.4,
+          "latency_ms_p50": 3023.8784,
+          "latency_ms_p95": 8909.9542,
+          "turns_with_estimated_tokens": 0
+        }
+      }
+    },
+    "by_tag": {
+      "answer-format": {
+        "n_items": 4,
+        "samples": 3,
+        "attempts": 12,
+        "mean_pass_rate": 1.0,
+        "mean_pass_rate_ci95": [
+          0.5101,
+          1.0
+        ],
+        "pass_at_k": {
+          "value": 1.0,
+          "successes": 4,
+          "n": 4,
+          "ci95": [
+            0.5101,
+            1.0
+          ]
+        },
+        "pass_hat_k": {
+          "value": 1.0,
+          "successes": 4,
+          "n": 4,
+          "ci95": [
+            0.5101,
+            1.0
+          ]
+        },
+        "flaky_items": [],
+        "always_failing_items": []
+      },
+      "answer-leak": {
+        "n_items": 5,
+        "samples": 3,
+        "attempts": 15,
+        "mean_pass_rate": 0.9333,
+        "mean_pass_rate_ci95": [
+          0.4951,
+          0.995
+        ],
+        "pass_at_k": {
+          "value": 1.0,
+          "successes": 5,
+          "n": 5,
+          "ci95": [
+            0.5655,
+            1.0
+          ]
+        },
+        "pass_hat_k": {
+          "value": 0.8,
+          "successes": 4,
+          "n": 5,
+          "ci95": [
+            0.3755,
+            0.9638
+          ]
+        },
+        "flaky_items": [
+          "t004"
+        ],
+        "always_failing_items": []
+      },
+      "arithmetic-slip": {
+        "n_items": 2,
+        "samples": 3,
+        "attempts": 6,
+        "mean_pass_rate": 1.0,
+        "mean_pass_rate_ci95": [
+          0.3424,
+          1.0
+        ],
+        "pass_at_k": {
+          "value": 1.0,
+          "successes": 2,
+          "n": 2,
+          "ci95": [
+            0.3424,
+            1.0
+          ]
+        },
+        "pass_hat_k": {
+          "value": 1.0,
+          "successes": 2,
+          "n": 2,
+          "ci95": [
+            0.3424,
+            1.0
+          ]
+        },
+        "flaky_items": [],
+        "always_failing_items": []
+      },
+      "capability": {
+        "n_items": 2,
+        "samples": 3,
+        "attempts": 6,
+        "mean_pass_rate": 1.0,
+        "mean_pass_rate_ci95": [
+          0.3424,
+          1.0
+        ],
+        "pass_at_k": {
+          "value": 1.0,
+          "successes": 2,
+          "n": 2,
+          "ci95": [
+            0.3424,
+            1.0
+          ]
+        },
+        "pass_hat_k": {
+          "value": 1.0,
+          "successes": 2,
+          "n": 2,
+          "ci95": [
+            0.3424,
+            1.0
+          ]
+        },
+        "flaky_items": [],
+        "always_failing_items": []
+      },
+      "citation-wording": {
+        "n_items": 2,
+        "samples": 3,
+        "attempts": 6,
+        "mean_pass_rate": 1.0,
+        "mean_pass_rate_ci95": [
+          0.3424,
+          1.0
+        ],
+        "pass_at_k": {
+          "value": 1.0,
+          "successes": 2,
+          "n": 2,
+          "ci95": [
+            0.3424,
+            1.0
+          ]
+        },
+        "pass_hat_k": {
+          "value": 1.0,
+          "successes": 2,
+          "n": 2,
+          "ci95": [
+            0.3424,
+            1.0
+          ]
+        },
+        "flaky_items": [],
+        "always_failing_items": []
+      },
+      "multi-turn-drift": {
+        "n_items": 4,
+        "samples": 3,
+        "attempts": 12,
+        "mean_pass_rate": 0.3333,
+        "mean_pass_rate_ci95": [
+          0.0751,
+          0.7549
+        ],
+        "pass_at_k": {
+          "value": 0.75,
+          "successes": 3,
+          "n": 4,
+          "ci95": [
+            0.3006,
+            0.9544
+          ]
+        },
+        "pass_hat_k": {
+          "value": 0.0,
+          "successes": 0,
+          "n": 4,
+          "ci95": [
+            0.0,
+            0.4899
+          ]
+        },
+        "flaky_items": [
+          "m002",
+          "m003",
+          "m004"
+        ],
+        "always_failing_items": [
+          "m001"
+        ]
+      },
+      "plain-text-math": {
+        "n_items": 2,
+        "samples": 3,
+        "attempts": 6,
+        "mean_pass_rate": 1.0,
+        "mean_pass_rate_ci95": [
+          0.3424,
+          1.0
+        ],
+        "pass_at_k": {
+          "value": 1.0,
+          "successes": 2,
+          "n": 2,
+          "ci95": [
+            0.3424,
+            1.0
+          ]
+        },
+        "pass_hat_k": {
+          "value": 1.0,
+          "successes": 2,
+          "n": 2,
+          "ci95": [
+            0.3424,
+            1.0
+          ]
+        },
+        "flaky_items": [],
+        "always_failing_items": []
+      },
+      "qc-label": {
+        "n_items": 2,
+        "samples": 3,
+        "attempts": 6,
+        "mean_pass_rate": 0.1667,
+        "mean_pass_rate_ci95": [
+          0.0125,
+          0.7592
+        ],
+        "pass_at_k": {
+          "value": 0.5,
+          "successes": 1,
+          "n": 2,
+          "ci95": [
+            0.0945,
+            0.9055
+          ]
+        },
+        "pass_hat_k": {
+          "value": 0.0,
+          "successes": 0,
+          "n": 2,
+          "ci95": [
+            0.0,
+            0.6576
+          ]
+        },
+        "flaky_items": [
+          "q010"
+        ],
+        "always_failing_items": [
+          "q004"
+        ]
+      },
+      "vague-reply": {
+        "n_items": 3,
+        "samples": 3,
+        "attempts": 9,
+        "mean_pass_rate": 0.6667,
+        "mean_pass_rate_ci95": [
+          0.2077,
+          0.9385
+        ],
+        "pass_at_k": {
+          "value": 1.0,
+          "successes": 3,
+          "n": 3,
+          "ci95": [
+            0.4385,
+            1.0
+          ]
+        },
+        "pass_hat_k": {
+          "value": 0.0,
+          "successes": 0,
+          "n": 3,
+          "ci95": [
+            0.0,
+            0.5615
+          ]
+        },
+        "flaky_items": [
+          "t008",
+          "t009",
+          "t010"
+        ],
+        "always_failing_items": []
+      }
+    },
+    "all_model_turns": {
+      "turns": 114,
+      "usd_total": 0.0,
+      "usd_per_turn_mean": 0.0,
+      "usd_per_turn_p95": 0.0,
+      "usd_per_turn_if_gpt_4o_mini": 0.000335,
+      "llm_calls_per_turn_mean": 1.12,
+      "input_tokens_per_turn_mean": 424.0,
+      "output_tokens_per_turn_mean": 451.9,
+      "latency_ms_p50": 4339.3016,
+      "latency_ms_p95": 15259.4295,
+      "turns_with_estimated_tokens": 0
+    },
+    "units_total": 86,
+    "units_dropped_model_unavailable": 0,
+    "security": {
+      "value": 1.0,
+      "successes": 8,
+      "n": 8,
+      "ci95": [
+        0.6756,
+        1.0
+      ],
+      "failed_items": []
+    },
+    "caveats": [
+      "Rates are over items, not over all possible learner questions; the items are self-written from past failures and are not a random sample.",
+      "Cost and latency cover the agent's own model calls only; the gateway's guardrail calls (completeness check, answer-leak check) are not included.",
+      "The leak check is an upper bound: it also counts a step number equal to the answer.",
+      "Rule graders catch the failures someone wrote a rule for; a reply can pass every rule and still be a poor hint (read the transcripts).",
+      "solve: n=10 items x 3 samples; a change smaller than about 0.23 cannot be told apart from noise.",
+      "tutor: n=12 items x 3 samples; a change smaller than about 0.24 cannot be told apart from noise.",
+      "tutor_multiturn: n=4 items x 3 samples; a change smaller than about 0.34 cannot be told apart from noise.",
+      "security: 8 hostile strings; all passing does not bound the failure rate on strings nobody has tried."
+    ]
+  }
+}

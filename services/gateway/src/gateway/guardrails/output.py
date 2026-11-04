@@ -25,7 +25,7 @@ _log = logging.getLogger(__name__)
 # choice letter, or an upper-case choice letter that ends its clause.
 _NUM_WORD = r"(?:zero|one|two|three|four|five|six|seven|eight|nine|ten)\b"
 _NUM = rf"(?:[-+\u2212]?\$?\d[\d,./]*|{_NUM_WORD})"
-_END = r"(?=[ \t]*(?:[.,;!?)]|\n))"
+_END = r"(?=[ \t]*(?:[.,;!?)]|\n|\Z))"
 _ANSWER_TAG = re.compile(
     r"(?:^|[.!?;])[\s*#>_-]*(?:final\s+)?answer\s*:\s*\S", re.IGNORECASE | re.MULTILINE
 )

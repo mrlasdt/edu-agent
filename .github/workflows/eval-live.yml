@@ -1,0 +1,56 @@
+name: Eval (live, manual)
+
+# Runs the failure-seeded Quant suite against a real model. Manual only: CI on every push stays
+# offline (fake model, no network, no secrets). A live run spends real money, so it needs an
+# explicit click, a model name, and it is capped below. See docs/walkthrough/02-evals-from-real-failures.md.
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "litellm model string, e.g. openrouter/<id>:free or openai/gpt-4o-mini"
+        required: true
+        type: string
+      samples:
+        description: "attempts per item (pass@k and pass^k are over these)"
+        required: true
+        default: "3"
+        type: string
+      ceiling_usd:
+        description: "spend cap for this run in USD (the ledger starts empty on a CI runner)"
+        required: true
+        default: "0.50"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  quant-live:
+    name: Quant suite, live
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+      - run: uv sync --extra dev
+      - name: Run the suite
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MODEL: ${{ inputs.model }}
+          SAMPLES: ${{ inputs.samples }}
+          CEILING: ${{ inputs.ceiling_usd }}
+        # The printed summary is aggregate-only. Run reports hold model output and transcripts,
+        # so they are not uploaded; read them locally with `python -m evals.read_transcripts`.
+        shell: bash
+        run: |
+          uv run python -m evals.agent_eval --mode live --suite quant \
+            --model "$MODEL" --samples "$SAMPLES" --ceiling "$CEILING" \
+            --baseline evals/baselines/quant.json | tee quant-summary.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quant-summary
+          path: quant-summary.json

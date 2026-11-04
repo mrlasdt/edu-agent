@@ -74,6 +74,21 @@ jobs:
         # (`--mode live`) and budget-capped; see README "Eval pipeline".
         run: uv run python -m evals.agent_eval --mode offline
 
+  quant-suite-offline:
+    name: Quant failure suite (offline plumbing)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+      - run: uv sync --extra dev
+      - name: Failure-seeded Quant suite on a fake model
+        # Proves the suite runs end to end: the real agent, rule graders, the real math verifier
+        # on the hostile strings, pass@k / pass^k and the report. Scores nothing about a real
+        # model. The live run is manual: .github/workflows/eval-live.yml.
+        run: uv run python -m evals.agent_eval --mode offline --suite quant --samples 3
+
   # More precise path-gating via dorny/paths-filter
   changes:
     runs-on: ubuntu-latest

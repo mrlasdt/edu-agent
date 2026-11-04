@@ -37,6 +37,11 @@ FakeModel = Callable[[str, list[dict[str, Any]]], str]
 
 current_tag: contextvars.ContextVar[str] = contextvars.ContextVar("eval_tag", default="agent")
 
+# The response cache is keyed by the request, so k samples of one prompt would all be the same
+# cached reply. A sample number set here (see `cache_slot`) is part of the key, which makes
+# each of the k samples its own cache entry while a rerun of the same plan still re-pays nothing.
+current_slot: contextvars.ContextVar[int] = contextvars.ContextVar("eval_cache_slot", default=0)
+
 DEFAULT_MAX_TOKENS = 800
 _RATE_LIMIT_RETRIES = 3
 _DROPPED_KWARGS = ("stream_options", "max_tokens", "cache_slot")
@@ -83,15 +88,26 @@ def _chunk(content: str) -> Any:
     return SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=content))])
 
 
+def _usage_chunk(prompt_tokens: int, completion_tokens: int) -> Any:
+    """The closing usage-only chunk a provider sends when `include_usage` is requested."""
+    return SimpleNamespace(
+        choices=[],
+        usage=SimpleNamespace(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens),
+    )
+
+
 class _ReplayStream:
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, usage: tuple[int, int] | None = None) -> None:
         self._text = text
+        self._usage = usage
 
     def __aiter__(self) -> AsyncIterator[Any]:
         return self._gen()
 
     async def _gen(self) -> AsyncIterator[Any]:
         yield _chunk(self._text)
+        if self._usage is not None:
+            yield _usage_chunk(*self._usage)
 
 
 def _response(text: str) -> Any:
@@ -127,6 +143,9 @@ class MeteredTransport:
 
     async def acompletion(self, *, model: str, messages: list[dict[str, Any]], **kw: Any) -> Any:
         stream = bool(kw.pop("stream", False))
+        # Replay the provider's token report only to a caller that asked for it (the product's
+        # TurnMeter does); other callers iterate chunks and expect every chunk to have choices.
+        wants_usage = bool((kw.get("stream_options") or {}).get("include_usage"))
         if self.fake_model is not None:
             return self._wrap(self._fake(model, messages), stream)
         errors: list[str] = []
@@ -136,7 +155,7 @@ class MeteredTransport:
                 errors.append(f"{candidate}: skipped (daily quota exhausted earlier in this run)")
                 continue
             max_tokens = kw.get("max_tokens", self.max_tokens)
-            slot = kw.get("cache_slot", 0)
+            slot = kw.get("cache_slot", current_slot.get())
             key = cache_key(
                 model=candidate,
                 messages=messages,
@@ -146,7 +165,9 @@ class MeteredTransport:
             )
             hit = self.cache.get(key) if self.cache else None
             if hit is not None:
-                return self._wrap(str(hit["text"]), stream)
+                cached = hit.get("usage")
+                usage = (int(cached[0]), int(cached[1])) if cached and wants_usage else None
+                return self._wrap(str(hit["text"]), stream, usage)
             prompt_tokens = estimate_tokens(_text_of(messages))
             self.ledger.ensure_capacity(
                 estimate_cost(candidate, prompt_tokens, self.max_tokens)
@@ -185,8 +206,8 @@ class MeteredTransport:
             c_tok = int(getattr(usage, "completion_tokens", 0) or estimate_tokens(text))
             self._record(candidate, p_tok, c_tok, latency)
             if self.cache and text:  # an empty reply (a reasoning model out of tokens) is no answer
-                self.cache.put(key, {"text": text})
-            return self._wrap(text, stream)
+                self.cache.put(key, {"text": text, "usage": [p_tok, c_tok]})
+            return self._wrap(text, stream, (p_tok, c_tok) if wants_usage else None)
         raise AllModelsFailedError("; ".join(errors))
 
     def _fail(self, errors: list[str], model: str, exc: BaseException, kind: str) -> None:
@@ -229,8 +250,8 @@ class MeteredTransport:
         self.records.append(CallRecord(tag, model, p_tok, c_tok, cost, latency))
 
     @staticmethod
-    def _wrap(text: str, stream: bool) -> Any:
-        return _ReplayStream(text) if stream else _response(text)
+    def _wrap(text: str, stream: bool, usage: tuple[int, int] | None = None) -> Any:
+        return _ReplayStream(text, usage) if stream else _response(text)
 
     @contextlib.contextmanager
     def installed(self) -> Iterator[None]:
@@ -240,6 +261,16 @@ class MeteredTransport:
             yield
         finally:
             litellm.acompletion = original
+
+
+@contextlib.contextmanager
+def cache_slot(slot: int) -> Iterator[None]:
+    """Calls made inside use cache slot `slot` (the sample number) in their cache key."""
+    token = current_slot.set(slot)
+    try:
+        yield
+    finally:
+        current_slot.reset(token)
 
 
 @contextlib.contextmanager

@@ -146,8 +146,9 @@ def test_regression_detected_when_aw_drops():
 def test_load_quant_golden_set():
     items = load_golden_set("quant")
     assert len(items) > 0
-    assert all("expression" in item for item in items)
-    assert all("ground_truth" in item for item in items)
+    assert all("ground_truth" in item for item in items if item["kind"] != "security")
+    solve = [item for item in items if item["kind"] == "solve"]
+    assert solve and all("expression" in item for item in solve)
 
 
 def test_load_aw_golden_set():
