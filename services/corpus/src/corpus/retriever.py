@@ -79,24 +79,30 @@ def _build_acl_filter(candidate_id: str, school_id: str) -> dict[str, Any]:
     """
     Build a Qdrant payload filter enforcing the three-tier ACL:
       tier=global  OR  (tier=school AND school_id=:s)  OR  (tier=candidate AND candidate_id=:u)
+
+    An empty id (callers send school_id="" when the candidate has no school) grants
+    no tier: otherwise it would match any chunk stored with an empty owner id.
     """
-    return {
-        "should": [
-            {"key": "tier", "match": {"value": "global"}},
+    should: list[dict[str, Any]] = [{"key": "tier", "match": {"value": "global"}}]
+    if school_id:
+        should.append(
             {
                 "must": [
                     {"key": "tier", "match": {"value": "school"}},
                     {"key": "school_id", "match": {"value": school_id}},
                 ]
-            },
+            }
+        )
+    if candidate_id:
+        should.append(
             {
                 "must": [
                     {"key": "tier", "match": {"value": "candidate"}},
                     {"key": "candidate_id", "match": {"value": candidate_id}},
                 ]
-            },
-        ]
-    }
+            }
+        )
+    return {"should": should}
 
 
 def build_search_filter(candidate_id: str, school_id: str, test_type: str) -> models.Filter:
