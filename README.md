@@ -92,6 +92,8 @@ School corpus    ← Teacher uploads (per-school)              v2 only
 Candidate corpus ← Candidate uploads (private notes)         visible to owner only
 ```
 
+An empty `school_id` grants no School-tier access and an empty `candidate_id` grants no Candidate-tier access. The filter lives in `_build_acl_filter` (`services/corpus/src/corpus/retriever.py`); `tests/test_tenant_isolation.py` proves it against an in-memory Qdrant.
+
 ### Model tiers (configurable via `config/model_config.dev.yaml`)
 
 | Role | Default model | Swap to Anthropic |
