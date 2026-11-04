@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, cast
 
 import httpx
@@ -11,6 +12,8 @@ from shared.src.shared.config import get_settings, load_model_config
 from shared.src.shared.models import MessageRole, Session
 from shared.src.shared.observability import build_llm_metadata
 from shared.src.shared.turn_meter import TurnMeter
+
+_log = logging.getLogger(__name__)
 
 _HISTORY_TURNS = 6
 
@@ -23,6 +26,18 @@ _HISTORY_TURNS = 6
 COMPLETENESS_MAX_TOKENS = 512
 
 
+class ModerationUnavailableError(RuntimeError):
+    """The moderation call failed and the fail policy is "closed": the turn must not proceed."""
+
+
+def _moderation_fails_open() -> bool:
+    """MODERATION_ON_ERROR, defaulting to closed everywhere except ENV=dev."""
+    settings = get_settings()
+    if settings.moderation_on_error:
+        return settings.moderation_on_error == "open"
+    return settings.env.lower() == "dev"
+
+
 async def check_content_safety(
     text: str, trace_id: str, meter: TurnMeter | None = None
 ) -> tuple[bool, str]:
@@ -33,6 +48,10 @@ async def check_content_safety(
     In ENV=dev with no OpenAI key (a free-model setup, see config/model_config.free.yaml) the
     call is skipped, the turn goes on, and `moderation_skipped` is recorded in the turn record
     when a `meter` is given. In any other ENV a missing key is not special-cased: the call fails.
+
+    If the call fails (outage, timeout, bad status), MODERATION_ON_ERROR decides: "open" lets the
+    turn go on and records `moderation_failed_open`; "closed" raises ModerationUnavailableError. The
+    default is closed, except open in ENV=dev. Either way the failure is logged as an event.
     """
     settings = get_settings()
     if settings.env.lower() == "dev" and not settings.openai_api_key:
@@ -42,7 +61,21 @@ async def check_content_safety(
         if meter is not None:
             meter.annotate(moderation_skipped=True)
         return True, ""
-    result = await _call_moderation_api(text)
+    try:
+        result = await _call_moderation_api(text)
+    except Exception as exc:
+        fail_open = _moderation_fails_open()
+        _log.warning("moderation call failed (%s); failing %s", type(exc).__name__,
+                     "open" if fail_open else "closed", exc_info=True)
+        emit_guardrail_event(
+            "input", "content_safety", "error", trace_id,
+            reason=type(exc).__name__, policy="open" if fail_open else "closed",
+        )
+        if not fail_open:
+            raise ModerationUnavailableError("content-safety check unavailable") from exc
+        if meter is not None:
+            meter.annotate(moderation_failed_open=True)
+        return True, ""
     if result.get("flagged"):
         flagged_cats = [k for k, v in result.get("categories", {}).items() if v]
         reason = f"content flagged: {', '.join(flagged_cats)}"

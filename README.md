@@ -140,7 +140,7 @@ ENV=dev
 MODEL_CONFIG_PATH=config/model_config.free.yaml
 ```
 
-With `ENV=dev` and no `OPENAI_API_KEY`, the gateway skips the OpenAI Moderation call (there is no key to make it with), lets the turn continue and records `moderation_skipped: true` in the turn record; with any other `ENV` the call is still made and a missing key fails the turn. Free models are rate limited, can be briefly unavailable and are slow (each guardrail model call takes several seconds), so use this for development and demos, not for judging quality or latency. Restart the gateway and agent containers after changing the config (`docker compose -f infra/docker-compose.yml restart gateway agent`); they read it once at startup.
+With `ENV=dev` and no `OPENAI_API_KEY`, the gateway skips the OpenAI Moderation call (there is no key to make it with), lets the turn continue and records `moderation_skipped: true` in the turn record; with any other `ENV` the call is still made and a missing key makes the turn answer "safety check unavailable, try again". The same policy covers a moderation outage: `MODERATION_ON_ERROR=closed|open` (default closed, open in `ENV=dev`); open lets the turn go on and records `moderation_failed_open: true`. Free models are rate limited, can be briefly unavailable and are slow (each guardrail model call takes several seconds), so use this for development and demos, not for judging quality or latency. Restart the gateway and agent containers after changing the config (`docker compose -f infra/docker-compose.yml restart gateway agent`); they read it once at startup.
 
 ### 3. Start the stack
 
