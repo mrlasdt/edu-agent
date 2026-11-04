@@ -8,6 +8,20 @@ export interface ChatTurn {
   history: Message[];
 }
 
+// Mirror the gateway's /chat caps (services/gateway/src/gateway/main.py); it rejects bigger requests.
+export const MAX_MESSAGE_CHARS = 4000;
+export const MAX_HISTORY_ITEMS = 20;
+export const MAX_HISTORY_ITEM_CHARS = 4000;
+
+const clip = (text: string, limit: number) => Array.from(text).slice(0, limit).join("");
+
+export function toHistoryPayload(history: Message[]) {
+  return history
+    .filter((m) => m.content)
+    .slice(-MAX_HISTORY_ITEMS)
+    .map((m) => ({ role: m.role, content: clip(m.content, MAX_HISTORY_ITEM_CHARS) }));
+}
+
 export type ChatEvent =
   | { kind: "text"; text: string }
   | { kind: "meta"; mathVerified?: boolean };
@@ -47,9 +61,7 @@ export async function* streamChat(
       section: turn.subject,
       message: turn.message,
       mode: turn.mode,
-      history: turn.history
-        .filter((m) => m.content)
-        .map((m) => ({ role: m.role, content: m.content })),
+      history: toHistoryPayload(turn.history),
     }),
   });
   if (!res.ok || !res.body) {
