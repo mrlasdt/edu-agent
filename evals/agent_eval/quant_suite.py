@@ -6,7 +6,7 @@ Every item in `evals/golden/gre_quant.jsonl` comes from a failure EduAgent reall
 so ("none yet") and works as a capability probe. Items have a `kind` that decides how they run:
 
   solve            the real QuantAgent in solve mode; pass = the final answer is right (sympy,
-                   never the agent's own claim) AND the product's verifier accepted it
+                   never the agent's own claim) AND the product's well-formedness check accepted it
   tutor            one real tutor reply; pass = no answer leak, no LaTeX, citations written as
                    [N] (never "your notes"), and a concrete next step (see `graders`)
   tutor_multiturn  a scripted student talks to the real tutor for several turns; pass = every
@@ -29,8 +29,10 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import sympy as sp
+
 from evals.agent_eval import graders, stats
-from evals.agent_eval.probes import normalize_for_type
+from evals.agent_eval.probes import answer_values, normalize_for_type
 from evals.agent_eval.transport import AllModelsFailedError, cache_slot, gather_limited, tagged
 from evals.judges.quant_judge import grade_quant_item
 from evals.turn_report import percentile
@@ -208,6 +210,77 @@ async def run_security_case(item: dict[str, Any], skill: VerifyMathSkill) -> dic
     }
 
 
+# ── wrong_but_verified: does the product's check accept a wrong answer? ─────
+
+
+def seeded_wrong_answer(item: dict[str, Any]) -> str | None:
+    """
+    A deterministic, plausible wrong answer for a solve item: every value of the golden key
+    shifted by 1, or a different verdict letter for a quantitative comparison. None when a
+    key value cannot be read as a number.
+    """
+    if item["question_type"] == "quantitative_comparison":
+        return "B" if str(item["ground_truth"]).strip().upper() == "A" else "A"
+    shifted = []
+    for value in answer_values(str(item["ground_truth"])):
+        try:
+            shifted.append(str(sp.Rational(value.replace(" ", "")) + 1))
+        except (ValueError, TypeError, ZeroDivisionError):
+            return None
+    return ",".join(shifted) or None
+
+
+def _is_wrong_but_verified(row: dict[str, Any]) -> bool:
+    return not row["checks"]["correct"] and row["checks"]["verifier_accepted"]
+
+
+async def wrong_but_verified(
+    items: list[dict[str, Any]], agent: QuantAgent, rows: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """
+    How often the product's solve-turn check accepts an answer the golden key says is wrong.
+
+    `seeded` needs no model: each solve item gets a wrong answer (`seeded_wrong_answer`), which
+    sympy confirms against the golden key is wrong, and the answer goes through the same
+    extract-then-`_verify` step a solve turn runs. `observed` counts real solve attempts in
+    `rows` that were wrong and still accepted. While `_verify` compares an answer with itself,
+    `seeded` is expected to be near 100%: the check is of form, not of correctness.
+    """
+    accepted: list[str] = []
+    n = 0
+    for item in items:
+        wrong = seeded_wrong_answer(item) if item["kind"] == "solve" else None
+        if wrong is None or (await grade_quant_item(item, candidate_answer=wrong)).correct:
+            continue
+        n += 1
+        text = f"1. Work.\n**Answer: {wrong}**"
+        claimed = agent._extract_final_answer(text) or ""
+        if (await agent._verify(text, claimed)).verified:
+            accepted.append(item["id"])
+    solve_rows = [r for r in rows if r["kind"] == "solve"]
+    wrong_rows = [r for r in solve_rows if not r["checks"]["correct"]]
+    count = sum(_is_wrong_but_verified(r) for r in wrong_rows)
+    return {
+        "definition": "a wrong answer (per the golden key, graded by sympy) that the product's "
+                      "solve-turn check accepted, so the turn is not degraded",
+        "seeded": {**stats.rate(len(accepted), n), "count": len(accepted),
+                   "accepted_items": sorted(accepted)},
+        "observed": {**stats.rate(count, len(wrong_rows)), "count": count,
+                     "solve_attempts": len(solve_rows)},
+    }
+
+
+def wrong_but_verified_caveats(result: dict[str, Any]) -> list[str]:
+    seeded, observed = result["seeded"], result["observed"]
+    return [
+        f"wrong_but_verified: {seeded['count']} of {seeded['n']} seeded wrong answers passed the "
+        f"product's solve-turn check; {observed['count']} of {observed['solve_attempts']} real "
+        "solve attempts were wrong and still accepted. The check compares an answer with "
+        "itself, so it measures form, not correctness; the seeded answers are one "
+        "perturbation of each key, not every way a model can be wrong.",
+    ]
+
+
 # ── the suite ────────────────────────────────────────────────────────────────
 
 
@@ -353,7 +426,11 @@ async def run_quant_suite(
     done = [r for r in await gather_limited(jobs) if r is not None]
     security = [await run_security_case(i, verify_skill) for i in items if i["kind"] == "security"]
     total = len(jobs) + len(security)
-    return summarise([*done, *security], samples, len(dropped), total)
+    suite = summarise([*done, *security], samples, len(dropped), total)
+    if any(i["kind"] == "solve" for i in items):
+        suite["wrong_but_verified"] = await wrong_but_verified(items, agent_factory([]), done)
+        suite["caveats"] += wrong_but_verified_caveats(suite["wrong_but_verified"])
+    return suite
 
 
 # ── baseline file and comparison ─────────────────────────────────────────────

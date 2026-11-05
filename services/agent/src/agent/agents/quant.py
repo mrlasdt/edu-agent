@@ -133,12 +133,14 @@ class QuantAgent(BaseAgent):
     GRE Quantitative Reasoning agent.
 
     Tutor mode: scaffolds toward the answer; verifier is NOT called.
-    Solve mode: returns a fully worked solution; the verify-math Skill validates
-                the final answer.  Retry / escalation pipeline:
+    Solve mode: returns a fully worked solution; the verify-math Skill checks that the final
+                answer is well-formed (it parses and evaluates). The check compares the answer
+                with itself, so it does not establish that the answer is right; the turn record
+                says so with `verified_independent: false`.  Retry / escalation pipeline:
                   attempt 1 (quant_agent model)
-                  → if verifier disagrees: attempt 2 (quant_agent model, mismatch context)
-                  → if still disagrees:    attempt 3 (math_escalation model)
-                  → if still disagrees:    degrade gracefully (emit verifier_fail metadata)
+                  → if the check fails: attempt 2 (quant_agent model, mismatch context)
+                  → if still failing:   attempt 3 (math_escalation model)
+                  → if still failing:   degrade gracefully (emit verifier_fail metadata)
     """
 
     def __init__(
@@ -267,6 +269,8 @@ class QuantAgent(BaseAgent):
             else _load_prompt(Mode.solve, version)
         )
         base_messages = _build_messages(session, message, system_prompt, chunk_context)
+        # `_verify` compares the answer with itself: a well-formedness check, not a correctness one.
+        meter.annotate(verified_independent=False)
 
         # Attempt 1 and 2: quant_agent model
         model = self._model_config.litellm_model("quant_agent")
@@ -379,12 +383,11 @@ class QuantAgent(BaseAgent):
 
     async def _verify(self, full_text: str, claimed_answer: str) -> VerifyMathResult:
         """
-        Call the verify-math Skill with the claimed answer.
-        Extracts an equation from the LLM's output to verify against.
-        This seam is patched in tests.
+        Call the verify-math Skill with the claimed answer as both `expression` and `expected`.
+        That only shows the answer is well-formed (parses and evaluates); a wrong but parseable
+        answer passes. An independent check needs an expression that does not come from the
+        answer itself. This seam is patched in tests.
         """
-        # For v1: use the raw answer as the "expression" to validate
-        # In a richer implementation, the LLM would emit a structured expression tag
         return await self._verify_skill.verify(
             expression=claimed_answer,
             expected=claimed_answer,
