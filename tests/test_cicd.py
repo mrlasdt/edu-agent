@@ -9,6 +9,7 @@ Behaviors under test:
   5. Dockerfiles exist for all services
 """
 
+import shlex
 from pathlib import Path
 
 import yaml
@@ -40,12 +41,54 @@ def test_deploy_workflow_is_valid_yaml():
     assert isinstance(data, dict)
 
 
+def _commands(job: dict) -> list[list[str]]:
+    """Every shell command a job's `run` steps execute, as shlex-split argv lists."""
+    commands = []
+    for step in job.get("steps", []):
+        script = str(step.get("run", "")).replace("\\\n", " ")
+        for line in script.splitlines():
+            if line.strip():
+                commands.append(shlex.split(line, comments=True))
+    return commands
+
+
+def test_deploy_workflow_has_no_prod_canary_job():
+    """
+    The removed canary targeted a deployment no manifest defines and read a Prometheus metric
+    nothing exports, so it could never work. Do not bring it back without both.
+    """
+    jobs = yaml.safe_load((ROOT / ".github/workflows/deploy.yml").read_text())["jobs"]
+    assert set(jobs) == {"build-and-push", "deploy-staging"}
+    for job in jobs.values():
+        for argv in _commands(job):
+            if "kubectl" in argv:
+                assert not any("canary" in arg for arg in argv[argv.index("kubectl") :])
+
+
 # ── 2. Path-gated eval in CI ──────────────────────────────────────────────────
 
 def test_ci_workflow_has_path_filter_for_eval():
     content = (ROOT / ".github/workflows/ci.yml").read_text()
     # Should reference path filters for eval-triggering paths
     assert "prompts" in content or "paths" in content
+
+
+def test_ci_workflow_audits_dependencies_and_scans_for_secrets():
+    jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
+
+    def runs(job_id: str, prefix: list[str]) -> bool:
+        return any(argv[: len(prefix)] == prefix for argv in _commands(jobs[job_id]))
+
+    pip_audit = [
+        argv
+        for argv in _commands(jobs["audit-python"])
+        if argv[:2] == ["uvx", "--from"] and argv[3:4] == ["pip-audit"]
+    ]
+    assert len(pip_audit) == 1
+    assert pip_audit[0][2].startswith("pip-audit==")
+    assert runs("audit-web", ["npm", "audit", "--audit-level=high"])
+    assert jobs["audit-web"]["defaults"]["run"]["working-directory"] == "web"
+    assert runs("secret-scan", ["./gitleaks", "detect"])
 
 
 # ── 3. k8s manifests ─────────────────────────────────────────────────────────

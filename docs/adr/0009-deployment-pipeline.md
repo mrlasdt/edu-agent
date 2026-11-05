@@ -6,6 +6,8 @@ The agent ships via a trunk-based development workflow on GitHub Actions, target
 
 Accepted.
 
+**Implementation status (2026-11-04).** Not everything above was built. Built: trunk-based CI, image builds to GHCR, and an opt-in staging deploy (`.github/workflows/deploy.yml`). **Not built:** the production deploy, the 5% canary, auto-rollback and the metrics they would read (the `deploy-prod-canary` job targeted a deployment that does not exist and was removed), and Alembic migrations (no migrations exist and the dependency was dropped). The canary and migration statements in this record are the original intent, not a description of the system.
+
 ## Phases
 
 **Phase 1 — localhost:** Docker Compose orchestrates all services (gateway, agent, corpus, ingestion worker, math-verifier MCP server, Postgres, Qdrant, Langfuse, BGE-M3 TEI server). No cloud infra. Eval, guardrail, and agent pipelines fully functional against local Qdrant + Postgres. Secrets via `.env` (git-ignored). The k8s manifests are written in Phase 1 so they're tested before cloud is needed.

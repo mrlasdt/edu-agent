@@ -17,6 +17,11 @@ Admin server:
   7. get_job_status returns error for unknown job
 """
 
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -31,6 +36,8 @@ from mcp_servers.candidate_server import (
     get_question_tool,
     search_corpus_tool,
 )
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # ── 0. Server modules import cleanly (guards FastMCP instantiation kwargs) ────
 
@@ -56,14 +63,73 @@ def test_mcp_servers_bind_host_and_port_via_constructor():
     host/port must be set on the FastMCP constructor (stored in .settings), not
     passed to mcp.run() — run() rejects those kwargs in this SDK version. This
     guards the SSE launch path that integration-only testing would otherwise miss.
+    The default bind is loopback; the math verifier container opts in to 0.0.0.0.
     """
     from mcp_servers.admin_server import mcp as admin_mcp
     from mcp_servers.candidate_server import mcp as candidate_mcp
     from services.math_verifier.src.math_verifier.server import mcp as verifier_mcp
 
-    assert (candidate_mcp.settings.host, candidate_mcp.settings.port) == ("0.0.0.0", 8091)
-    assert (admin_mcp.settings.host, admin_mcp.settings.port) == ("0.0.0.0", 8092)
-    assert (verifier_mcp.settings.host, verifier_mcp.settings.port) == ("0.0.0.0", 8090)
+    assert (candidate_mcp.settings.host, candidate_mcp.settings.port) == ("127.0.0.1", 8091)
+    assert (admin_mcp.settings.host, admin_mcp.settings.port) == ("127.0.0.1", 8092)
+    assert (verifier_mcp.settings.host, verifier_mcp.settings.port) == ("127.0.0.1", 8090)
+
+
+def test_transport_defaults_to_stdio_and_sse_is_opt_in(monkeypatch):
+    from mcp_servers import launch
+
+    monkeypatch.delenv("MCP_TRANSPORT", raising=False)
+    assert launch.transport() == "stdio"
+    monkeypatch.setenv("MCP_TRANSPORT", "SSE")
+    assert launch.transport() == "sse"
+    monkeypatch.setenv("MCP_TRANSPORT", "carrier-pigeon")
+    with pytest.raises(SystemExit):
+        launch.transport()
+
+
+def test_bind_host_defaults_to_loopback(monkeypatch):
+    from mcp_servers import launch
+
+    monkeypatch.delenv("MCP_HOST", raising=False)
+    assert launch.bind_host() == "127.0.0.1"
+    monkeypatch.setenv("MCP_HOST", "0.0.0.0")
+    assert launch.bind_host() == "0.0.0.0"
+
+
+@pytest.mark.parametrize("module", ["candidate_server", "admin_server"])
+def test_stdio_launch_answers_initialize_on_stdout(module):
+    """
+    The README's Claude Desktop config spawns `python -m mcp_servers.<module>` and speaks
+    JSON-RPC over stdin/stdout. Before the default became stdio the process started an SSE
+    server and wrote nothing to stdout, so the client hung. Closing stdin ends the server.
+    """
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(REPO_ROOT),
+        "TURN_LOG_PATH": "",
+    }
+    env.pop("MCP_TRANSPORT", None)
+    request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "test", "version": "0"},
+        },
+    }
+    proc = subprocess.run(
+        [sys.executable, "-m", f"mcp_servers.{module}"],
+        input=json.dumps(request) + "\n",
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        env=env,
+        timeout=60,
+    )
+    first = json.loads(proc.stdout.splitlines()[0])
+    assert first["id"] == 1
+    assert first["result"]["serverInfo"]["name"].startswith("gre-tutor-")
 
 
 # ── 1. search_corpus ──────────────────────────────────────────────────────────

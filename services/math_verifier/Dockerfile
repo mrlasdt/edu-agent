@@ -15,6 +15,8 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 ENV PYTHONPATH=/app
 ENV MATH_VERIFIER_PORT=8090
+# Inside the container the port is reached from other containers, so bind every interface.
+ENV MATH_VERIFIER_HOST=0.0.0.0
 
 EXPOSE 8090
 

@@ -68,7 +68,7 @@ uv run pytest tests/ -q                                  # Python tests (mocked 
 uv run python -m evals.agent_eval --mode offline         # eval pipeline on a fake model: no network, no keys
 ```
 
-Live evals call real models and spend against the ledger; see "Evals" below. CI (`.github/workflows/ci.yml`) runs ruff, mypy, pytest, the web typecheck, tests, build and e2e, and the offline evals. It never scores a real model.
+Live evals call real models and spend against the ledger; see "Evals" below. CI (`.github/workflows/ci.yml`) runs ruff, mypy, pytest, the web typecheck, tests, build and e2e, and the offline evals. It also runs a dependency audit (`pip-audit` on `uv.lock`, `npm audit` at high severity for `web/`) and a gitleaks secret scan over the full history. It never scores a real model.
 
 ### Run a single piece outside Docker
 
@@ -187,12 +187,29 @@ result.status, result.item, result.trace   # accepted | needs_review
 
 ## MCP servers
 
-For Claude Desktop or any MCP client. Candidate server (port 8091): `search_corpus_tool`, `get_question_tool`, `get_model_essay_tool`. Admin server (port 8092): `ingest_document_tool`, `list_ingestion_jobs_tool`, `get_job_status_tool` (sends `INGESTION_ADMIN_KEY`).
+For Claude Desktop or any MCP client. Candidate server: `search_corpus_tool`, `get_question_tool`, `get_model_essay_tool`. Admin server: `ingest_document_tool`, `list_ingestion_jobs_tool`, `get_job_status_tool` (sends `INGESTION_ADMIN_KEY`). Neither server has authentication.
+
+Both speak **stdio** by default, which is how a client such as Claude Desktop launches them:
+
+```json
+{
+  "mcpServers": {
+    "gre-tutor-candidate": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/edu-agent", "run", "python", "-m", "mcp_servers.candidate_server"]
+    }
+  }
+}
+```
+
+SSE is opt-in. It binds `127.0.0.1` (candidate on port 8091, admin on 8092); `MCP_HOST` overrides the bind address, so set it to `0.0.0.0` only on a network you trust.
 
 ```bash
-uv run python -m mcp_servers.candidate_server
-uv run python -m mcp_servers.admin_server
+MCP_TRANSPORT=sse uv run python -m mcp_servers.candidate_server
+MCP_TRANSPORT=sse uv run python -m mcp_servers.admin_server
 ```
+
+The math verifier (port 8090) is a cluster-internal service, not a client-facing MCP server. It also defaults to `127.0.0.1`; its container image sets `MATH_VERIFIER_HOST=0.0.0.0`.
 
 ## Models
 
@@ -200,7 +217,7 @@ uv run python -m mcp_servers.admin_server
 
 ## Deployment
 
-`infra/k8s/` holds Deployment and Service manifests for gateway, agent, corpus, ingestion and math-verifier; unit tests check their structure. `.github/workflows/deploy.yml` builds images to GHCR on merge to main and deploys to staging only when the repo variable `DEPLOY_ENABLED` is `true` and the `KUBE_CONFIG_STAGING` secret is set.
+`infra/k8s/` holds Deployment and Service manifests for gateway, agent, corpus, ingestion and math-verifier; unit tests check their structure. `.github/workflows/deploy.yml` builds images to GHCR on merge to main and deploys to staging only when the repo variable `DEPLOY_ENABLED` is `true` and the `KUBE_CONFIG_STAGING` secret is set. There is no production deploy job, canary or automatic rollback: the workflow stops at staging, and there is no metrics backend to judge a canary by.
 
 ## Adding an exam or section
 

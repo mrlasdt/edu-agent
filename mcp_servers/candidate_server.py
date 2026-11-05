@@ -9,7 +9,7 @@ Tools:
   - get_question(test_type, section, question_type) → a random practice question
   - get_model_essay(prompt, score_tier) → an ETS anchor essay at the given scoring tier
 
-Run with:
+Run with (stdio by default; MCP_TRANSPORT=sse serves SSE on 127.0.0.1:8091):
     python -m mcp_servers.candidate_server
 """
 from __future__ import annotations
@@ -21,12 +21,13 @@ import httpx
 from mcp.server.fastmcp import FastMCP
 
 from evals.loader import load_golden_set
+from mcp_servers.launch import bind_host, run
 from shared.src.shared.config import get_settings
 
 mcp = FastMCP(
     "gre-tutor-candidate",
     instructions="GRE corpus search and practice material",
-    host="0.0.0.0",
+    host=bind_host(),
     port=8091,
 )
 
@@ -134,4 +135,4 @@ async def _get_model_essay(prompt: str, score_tier: int) -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="sse")
+    run(mcp)
