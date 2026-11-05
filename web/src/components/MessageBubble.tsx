@@ -6,6 +6,7 @@ interface Props {
   message: Message;
   onCitationClick?: (index: number) => void;
   onFeedback?: (vote: "up" | "down") => void;
+  onRegenerate?: () => void;
 }
 
 function renderContentWithCitations(
@@ -50,7 +51,7 @@ function renderContentWithCitations(
   );
 }
 
-export function MessageBubble({ message, onCitationClick, onFeedback }: Props) {
+export function MessageBubble({ message, onCitationClick, onFeedback, onRegenerate }: Props) {
   const isAgent = message.role === "agent";
 
   return (
@@ -72,6 +73,13 @@ export function MessageBubble({ message, onCitationClick, onFeedback }: Props) {
             ? "Final answer checked by the math verifier. It confirms the answer is well-formed, not that the working is right."
             : "The math verifier could not confirm the final answer. Check the working yourself."}
         </p>
+      )}
+      {isAgent && onRegenerate && (
+        <div className="message-actions">
+          <button type="button" className="regenerate-btn" onClick={onRegenerate}>
+            Regenerate
+          </button>
+        </div>
       )}
       {isAgent && onFeedback && (
         <div className="feedback-buttons" role="group" aria-label="feedback">

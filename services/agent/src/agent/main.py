@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -52,8 +54,35 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/generate")
-async def generate(req: GenerateRequest) -> StreamingResponse:
+_DISCONNECT_POLL_SECONDS = 0.25
+
+
+async def _first_item(
+    items: AsyncIterator[str | dict[str, Any]], request: Request
+) -> tuple[str | dict[str, Any] | None, bool]:
+    """
+    The first item of the agent's output, and whether the client is still connected. The server
+    only watches for a disconnect once the response has started, and the response cannot start
+    before this item exists (it decides the headers). Without this watch, a Stop pressed while
+    the agent is retrieving or waiting for its first token would run the whole call to its end.
+    """
+    first = asyncio.ensure_future(anext(items, None))
+    try:
+        while True:
+            done, _ = await asyncio.wait({first}, timeout=_DISCONNECT_POLL_SECONDS)
+            if done:
+                return first.result(), True
+            if await request.is_disconnected():
+                return None, False
+    finally:
+        if not first.done():
+            first.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await first
+
+
+@app.post("/generate", response_model=None)
+async def generate(req: GenerateRequest, request: Request) -> StreamingResponse | Response:
     """
     Resolve the agent for (test_type, section) and stream its response tokens
     as plain text. The agents yield `str` tokens interleaved with a final `dict`
@@ -78,7 +107,9 @@ async def generate(req: GenerateRequest) -> StreamingResponse:
     # Agents that retrieve sources report the count first; surface it as a header so the
     # gateway can check citations against it.
     headers: dict[str, str] = {}
-    first: str | dict[str, Any] | None = await anext(items, None)
+    first, connected = await _first_item(items, request)
+    if not connected:
+        return Response(status_code=499)  # nobody is listening; the agent call is cancelled
     if isinstance(first, dict) and "sources" in first:
         headers["X-Source-Count"] = str(first["sources"])
         first = None

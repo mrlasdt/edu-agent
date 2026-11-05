@@ -57,7 +57,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .math-check--ok::before { content: "\2713  "; color: var(--accent); }
 .math-check--fail { font-weight: 600; opacity: 1; }
 .essay-disclaimer { margin-top: 8px; font-size: 0.8rem; opacity: 0.75; }
-.feedback-buttons { display: flex; gap: 6px; margin-top: 6px; }
+.feedback-buttons, .message-actions { display: flex; gap: 6px; margin-top: 6px; }
 
 .composer { display: flex; gap: 8px; padding: 12px 0 20px; border-top: 1px solid var(--border); position: sticky; bottom: 0; background: var(--bg); }
 .composer input { flex: 1; min-width: 0; padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-radius: 8px; background: transparent; }
