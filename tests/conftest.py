@@ -19,6 +19,22 @@ def turn_log(tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def local_feedback_files(tmp_path, monkeypatch):
+    """
+    Feedback votes and the opt-in text capture are local files. Point them at temp paths and
+    pin capture off, whatever the developer's `.env` says; tests that need capture turn it on.
+    """
+    from shared.src.shared.config import get_settings
+
+    monkeypatch.setenv("FEEDBACK_LOG_PATH", str(tmp_path / "turn-log" / "feedback.jsonl"))
+    monkeypatch.setenv("TURN_CAPTURE_PATH", str(tmp_path / "turn-log" / "capture.jsonl"))
+    monkeypatch.setenv("TURN_CAPTURE_TEXT", "0")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def dev_model_config(monkeypatch):
     """
     Tests assert on the dev model config (OpenAI roles). A developer's .env or shell may set

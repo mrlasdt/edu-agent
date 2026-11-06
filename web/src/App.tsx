@@ -3,7 +3,8 @@ import type { FormEvent } from "react";
 import { MessageBubble } from "./components/MessageBubble";
 import { ModeSwitch } from "./components/ModeSwitch";
 import { SubjectPicker } from "./components/SubjectPicker";
-import { MAX_MESSAGE_CHARS, streamChat } from "./chat";
+import { MAX_MESSAGE_CHARS, sendFeedback, streamChat } from "./chat";
+import type { Vote } from "./chat";
 import type { Message, Mode, Subject } from "./types";
 
 const STOPPED = "Stopped";
@@ -34,6 +35,22 @@ export function App() {
   const patchMessage = (id: string, patch: (m: Message) => Message) =>
     setMessages((prev) => prev.map((m) => (m.id === id ? patch(m) : m)));
 
+  async function rate(message: Message, vote: Vote) {
+    if (!message.traceId) return;
+    const traceId = message.traceId;
+    const previous = message.vote;
+    patchMessage(message.id, (m) => ({ ...m, vote, feedbackError: undefined }));
+    try {
+      await sendFeedback(traceId, vote);
+    } catch {
+      patchMessage(message.id, (m) => ({
+        ...m,
+        vote: previous,
+        feedbackError: "Could not send feedback. Try again.",
+      }));
+    }
+  }
+
   // Streams the agent's reply to `text` into a new bubble. `history` is what came before it.
   async function runTurn(text: string, history: Message[], shown: Message[]) {
     if (!subject) return;
@@ -47,11 +64,13 @@ export function App() {
         { candidateId: candidateId.current, subject, mode, message: text, history },
         controller.signal
       )) {
-        patchMessage(agentId, (m) =>
-          event.kind === "text"
-            ? { ...m, content: m.content + event.text, status: undefined }
-            : { ...m, mathVerified: event.mathVerified }
-        );
+        patchMessage(agentId, (m) => {
+          if (event.kind === "trace") return { ...m, traceId: event.traceId };
+          if (event.kind === "text") {
+            return { ...m, content: m.content + event.text, status: undefined };
+          }
+          return { ...m, mathVerified: event.mathVerified };
+        });
       }
       patchMessage(agentId, (m) => ({
         ...m,
@@ -114,13 +133,19 @@ export function App() {
         />
       </header>
       <section className="messages" aria-label="Conversation" aria-live="polite">
-        {messages.map((m) => (
-          <MessageBubble
-            key={m.id}
-            message={m}
-            onRegenerate={canRegenerate && m === lastReply ? regenerate : undefined}
-          />
-        ))}
+        {messages.map((m, i) => {
+          // Rate a reply once it is complete and the gateway has named its turn.
+          const streaming = busy && i === messages.length - 1;
+          const canRate = m.role === "agent" && m.traceId && m.content && !streaming;
+          return (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              onFeedback={canRate ? (vote) => void rate(m, vote) : undefined}
+              onRegenerate={canRegenerate && m === lastReply ? regenerate : undefined}
+            />
+          );
+        })}
       </section>
       <form className="composer" onSubmit={send}>
         <input

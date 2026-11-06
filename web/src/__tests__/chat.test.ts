@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { streamChat } from "../chat";
+import { sendFeedback, streamChat } from "../chat";
 import type { ChatEvent } from "../chat";
 
 const turn = { candidateId: "c1", subject: "quant" as const, mode: "solve" as const, message: "x", history: [] };
 
 function respondWith(...chunks: string[]) {
+  respondWithHeaders({}, ...chunks);
+}
+
+function respondWithHeaders(headers: Record<string, string>, ...chunks: string[]) {
   const encoder = new TextEncoder();
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -12,7 +16,10 @@ function respondWith(...chunks: string[]) {
       controller.close();
     },
   });
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, body }));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({ ok: true, status: 200, body, headers: new Headers(headers) })
+  );
 }
 
 async function collect(): Promise<ChatEvent[]> {
@@ -53,5 +60,36 @@ describe("streamChat", () => {
     const events = await collect();
     expect(text(events)).toBe("Fine.");
     expect(events.some((e) => e.kind === "meta")).toBe(false);
+  });
+});
+
+describe("streamChat trace id", () => {
+  it("yields the turn's trace id from the X-Trace-Id header before any text", async () => {
+    respondWithHeaders({ "X-Trace-Id": "t-123" }, "Hi.");
+    const events = await collect();
+    expect(events[0]).toEqual({ kind: "trace", traceId: "t-123" });
+    expect(text(events)).toBe("Hi.");
+  });
+
+  it("yields no trace event when the gateway sent no header", async () => {
+    respondWith("Hi.");
+    expect((await collect()).some((e) => e.kind === "trace")).toBe(false);
+  });
+});
+
+describe("sendFeedback", () => {
+  it("posts the trace id and vote to /feedback", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", fetchMock);
+    await sendFeedback("t-123", "down");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("/feedback");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ trace_id: "t-123", vote: "down" });
+  });
+
+  it("throws when the gateway refuses", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+    await expect(sendFeedback("nope", "up")).rejects.toThrow("404");
   });
 });

@@ -23,8 +23,12 @@ export function toHistoryPayload(history: Message[]) {
 }
 
 export type ChatEvent =
+  | { kind: "trace"; traceId: string }
   | { kind: "text"; text: string }
   | { kind: "meta"; mathVerified?: boolean };
+
+// The gateway names each turn in this response header; feedback on the reply refers to it.
+export const TRACE_ID_HEADER = "X-Trace-Id";
 
 // The gateway ends a solved answer with a record separator and a JSON object (see
 // shared/trailer.py). It is metadata about the answer, never part of its text.
@@ -43,7 +47,8 @@ function parseTrailer(raw: string): ChatEvent | null {
 
 /**
  * POST a turn to the gateway and yield the streamed plain-text answer chunk by
- * chunk, then the answer's metadata if the gateway sent any. The gateway
+ * chunk, then the answer's metadata if the gateway sent any. The turn's trace id, when the
+ * gateway sends one, comes first. The gateway
  * streams `text/plain`; clarifications and refusals arrive the same way as
  * answers.
  */
@@ -67,6 +72,8 @@ export async function* streamChat(
   if (!res.ok || !res.body) {
     throw new Error(`Chat request failed (${res.status})`);
   }
+  const traceId = res.headers?.get(TRACE_ID_HEADER);
+  if (traceId) yield { kind: "trace", traceId };
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let trailer: string | null = null;
@@ -91,4 +98,18 @@ export async function* streamChat(
   yield* route(decoder.decode());
   const meta = trailer === null ? null : parseTrailer(trailer);
   if (meta) yield meta;
+}
+
+export type Vote = "up" | "down";
+
+/** Send a thumbs up or down for the reply of the turn `traceId` names. */
+export async function sendFeedback(traceId: string, vote: Vote): Promise<void> {
+  const res = await fetch("/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ trace_id: traceId, vote }),
+  });
+  if (!res.ok) {
+    throw new Error(`Feedback request failed (${res.status})`);
+  }
 }

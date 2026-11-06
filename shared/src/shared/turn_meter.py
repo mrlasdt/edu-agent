@@ -69,6 +69,24 @@ class TurnLog:
                 records.append(value)
         return records
 
+    def last_with_trace(self, trace_id: str) -> dict[str, Any] | None:
+        """The newest well-formed record carrying `trace_id`, or None. Scans line by line."""
+        if not trace_id or not self.path.exists():
+            return None
+        needle = f'"trace_id":{json.dumps(trace_id)}'
+        found: dict[str, Any] | None = None
+        with self.path.open(encoding="utf-8") as fh:
+            for line in fh:
+                if needle not in line:
+                    continue
+                try:
+                    value = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(value, dict) and value.get("trace_id") == trace_id:
+                    found = value
+        return found
+
 
 def default_turn_log() -> TurnLog | None:
     """The log at `TURN_LOG_PATH`; an empty path switches measurement off."""

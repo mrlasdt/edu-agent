@@ -104,7 +104,7 @@ Candidate / Admin     ┌──────────────────�
 | Service | Port | Role |
 |---|---|---|
 | `web` | 5173 | React app behind nginx. `/` is the tutor chat, `/ielts-mock` the IELTS Writing mock |
-| `gateway` | 8000 | `POST /chat`, the `/ielts/*` mock API, orchestrator, guardrails, rate limit |
+| `gateway` | 8000 | `POST /chat`, `POST /feedback`, the `/ielts/*` mock API, orchestrator, guardrails, rate limit |
 | `corpus` | 8001 | `POST /corpus/retrieve`: Qdrant dense + sparse search fused with RRF, ACL filter, optional rerank |
 | `agent` | 8002 | `POST /generate`: Quant and AW agents, skills, critics; hosts the IELTS grader and question pipeline code |
 | `ingestion` | 8003 | `/admin/documents` (admin key): parse, chunk, embed, index |
@@ -125,6 +125,14 @@ Every retrieval filters by tier: global (admin uploads, visible to all), school 
 ### Measuring a turn
 
 Each `/chat` turn is metered (model calls, tokens, estimated USD, time to first token, notes retrieved, prompt version, guardrail outcome) to `.turn-log/turns.jsonl` (`TURN_LOG_PATH`; empty switches it off). `uv run python -m evals.turn_report --turns` summarizes it. Cost is recorded, never capped. Stop in the chat closes the request; the gateway and the agent service then stop their model calls, and the turn is recorded with `outcome=client_cancelled`. Regenerate resends the last question with the history before it.
+
+### Feedback
+
+`/chat` returns the turn's trace id in the `X-Trace-Id` header, and the chat page shows thumbs up/down under each finished reply. A thumbs click is `POST /feedback {trace_id, vote: "up"|"down", comment?}` (comment up to 1,000 chars; the gateway rejects an unknown trace id, rate limits per client address and appends the vote to `.turn-log/feedback.jsonl`, `FEEDBACK_LOG_PATH`, empty switches it off). A line holds the trace id, the vote, the optional comment and a timestamp: no message text. With Langfuse on, the vote is also posted as a `user-feedback` score on that trace.
+
+- `uv run python -m evals.turn_report --feedback` adds the thumbs-down rate per agent and prompt version (the latest vote per turn counts) and lists each thumbs-down with its trace id. With one learner a rate is an anecdote, not a statistic.
+- `uv run python -m evals.feedback_to_item <trace_id>` writes a draft eval item to `.turn-log/draft-items.jsonl` for the owner to complete (question type, ground truth, tag) before it moves into a golden file.
+- The question and the reply are not stored by default, so a draft is a stub (trace id, agent, prompt version, vote) and the question is re-entered by hand. `TURN_CAPTURE_TEXT=1` (default off) makes the gateway also write the question (after PII redaction) and the reply to `.turn-log/capture.jsonl` (`TURN_CAPTURE_PATH`), keyed by trace id; `feedback_to_item` then fills the draft in. The file is local, gitignored and never sent anywhere.
 
 ## IELTS Writing mock
 
@@ -227,7 +235,7 @@ The math verifier (port 8090) is a cluster-internal service, not a client-facing
 
 - Tutoring chat for SAT Math, IELTS Reading and the other IELTS sections (only golden sets exist), and SAT Reading and Writing.
 - Login and learner identity: school and candidate corpus tiers cannot be written, and the IELTS mock is single-user.
-- Web UI beyond the chat shell: no sources panel, feedback, preferences, upload or conversation persistence (components exist but are not wired); math is typeset lightly, no LaTeX.
+- Web UI beyond the chat shell: no sources panel, preferences, upload or conversation persistence (components exist but are not wired); math is typeset lightly, no LaTeX.
 - Most agent metadata is dropped on the way to the UI; the Solve-mode verifier checks the answer's well-formedness, not an independent solve (the turn record says `verified_independent: false`, and the offline quant eval reports `wrong_but_verified`).
 - Orchestrator complexity classification (a stub) and output content safety.
 - Corpus beyond nine short GRE Quant notes; no AW corpus.

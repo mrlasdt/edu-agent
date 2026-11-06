@@ -129,3 +129,34 @@ test("Stop ends a reply that never arrives and Regenerate asks again", async ({ 
   await expect(page.getByText("Stopped")).toHaveCount(0);
   expect(requests[1]).toMatchObject({ message: "Solve 2x + 3 = 11", history: [] });
 });
+
+test("thumbs-down files feedback against the trace id the gateway sent", async ({ page }) => {
+  await page.route("**/chat", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/plain; charset=utf-8",
+      headers: { "X-Trace-Id": "trace-e2e-0001" },
+      body: "Try isolating x first.",
+    });
+  });
+  const feedback: Record<string, unknown>[] = [];
+  await page.route("**/feedback", async (route) => {
+    feedback.push(route.request().postDataJSON());
+    await route.fulfill({ status: 200, contentType: "application/json", body: '{"status":"ok"}' });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Quant" }).click();
+  await page.getByLabel("Your message").fill("Solve 2x + 3 = 11");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText(/Try isolating x first/)).toBeVisible();
+
+  const down = page.getByRole("button", { name: "Thumbs down" });
+  const [request] = await Promise.all([
+    page.waitForRequest("**/feedback"),
+    down.click(),
+  ]);
+  expect(request.method()).toBe("POST");
+  expect(feedback).toEqual([{ trace_id: "trace-e2e-0001", vote: "down" }]);
+  await expect(down).toHaveAttribute("aria-pressed", "true");
+});

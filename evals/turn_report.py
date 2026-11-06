@@ -4,12 +4,17 @@ Report on the per-turn measurement log of the live chat path.
     uv run python -m evals.turn_report                # per-agent summary of .turn-log/turns.jsonl
     uv run python -m evals.turn_report --turns        # plus one line per turn
     uv run python -m evals.turn_report --json         # the same numbers, machine-readable
+    uv run python -m evals.turn_report --feedback     # thumbs-down rate per agent, prompt version
     uv run python -m evals.turn_report --price-as gpt-4o-mini   # USD at that model's prices
     uv run python -m evals.turn_report --log PATH --last 20
 
 The gateway and the agent each append one record per turn under the same trace id
 (`shared.turn_meter`); this joins them into one row per turn and summarises per agent and mode.
 Tokens the provider did not report are our estimate and are counted and flagged, never hidden.
+
+`--feedback` joins the thumbs from `.turn-log/feedback.jsonl` (POST /feedback) to the turns by
+trace id. A learner's latest vote on a turn is the one that counts. With one learner the rate is
+an anecdote, not a statistic; the report shows the counts next to it so that stays visible.
 """
 from __future__ import annotations
 
@@ -24,6 +29,7 @@ from typing import Any
 
 from shared.src.shared.budget import estimate_cost
 from shared.src.shared.config import get_settings
+from shared.src.shared.feedback import latest_votes
 from shared.src.shared.turn_meter import TurnLog
 
 
@@ -138,6 +144,74 @@ def summarise(turns: Sequence[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def summarise_feedback(
+    turns: Sequence[dict[str, Any]], feedback: Sequence[dict[str, Any]]
+) -> dict[str, Any]:
+    """
+    Thumbs per (agent, prompt version) over `turns`, newest vote per turn. `down_rate` is
+    thumbs-down over rated turns (None when nothing is rated); `turns` shows how few are rated.
+    """
+    votes = latest_votes(list(feedback))
+    by_trace = {t["trace_id"]: t for t in turns}
+    groups: dict[str, dict[str, Any]] = {}
+    for row in turns:
+        key = f"{row['agent']} {row['prompt_version'] or '-'}"
+        groups.setdefault(key, {"turns": 0, "up": 0, "down": 0})["turns"] += 1
+    down: list[dict[str, Any]] = []
+    for trace_id, vote in votes.items():
+        turn = by_trace.get(trace_id)
+        if turn is None:
+            continue
+        counts = groups[f"{turn['agent']} {turn['prompt_version'] or '-'}"]
+        counts[vote["vote"]] += 1
+        if vote["vote"] == "down":
+            down.append(
+                {
+                    "trace_id": trace_id,
+                    "agent": turn["agent"],
+                    "mode": turn["mode"],
+                    "prompt_version": turn["prompt_version"],
+                    "ts": vote.get("ts"),
+                    "comment": vote.get("comment", ""),
+                }
+            )
+    for group in groups.values():
+        rated = group["up"] + group["down"]
+        group["rated"] = rated
+        group["down_rate"] = group["down"] / rated if rated else None
+    return {
+        "votes": sum(g["rated"] for g in groups.values()),
+        "thumbs_down": len(down),
+        "unmatched_votes": sum(1 for t in votes if t not in by_trace),
+        "groups": dict(sorted(groups.items())),
+        "down": sorted(down, key=lambda d: d["ts"] or 0.0),
+    }
+
+
+def render_feedback(fb: dict[str, Any]) -> str:
+    lines = ["", "feedback (latest thumbs per turn)"]
+    header = f"{'agent prompt':<28}{'turns':>6}{'rated':>7}{'up':>5}{'down':>6}{'down %':>9}"
+    lines += [header, "-" * len(header)]
+    for name, g in fb["groups"].items():
+        rate = "-" if g["down_rate"] is None else f"{100 * g['down_rate']:.0f}%"
+        lines.append(
+            f"{name:<28}{g['turns']:>6}{g['rated']:>7}{g['up']:>5}{g['down']:>6}{rate:>9}"
+        )
+    lines.append("(a handful of votes is an anecdote, not a rate)")
+    if fb["unmatched_votes"]:
+        lines.append(f"{fb['unmatched_votes']} vote(s) on turns missing from the turn log")
+    if fb["down"]:
+        lines.append("")
+        lines.append("thumbs-down (python -m evals.feedback_to_item <trace id> drafts an item)")
+        for d in fb["down"]:
+            comment = f"  \"{d['comment']}\"" if d["comment"] else ""
+            lines.append(
+                f"  {d['trace_id']}  {d['agent']}/{d['mode']} "
+                f"{d['prompt_version'] or '-'}{comment}"
+            )
+    return "\n".join(lines)
+
+
 def _ms(value: float | None) -> str:
     return "-" if value is None else f"{value:,.0f}"
 
@@ -228,6 +302,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--turns", action="store_true", help="also list every turn")
     parser.add_argument("--json", action="store_true", help="print the summary as JSON")
     parser.add_argument(
+        "--feedback",
+        action="store_true",
+        help="also show thumbs-down rate per agent and prompt version, and each thumbs-down",
+    )
+    parser.add_argument(
+        "--feedback-log",
+        default=None,
+        help="feedback log (default: FEEDBACK_LOG_PATH, .turn-log/feedback.jsonl)",
+    )
+    parser.add_argument(
         "--price-as",
         metavar="MODEL",
         default=None,
@@ -246,10 +330,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.price_as:
         turns = [reprice(t, args.price_as) for t in turns]
     summary = summarise(turns)
+    fb: dict[str, Any] | None = None
+    if args.feedback:
+        fb_path = Path(
+            args.feedback_log or get_settings().feedback_log_path or ".turn-log/feedback.jsonl"
+        )
+        fb = summarise_feedback(turns, TurnLog(fb_path).read())
+        if args.last is not None:
+            fb["unmatched_votes"] = 0  # votes on turns older than the window are not orphans
     if args.json:
-        print(json.dumps({"summary": summary, "turns": turns}, indent=2))
+        out: dict[str, Any] = {"summary": summary, "turns": turns}
+        if fb is not None:
+            out["feedback"] = fb
+        print(json.dumps(out, indent=2))
     else:
         print(render(summary, turns, per_turn=args.turns, price_as=args.price_as))
+        if fb is not None:
+            print(render_feedback(fb))
     return 0
 
 

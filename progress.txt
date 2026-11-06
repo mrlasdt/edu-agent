@@ -55,7 +55,7 @@ Moderation API). See README "Not built yet" for what is still missing.
 - CI checks: ruff, mypy (strict), pytest, web typecheck + vitest + vite build + Playwright
 
 ### Known gaps (not done)
-- Web app shell is minimal: Sources, feedback, preferences and upload components are
+- Web app shell is minimal: Sources, preferences and upload components are
   not wired into it, math is only lightly typeset (superscripts and symbols, no LaTeX)
   and there is no conversation persistence.
 - The seeded corpus is nine short Quant notes; AW has no corpus.
