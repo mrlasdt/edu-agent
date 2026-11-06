@@ -48,11 +48,30 @@ All on 2026-10-29, grader prompt `ielts_grader/writing_t2/v1`, three samples per
 - **Report structure** on 5 real essays: 5 of 5 pass `check_report` with `feedback_status: complete`.
 - Live spend for the slice, including drafting the blind pool (about 0.02 USD) and development runs: about 0.15 USD (gpt-4.1-mini about 0.11, the rest earlier smoke runs), recorded in `.eval-ledger/ledger.json` (then capped at 20 USD; now 5 USD, see "AI spend cap"). One mock costs about 0.01 USD with gpt-4.1-mini.
 
+### Amendment 2026-11-06: free-model IELTS default and development-gate results
+
+The default config moved to free OpenRouter models, which moved the IELTS roles off `gpt-4.1-mini`. Candidates were run through the same development gate (within 0.5 at least 0.75 and |bias| at most 0.3) on the same 19 `teacher_graded` IELTS Buddy essays, 3 samples each, max 4000 completion tokens. Labels are one instructor's, and this is the development gate only: the decision gate is still not met.
+
+| Model | Essays graded of 19 | within 0.5 | bias | MAE | QWK | Rate-limited calls | Development gate |
+|---|---|---|---|---|---|---|---|
+| google/gemma-4-26b-a4b-it | 18 | 0.83 | -0.14 | 0.42 | 0.82 | 2 | PASS |
+| google/gemma-4-31b-it | 17 | 0.82 | -0.26 | 0.44 | 0.79 | 21 | PASS |
+| recursive/flint-v1.0 | 13 | 0.62 | -0.62 | 0.69 | 0.27 | 0 | FAIL |
+| cohere/north-mini-code | 15 | 0.60 | -0.47 | 0.60 | 0.58 | 0 | FAIL |
+| xingchen-agi/xing4.0-29b-a4b | 17 | 0.71 | -0.41 | 0.53 | 0.68 | 25 | FAIL |
+| dots-studio/dots-3-note-preview | 19 | 0.42 | -0.55 | 0.76 | 0.46 | 0 | FAIL |
+| gpt-4.1-mini (reference, table above) | 19 | 0.84 | -0.03 | - | 0.79 | - | PASS |
+| Free router (reference, table above) | 17 | 0.47 | -0.79 | - | 0.53 | - | FAIL |
+
+- The 31b row is from a run paced at under 20 requests per minute; an earlier unpaced run graded 2 essays with 53 rate-limited calls.
+- Excluded before measuring: `nvidia/nemotron-3-ultra-550b-a55b`, `nvidia/nemotron-3.5-super-vl`, `nvidia/nemotron-3.5-lightning`, `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` and `liquid/lfm-2.5-2.6b` (blocked by the account data policy; owner rule: no models that train on or keep prompts), and `stealth/crouton-alpha` (trains on prompts). Not measured: Gemini 3.8 flash and GLM 5.3 flash.
+- **Decision:** in `config/model_config.free.yaml`, `ielts_grader` and `ielts_feedback` run on `google/gemma-4-26b-a4b-it:free`, with `google/gemma-4-31b-it:free` as the automatic backup. Every other role stays on `recursive/flint-v1.0:free`, and `config/model_config.dev.yaml` is unchanged. A role may list `fallbacks` (LiteLLM model strings, tried in order); the IELTS completer tries them when the primary raises or returns an empty reply, and each attempt is metered under the model actually used. Evals that pin one model drop role fallbacks.
+
 ## Consequences
 
 - The band is a consistent yardstick across attempts and a good pointer to weaknesses. It is not a prediction of an exam score: it compresses the top and bottom of the scale, and nothing here was checked against examiner marks. The PR and README say this plainly.
 - Moving the grader into `services/agent` means the eval harness, the API and tests share one implementation; a prompt change invalidates the recorded result and the gate file must be re-measured.
-- Free models are fine for development of the plumbing and unusable for the band: reasoning models need a large completion cap (a 300-token cap returned empty replies) and the free router returned unusable replies for 2 of 19 essays.
+- As first measured, free models were fine for development of the plumbing and unusable for the band (the 2026-11-06 amendment found two Gemma models that pass the development gate): reasoning models need a large completion cap (a 300-token cap returned empty replies) and the free router returned unusable replies for 2 of 19 essays.
 - gpt-4o-mini was tried first for the feedback writer and flagged correct text as errors; the verbatim-span checks catch invented quotes but not wrong judgements, so the writer is gpt-4.1-mini and every error quote is capped at 10 words.
 - Runtime spend is metered (see "AI spend cap" under "Owner decisions" above). The ledger is a local JSON file for one user; a hosted version needs a shared store and per-user caps.
 - Test-retest is measured on three samples of one model, so it shows stability, not accuracy.

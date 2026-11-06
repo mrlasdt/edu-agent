@@ -1,5 +1,6 @@
-# Free-tier model configuration: every role runs on ONE OpenRouter free model, so the whole stack
-# (tutor, solve, guardrail checks, critics, graders) works with no OpenAI key and zero spend.
+# Free-tier model configuration: every role except the two IELTS ones runs on ONE OpenRouter free
+# model, so the whole stack (tutor, solve, guardrail checks, critics, graders) works with no
+# OpenAI key and zero spend.
 #
 #   MODEL_CONFIG_PATH=config/model_config.free.yaml      (in .env; needs only OPENROUTER_API_KEY)
 #
@@ -77,16 +78,21 @@ roles:
     model: recursive/flint-v1.0:free
     temperature: 0
 
-  # IELTS Writing mock: rubric grader and examiner-style feedback writer.
+  # IELTS Writing mock: rubric grader and examiner-style feedback writer. These two roles are
+  # the exception to the one-model rule: gemma-4-26b-a4b-it passed the ADR-0014 development gate
+  # and flint did not (see the ADR's measured results). When 26b is rate limited or fails, the
+  # completer tries the fallbacks in order (gemma-4-31b-it passed the same gate).
   ielts_grader:
     provider: openrouter
-    model: recursive/flint-v1.0:free
+    model: google/gemma-4-26b-a4b-it:free
     temperature: 0.3
+    fallbacks: [openrouter/google/gemma-4-31b-it:free]
 
   ielts_feedback:
     provider: openrouter
-    model: recursive/flint-v1.0:free
+    model: google/gemma-4-26b-a4b-it:free
     temperature: 0.3
+    fallbacks: [openrouter/google/gemma-4-31b-it:free]
 
   # Background jobs
   style_extractor:

@@ -88,6 +88,7 @@ def write_model_config(model: str, base_path: str = "config/model_config.free.ya
     provider, _, name = model.partition("/")
     for role in raw["roles"].values():
         role["provider"], role["model"] = provider, name
+        role.pop("fallbacks", None)
     fd = Path(tempfile.mkdtemp(prefix="eval-config-")) / "model_config.yaml"
     fd.write_text(yaml.safe_dump(raw))
     return str(fd)

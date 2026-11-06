@@ -16,6 +16,7 @@ class ModelRoleConfig(BaseModel):
     provider: str
     model: str
     temperature: float = 0.0
+    fallbacks: list[str] = []
 
 
 class ModelConfig(BaseModel):
@@ -35,6 +36,10 @@ class ModelConfig(BaseModel):
         """Return the model string LiteLLM expects, e.g. 'openai/gpt-4o'."""
         cfg = self.role(role)
         return f"{cfg.provider}/{cfg.model}"
+
+    def litellm_fallbacks(self, role: str) -> list[str]:
+        """LiteLLM model strings tried in order after the role's own model fails."""
+        return list(self.role(role).fallbacks)
 
     def prompt_version(self, agent: str, mode: str) -> str:
         """Active prompt version for (agent, mode). Defaults to 'v1' when unset."""

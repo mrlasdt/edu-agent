@@ -35,16 +35,41 @@ def test_an_explicit_path_wins_over_the_setting():
     assert cfg.role("orchestrator").provider == "openai"
 
 
+IELTS_ROLES = {"ielts_grader", "ielts_feedback"}
+IELTS_MODEL = "google/gemma-4-26b-a4b-it:free"
+IELTS_BACKUP = "openrouter/google/gemma-4-31b-it:free"
+
+
 def test_free_config_covers_every_dev_role_and_prompt_version_on_one_free_model():
     free = yaml.safe_load(open(FREE).read())
     dev = yaml.safe_load(open(DEV).read())
     assert free["roles"].keys() == dev["roles"].keys()
     assert free["prompts"] == dev["prompts"]
-    models = {(r["provider"], r["model"]) for r in free["roles"].values()}
+    models = {
+        (r["provider"], r["model"]) for name, r in free["roles"].items() if name not in IELTS_ROLES
+    }
     assert len(models) == 1
     provider, model = next(iter(models))
     assert provider == "openrouter"
     assert model.endswith(":free")
+
+
+def test_free_config_grades_ielts_on_the_gated_gemma_with_the_other_gemma_as_backup():
+    cfg = load_model_config(FREE)
+    for role in IELTS_ROLES:
+        assert cfg.litellm_model(role) == f"openrouter/{IELTS_MODEL}"
+        assert cfg.litellm_fallbacks(role) == [IELTS_BACKUP]
+    assert cfg.litellm_fallbacks("orchestrator") == []
+    assert load_model_config(DEV).litellm_fallbacks("ielts_grader") == []
+
+
+def test_pinning_one_model_for_an_eval_drops_the_role_fallbacks():
+    from evals.agent_eval.runner import write_model_config
+
+    pinned = load_model_config(write_model_config("openai/gpt-4o-mini"))
+    for role in pinned.roles:
+        assert pinned.litellm_model(role) == "openai/gpt-4o-mini"
+        assert pinned.litellm_fallbacks(role) == []
 
 
 def test_default_config_is_the_free_one(monkeypatch):
