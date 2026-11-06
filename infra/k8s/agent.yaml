@@ -25,6 +25,11 @@ spec:
                 secretKeyRef:
                   name: edu-agent-secrets
                   key: openai-api-key
+            - name: OPENROUTER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: edu-agent-secrets
+                  key: openrouter-api-key
             - name: CORPUS_SERVICE_URL
               value: http://corpus:8001
             - name: MATH_VERIFIER_URL

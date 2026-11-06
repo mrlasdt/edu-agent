@@ -25,6 +25,11 @@ spec:
                 secretKeyRef:
                   name: edu-agent-secrets
                   key: openai-api-key
+            - name: OPENROUTER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: edu-agent-secrets
+                  key: openrouter-api-key
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
