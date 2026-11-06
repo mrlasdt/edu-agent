@@ -44,8 +44,8 @@ class ModelConfig(BaseModel):
 def load_model_config(path: str | None = None) -> ModelConfig:
     """
     The model config at `path`; without one, the file named by MODEL_CONFIG_PATH (default
-    config/model_config.dev.yaml), so every service honours the same switch (for example
-    config/model_config.free.yaml to run the stack on a free OpenRouter model).
+    config/model_config.free.yaml, every role on a free OpenRouter model), so every service
+    honours the same switch (config/model_config.dev.yaml is the paid OpenAI config).
     """
     return _load_model_config(path or get_settings().model_config_path)
 
@@ -114,7 +114,7 @@ class Settings(BaseSettings):
     # Dev-only: a message containing this text is treated as a self-harm moderation hit, so the
     # supportive reply can be tried without a paid moderation key. Ignored unless ENV=dev.
     safety_test_trigger: str = ""
-    model_config_path: str = "config/model_config.dev.yaml"
+    model_config_path: str = "config/model_config.free.yaml"
 
 
 @lru_cache

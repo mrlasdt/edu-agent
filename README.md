@@ -37,13 +37,13 @@ Open http://localhost:5173, pick Quant or AW and ask a question. The first start
   sed -i.bak '/^INGESTION_ADMIN_KEY=/d' .env && rm .env.bak
   echo "INGESTION_ADMIN_KEY=$(openssl rand -hex 24)" >> .env
   ```
-- **Models.** Every service reads the config named by `MODEL_CONFIG_PATH` (default `config/model_config.dev.yaml`, every role on `gpt-4o-mini`, needs `OPENAI_API_KEY`). Other roles and providers are one config line each (LiteLLM). Services read it once at startup: after a change run `docker compose -f infra/docker-compose.yml restart gateway agent`.
-- **No OpenAI key: free-model config.** `config/model_config.free.yaml` puts every role on one OpenRouter `:free` model that supports tool calling:
+- **Models.** Every service reads the config named by `MODEL_CONFIG_PATH` (default `config/model_config.free.yaml`: every role on one free OpenRouter model, needs `OPENROUTER_API_KEY`; `config/model_config.dev.yaml` is the paid OpenAI config, every role on `gpt-4o-mini`, needs `OPENAI_API_KEY`; OpenAI retires `gpt-4o` and `gpt-4.1` and their minis on 2027-01-14). Other roles and providers are one config line each (LiteLLM). Services read it once at startup: after a change run `docker compose -f infra/docker-compose.yml restart gateway agent`.
+- **Free-model default.** `config/model_config.free.yaml` puts every role on one OpenRouter `:free` model that supports tool calling. It is the default, so with no OpenAI key:
   ```bash
   # in .env: set OPENROUTER_API_KEY, leave OPENAI_API_KEY unset, and add
   ENV=dev
-  MODEL_CONFIG_PATH=config/model_config.free.yaml
   ```
+  To use the paid OpenAI models instead, set `OPENAI_API_KEY` and `MODEL_CONFIG_PATH=config/model_config.dev.yaml`.
   With `ENV=dev` and no OpenAI key the gateway skips the OpenAI Moderation call and records `moderation_skipped: true` on the turn; in any other `ENV` a missing key makes the turn answer "safety check unavailable". `MODERATION_ON_ERROR=closed|open` sets the policy for a moderation outage (default closed, open in `ENV=dev`). To try the supportive reply for a self-harm message without a moderation key, set `SAFETY_TEST_TRIGGER` (for example `SAFETY_TEST_TRIGGER=__test_self_harm__`) and send a message containing that text; it works only with `ENV=dev`. Free models are rate limited and slow: use them for development, not for judging quality.
 - **Math tools.** `MATH_TOOLS_ENABLED=true` lets the Quant agent call `math_evaluate`, `math_solve` and `math_compare` (served by `math-verifier`, at most 4 tool rounds per turn). Default `false`: tool turns are not streamed and cost more tokens.
 - **IELTS mock.** Needs `OPENAI_API_KEY`. `AI_SPEND_CAP_USD` (default 5) caps AI spend of the mock and the evals in one shared ledger (`AI_LEDGER_PATH`); the tutor's `/chat` is not capped. Compose creates `./ielts-local` and `./.eval-ledger`; on Linux run `mkdir -p ielts-local .eval-ledger` first.
@@ -221,7 +221,7 @@ The math verifier (port 8090) is a cluster-internal service, not a client-facing
 
 ## Models
 
-`config/model_config.dev.yaml` maps roles (orchestrator, `quant_agent`, `aw_agent`, math escalation, critics, graders, question-pipeline roles) to models; swapping a role to another provider is one line. `config/model_config.free.yaml` is the zero-spend variant. Prompts are versioned under `prompts/`.
+`config/model_config.free.yaml` (the default) maps roles (orchestrator, `quant_agent`, `aw_agent`, math escalation, critics, graders, question-pipeline roles) to models; swapping a role to another provider is one line. `config/model_config.dev.yaml` is the paid OpenAI variant. Prompts are versioned under `prompts/`.
 
 ## Deployment
 

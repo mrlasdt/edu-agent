@@ -45,3 +45,21 @@ def test_free_config_covers_every_dev_role_and_prompt_version_on_one_free_model(
     provider, model = next(iter(models))
     assert provider == "openrouter"
     assert model.endswith(":free")
+
+
+def test_default_config_is_the_free_one(monkeypatch):
+    from shared.src.shared.config import Settings
+
+    monkeypatch.delenv("MODEL_CONFIG_PATH", raising=False)
+    assert Settings(_env_file=None).model_config_path == FREE
+
+
+def test_free_eval_chain_starts_with_the_product_default(monkeypatch):
+    from evals.agent_eval import cli
+    from shared.src.shared.config import get_settings
+
+    monkeypatch.setenv("MODEL_CONFIG_PATH", FREE)
+    get_settings.cache_clear()
+    chain = cli.provider_chain("free")
+    assert chain[0] == "openrouter/recursive/flint-v1.0:free"
+    assert len(chain) == len(set(chain))

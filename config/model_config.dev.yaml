@@ -1,4 +1,5 @@
-# Model configuration for the dev environment and the local MVP stack.
+# Paid OpenAI model configuration. Not the default any more: select it with
+# MODEL_CONFIG_PATH=config/model_config.dev.yaml (the default is model_config.free.yaml).
 # Every role runs on gpt-4o-mini to keep spend low (a tutoring turn costs a fraction of
 # a cent); a production setup would tier this (e.g. gpt-4o main, o1 math escalation).
 # Each role specifies provider, model, and generation params.
