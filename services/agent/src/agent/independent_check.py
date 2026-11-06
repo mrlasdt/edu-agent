@@ -45,6 +45,7 @@ _NAMES = re.compile(
 _NUMBER_CHARS = re.compile(r"^[\d\s.,+\-*/^()!]*$")
 _DECIMAL = re.compile(r"^-?\d+\.(\d+)$")
 _VARIABLE_PREFIX = re.compile(r"^\s*\w+\s*=\s*")
+_THOUSANDS = re.compile(r"(?<![\d.])\d{1,3}(?:,\d{3})+(?!\d)")
 
 
 @dataclass(frozen=True)
@@ -67,11 +68,16 @@ def parse_expression(text: str) -> str | None:
     return None if not expression or expression.lower() in _NONE_WORDS else expression
 
 
-def is_number_list(text: str) -> bool:
-    """True when every value in "2, -2" / "[1/3, sqrt(2)]" / "x = 4" is a number, not a symbol."""
+def _values(text: str) -> list[str]:
+    """The bare values in "2, -2" / "[1/3, sqrt(2)]" / "x = 4"."""
     body = text.strip().strip("[]{}")
     values = [_VARIABLE_PREFIX.sub("", v).strip() for v in re.split(r"[,;]|\bor\b|\band\b", body)]
-    values = [v for v in values if v]
+    return [v for v in values if v]
+
+
+def is_number_list(text: str) -> bool:
+    """True when every value in "2, -2" / "[1/3, sqrt(2)]" / "x = 4" is a number, not a symbol."""
+    values = _values(text)
     if not values:
         return False
     for value in values:
@@ -97,6 +103,7 @@ async def compare(
     """
     if expression is None:
         return IndependentCheck(NOT_CHECKABLE, reason="no expression for a numeric answer")
+    claimed = _THOUSANDS.sub(lambda m: m.group().replace(",", ""), claimed)
     if not is_number_list(claimed):
         return IndependentCheck(NOT_CHECKABLE, reason="the answer is not a number")
     result = await skill.verify(expression=expression, expected=claimed)
@@ -108,6 +115,10 @@ async def compare(
         return IndependentCheck(NOT_CHECKABLE, reason="the solver did not compute a number")
     if await _is_rounding_of(skill, expression, claimed):
         return IndependentCheck(AGREES)
+    if "=" in expression and await _is_some_of_the_roots(skill, result.computed, claimed):
+        return IndependentCheck(
+            NOT_CHECKABLE, reason="the answer is some of the roots; the question may restrict them"
+        )
     return IndependentCheck(DISAGREES, solver=_display(result.computed))
 
 
@@ -128,3 +139,23 @@ async def _is_rounding_of(skill: VerifyMathSkill, expression: str, claimed: str)
         expected=str(int(text.replace(".", ""))),
     )
     return rounded.verified and not rounded.error
+
+
+async def _is_some_of_the_roots(skill: VerifyMathSkill, computed: str, claimed: str) -> bool:
+    """
+    True when every claimed value is one of the solver's roots and some root is left over
+    ("2" against "-2, 2"): the question may ask for the positive root, so this is no disagreement.
+    Each value is matched with the same solver, so "sqrt(4)" matches the root "2".
+    """
+    roots = _values(computed)
+    wanted = _values(claimed)
+    matched: set[int] = set()
+    for value in wanted:
+        for index, root in enumerate(roots):
+            check = await skill.verify(expression=value, expected=root)
+            if check.verified and not check.error:
+                matched.add(index)
+                break
+        else:
+            return False
+    return bool(wanted) and len(matched) < len(roots)

@@ -88,6 +88,46 @@ async def test_a_rounded_decimal_for_an_equation_is_not_given_the_benefit(skill)
     assert (await ic.compare(skill, "3x = 10", "3.3")).verdict == ic.DISAGREES
 
 
+@pytest.mark.parametrize("claimed", ["1,200", "1200", "1,200.0"])
+async def test_a_thousands_separator_is_not_a_list(skill, claimed: str) -> None:
+    assert (await ic.compare(skill, "6*200", claimed)).verdict == ic.AGREES
+
+
+async def test_a_wrong_answer_with_a_thousands_separator_still_disagrees(skill) -> None:
+    check = await ic.compare(skill, "6*200", "1,300")
+    assert (check.verdict, check.solver) == (ic.DISAGREES, "1200")
+
+
+async def test_a_comma_list_without_digit_groups_stays_a_list(skill) -> None:
+    assert (await ic.compare(skill, "x^2 - 5x + 6 = 0", "2, 3")).verdict == ic.AGREES
+    assert (await ic.compare(skill, "x^2 - 5x + 6 = 0", "2,3")).verdict == ic.AGREES
+
+
+@pytest.mark.parametrize("claimed", ["2", "-2", "x = 2", "sqrt(4)"])
+async def test_one_root_of_several_is_not_checkable_not_a_disagreement(
+    skill, claimed: str
+) -> None:
+    check = await ic.compare(skill, "x^2 = 4", claimed)
+    assert check.verdict == ic.NOT_CHECKABLE
+    assert check.reason
+
+
+async def test_a_subset_of_three_roots_is_not_checkable(skill) -> None:
+    check = await ic.compare(skill, "(x - 1)*(x - 2)*(x - 3) = 0", "1, 3")
+    assert check.verdict == ic.NOT_CHECKABLE
+
+
+@pytest.mark.parametrize("claimed", ["3", "2, 3", "3, 2, 5", "4, 5"])
+async def test_a_claimed_value_outside_the_roots_disagrees(skill, claimed: str) -> None:
+    check = await ic.compare(skill, "x^2 = 4", claimed)
+    assert (check.verdict, check.solver) == (ic.DISAGREES, "-2, 2")
+
+
+async def test_a_wrong_single_value_against_a_single_root_disagrees(skill) -> None:
+    check = await ic.compare(skill, "3x = 12", "5")
+    assert (check.verdict, check.solver) == (ic.DISAGREES, "4")
+
+
 @pytest.mark.parametrize(
     ("expression", "claimed", "why"),
     [
