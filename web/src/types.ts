@@ -10,6 +10,15 @@ export interface Citation {
   tier: "global" | "school" | "candidate";
 }
 
+// The independent answer check of a solved reply: a solver recomputed the problem from an equation
+// the model wrote without seeing its answer. `solver` is what it computed, set when they disagree.
+export type IndependentVerdict = "agrees" | "disagrees" | "not_checkable";
+
+export interface IndependentCheck {
+  verdict: IndependentVerdict;
+  solver?: string;
+}
+
 export interface Message {
   id: string;
   role: MessageRole;
@@ -18,6 +27,8 @@ export interface Message {
   status?: string; // "checking" | "retrieving" | null
   // Whether the math verifier accepted the final answer; absent when it did not run (tutor mode).
   mathVerified?: boolean;
+  // Absent when the check did not run (tutor mode).
+  independentCheck?: IndependentCheck;
   citation_stripped?: boolean;
   // The gateway's id for the turn that produced this reply; feedback is filed against it.
   traceId?: string;

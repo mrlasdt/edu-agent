@@ -83,15 +83,21 @@ def render(doc: dict[str, Any]) -> str:
             out.append(f"| {kind} | {name} | {c['passed']}/{c['total']} ({c['value']:.2f}) |")
     wbv = summary.get("wrong_but_verified")
     if wbv:
-        seeded, observed = wbv["seeded"], wbv["observed"]
+        seeded, observed, control = wbv["seeded"], wbv["observed"], wbv["control"]
         out += [
             "", "## Wrong but verified", "",
-            f"- seeded wrong answers accepted by the product check: {seeded['count']}/"
-            f"{seeded['n']} (95% interval {_ci(seeded['ci95'])})",
-            f"- real solve attempts that were wrong and still accepted: {observed['count']}/"
-            f"{observed['solve_attempts']} attempts",
-            "- the live check compares an answer with itself: it shows the answer is "
-            "well-formed, not that it is right",
+            f"- seeded wrong answers the independent check agreed with: {seeded['count']}/"
+            f"{seeded['n']} (95% interval {_ci(seeded['ci95'])}); {seeded['disagrees']} "
+            f"disagreed, {seeded['not_checkable']} not checkable",
+            f"- the same answers through the well-formed check alone (before the independent "
+            f"check existed): {wbv['self_compare']['count']}/{wbv['self_compare']['n']} accepted",
+            f"- control, the golden key through the independent check: {control['agrees']}/"
+            f"{control['n']} agrees, {control['disagrees']} disagrees, "
+            f"{control['not_checkable']} not checkable",
+            f"- real solve attempts that were wrong and still got \"agrees\": "
+            f"{observed['count']}/{observed['solve_attempts']} attempts",
+            "- the independent check covers numeric answers only; a wrong answer is not "
+            "counted as verified when the check could not run",
         ]
     out += [
         "", "## By failure type", "",

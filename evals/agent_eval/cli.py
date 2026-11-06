@@ -117,6 +117,9 @@ def _offline_model(model: str, messages: list[dict[str, Any]]) -> str | FakeTool
     )
     if item is None:
         return "What is the first quantity you could compute from the information given?"
+    if "<expr>" in system:
+        # the independent check's short call: the problem as an expression (NONE for a comparison)
+        return f"<expr>{quant_suite.stub_expression(item) or 'NONE'}</expr>"
     asked_for_a_tool = any(m.get("role") == "tool" for m in messages)
     if "math_evaluate" in system and item.get("expression") and not asked_for_a_tool:
         # the tools prompt is in play: do what a careful model does, compute before answering

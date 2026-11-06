@@ -131,11 +131,11 @@ _Avoid_: Synthetic question, auto question
 ## Quality criteria
 
 **Quant correctness**:
-The final symbolic or numeric answer in a Quant turn is well-formed: the sympy sandbox can parse and evaluate it, after at most two retries and at most one stronger-model escalation. This is a well-formedness check, not a correctness check: the live path compares the answer with itself, so a wrong but parseable answer passes. The turn record carries `verified_independent: false` to say so, and the offline Quant eval reports `wrong_but_verified` to measure the gap. Correctness is graded only offline, against the golden key. Any Quant turn that fails the well-formedness check is a `verifier-fail` event and degrades gracefully rather than emitting an unchecked answer.
+The final symbolic or numeric answer in a Quant Solve turn passes two checks, after at most two retries and at most one stronger-model escalation. The well-formed check: the sympy sandbox can parse and evaluate it. It compares the answer with itself, so a wrong but parseable answer passes. The independent check (ADR-0015): a second short model call writes the problem as an equation without seeing the answer, the solver computes it, and the result is compared with the claimed answer. The turn record's `verified_independent` says `agrees`, `disagrees` or `not_checkable`, and the reply shows it. It covers numeric answers only (ADR-0012's limit), and "agrees" does not show the problem was read correctly. A `disagrees` counts as a failed check. The offline Quant eval reports `wrong_but_verified` (wrong answers the independent check agreed with). Correctness is graded only offline, against the golden key. Any Quant turn that fails a check after the whole ladder is a `verifier-fail` event and degrades gracefully rather than emitting an unchecked answer.
 _Avoid_: Right answer, accuracy, correctness
 
 **Verifier-fail**:
-A Quant turn in which the math verifier could not parse or evaluate the agent's final answer after the full retry-and-escalate pipeline. The agent must visibly degrade (Tutor: "let's reason through it together"; Solve: "I'm not confident in the final answer") rather than emit an unchecked claim. Tracked as an eval signal.
+A Quant turn in which the math verifier could not parse or evaluate the agent's final answer, or the independent check disagreed with it, after the full retry-and-escalate pipeline. The agent must visibly degrade (Tutor: "let's reason through it together"; Solve: "I'm not confident in the final answer") rather than emit an unchecked claim. Tracked as an eval signal.
 _Avoid_: Failed turn, math fail
 
 **Rubric score**:

@@ -390,3 +390,34 @@ def test_a_failed_verification_is_reported_and_junk_trailers_are_dropped():
     assert failed.text.endswith('\x1e{"math_verified":false}')
     for junk in ('\x1e{"math_verified":"yes"}', "\x1enot json", "\x1e[1]"):
         assert _chat(["Fine.", junk], body={"mode": "solve"}).text == "Fine."
+
+
+def test_the_independent_check_is_passed_on_to_the_web_app():
+    trailer = '\x1e{"math_verified":true,"independent_check":{"verdict":"agrees"}}'
+    resp = _chat(["Step 1.\n**Answer: 2**", trailer], body={"mode": "solve"})
+    assert resp.text.endswith(trailer)
+
+    disagree = (
+        '\x1e{"math_verified":false,"independent_check":{"verdict":"disagrees","solver":"2, 3"}}'
+    )
+    assert _chat(["Best effort.", disagree], body={"mode": "solve"}).text.endswith(disagree)
+
+
+def test_an_invalid_independent_check_is_dropped_and_a_long_solver_value_is_clipped():
+    junk = (
+        '\x1e{"math_verified":true,"independent_check":{"verdict":"definitely","solver":"2"}}',
+        '\x1e{"math_verified":true,"independent_check":"agrees"}',
+        '\x1e{"math_verified":true,"independent_check":{"verdict":"agrees","solver":"2, 3"}}',
+    )
+    for trailer in junk:
+        text = _chat(["Fine.", trailer], body={"mode": "solve"}).text
+        # an unknown verdict or a malformed entry vanishes; "agrees" carries no solver value
+        assert text in (
+            'Fine.\x1e{"math_verified":true}',
+            'Fine.\x1e{"math_verified":true,"independent_check":{"verdict":"agrees"}}',
+        )
+
+    long = '\x1e{"math_verified":true,"independent_check":{"verdict":"disagrees","solver":"' \
+           + "9" * 500 + '"}}'
+    text = _chat(["Fine.", long], body={"mode": "solve"}).text
+    assert text.endswith('"}}') and len(text) < 200

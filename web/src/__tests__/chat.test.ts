@@ -55,6 +55,24 @@ describe("streamChat", () => {
     expect(events[events.length - 1]).toEqual({ kind: "meta", mathVerified: false });
   });
 
+  it("reads the independent check from the trailer", async () => {
+    respondWith(
+      'Best effort.\x1e{"math_verified":false,"independent_check":{"verdict":"disagrees","solver":"2, 3"}}'
+    );
+    const events = await collect();
+    expect(events[events.length - 1]).toEqual({
+      kind: "meta",
+      mathVerified: false,
+      independentCheck: { verdict: "disagrees", solver: "2, 3" },
+    });
+  });
+
+  it("drops an independent check it does not recognise", async () => {
+    respondWith('Fine.\x1e{"math_verified":true,"independent_check":{"verdict":"maybe"}}');
+    const events = await collect();
+    expect(events[events.length - 1]).toEqual({ kind: "meta", mathVerified: true });
+  });
+
   it("ignores a trailer it cannot read", async () => {
     respondWith("Fine.\x1enot json");
     const events = await collect();

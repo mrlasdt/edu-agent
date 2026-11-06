@@ -81,14 +81,14 @@ test("failed and empty turns are not replayed as history", async ({ page }) => {
   ]);
 });
 
-test("solve mode shows the math verifier's verdict and typeset math, not the raw trailer", async ({
+test("solve mode shows both checks' verdicts and typeset math, not the raw trailer", async ({
   page,
 }) => {
   await page.route("**/chat", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "text/plain; charset=utf-8",
-      body: 'Factor x^2 - 5x + 6 = 0 => (x - 2)(x - 3).\n\n**Answer: x = 2, x = 3**\x1e{"math_verified":true}',
+      body: 'Factor x^2 - 5x + 6 = 0 => (x - 2)(x - 3).\n\n**Answer: x = 2, x = 3**\x1e{"math_verified":true,"independent_check":{"verdict":"agrees"}}',
     });
   });
 
@@ -98,7 +98,8 @@ test("solve mode shows the math verifier's verdict and typeset math, not the raw
   await page.getByRole("button", { name: "Send" }).click();
 
   await expect(page.getByText("Answer: x = 2, x = 3")).toBeVisible();
-  await expect(page.getByRole("note")).toContainText("checked by the math verifier");
+  await expect(page.getByRole("note").first()).toContainText("checked by the math verifier");
+  await expect(page.locator(".independent-check")).toContainText("Independent check: agrees");
   await expect(page.locator(".message-bubble--agent sup")).toHaveText("2");
   await expect(page.locator(".message-bubble--agent .message-content")).not.toContainText("math_verified");
 });

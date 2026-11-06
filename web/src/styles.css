@@ -56,6 +56,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .math-check { margin: 6px 0 0; font-size: 0.8rem; opacity: 0.8; }
 .math-check--ok::before { content: "\2713  "; color: var(--accent); }
 .math-check--fail { font-weight: 600; opacity: 1; }
+.independent-check--agrees::before { content: "\2713  "; color: var(--accent); }
+.independent-check--disagrees { font-weight: 600; opacity: 1; }
+.independent-check--disagrees::before { content: "\2717  "; }
 .essay-disclaimer { margin-top: 8px; font-size: 0.8rem; opacity: 0.75; }
 .feedback-buttons, .message-actions { display: flex; gap: 6px; margin-top: 6px; }
 .feedback-btn { padding: 2px 8px; border: 1px solid var(--border); border-radius: 6px; background: transparent; cursor: pointer; opacity: 0.7; }

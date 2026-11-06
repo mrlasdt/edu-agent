@@ -102,6 +102,8 @@ prompts:
     tutor: v3  # v2 plus: cite the reference note as [N], never as "your notes"
     # v2 was v1 plus "plain-text math": the web app typesets x^2 and => but not LaTeX
     solve: v2
+    # The independent answer check's model call: the problem as an <expr> tag, without the answer
+    formalize: v1
   # The Quant agent's prompts when the math tools are on (MATH_TOOLS_ENABLED): the same prompts as
   # above plus a "Math tools" section (prompts/quant_agent_math_tools/<mode>/<version>.md).
   quant_agent_math_tools:

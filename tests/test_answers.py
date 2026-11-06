@@ -56,12 +56,14 @@ async def test_correct_multi_value_answer_passes_verifier_first_try(
     calls: list[str] = []
 
     async def fake(**kw: Any) -> Any:
-        calls.append(kw["model"])
-        return _stream(reply)
+        # the solve call, then the independent check's short call for the problem's equation
+        calls.append("formalize" if "<expr>" in kw["messages"][0]["content"] else "solve")
+        return _stream("<expr>x^2 - 5x + 6 = 0</expr>" if calls[-1] == "formalize" else reply)
 
     monkeypatch.setattr("litellm.acompletion", fake)
     agent = QuantAgent(verify_math_skill=InProcessVerifySkill())
     session = Session(candidate_id="c", test_type="gre", section="quant", mode=Mode.solve)
     out = [o async for o in agent.run(session, "Solve x^2 - 5x + 6 = 0")]
     assert out[-1] == {"verifier_fail": False}
-    assert len(calls) == 1
+    assert {"independent_check": {"verdict": "agrees"}} in out
+    assert calls == ["solve", "formalize"]  # no retry, no escalation

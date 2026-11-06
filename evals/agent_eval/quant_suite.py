@@ -6,7 +6,8 @@ Every item in `evals/golden/gre_quant.jsonl` comes from a failure EduAgent reall
 so ("none yet") and works as a capability probe. Items have a `kind` that decides how they run:
 
   solve            the real QuantAgent in solve mode; pass = the final answer is right (sympy,
-                   never the agent's own claim) AND the product's well-formedness check accepted it
+                   never the agent's own claim) AND the product's checks accepted it (the answer
+                   is well-formed, and the independent check did not disagree with it)
   tutor            one real tutor reply; pass = no answer leak, no LaTeX, citations written as
                    [N] (never "your notes"), and a concrete next step (see `graders`)
   tutor_multiturn  a scripted student talks to the real tutor for several turns; pass = every
@@ -118,13 +119,17 @@ async def _converse(
     mode: Mode,
     trace_prefix: str,
     collector: TurnCollector,
-) -> tuple[list[dict[str, str]], list[dict[str, Any]], bool | None]:
-    """Send `messages` in order to a fresh agent; returns transcript, per-turn usage, verifier."""
+) -> tuple[list[dict[str, str]], list[dict[str, Any]], bool | None, str | None]:
+    """
+    Send `messages` in order to a fresh agent; returns the transcript, per-turn usage, the
+    verifier's verdict (`verifier_fail`) and the independent check's verdict of the last turn.
+    """
     agent = factory(item.get("notes", []))
     session = Session(candidate_id="eval", test_type="gre", section="quant", mode=mode)
     transcript: list[dict[str, str]] = []
     usage: list[dict[str, Any]] = []
     verifier_fail: bool | None = None
+    independent: str | None = None
     for n, text in enumerate(messages):
         trace_id = f"{trace_prefix}-t{n}"
         parts: list[str] = []
@@ -135,6 +140,7 @@ async def _converse(
                     parts.append(out)
                 else:
                     verifier_fail = out.get("verifier_fail", verifier_fail)
+                    independent = out.get("independent_check", {}).get("verdict", independent)
                     tool_lines += [
                         {"role": "tool_call", "content": f"{c['name']}({c['arguments']}) -> "
                          f"{c['result']}"}
@@ -147,7 +153,7 @@ async def _converse(
         session = session.append_message(MessageRole.candidate, text).append_message(
             MessageRole.agent, reply
         )
-    return transcript, usage, verifier_fail
+    return transcript, usage, verifier_fail, independent
 
 
 def _row(
@@ -168,7 +174,7 @@ async def run_attempt(
     prefix = f"{run_prefix}-{item['id']}-a{attempt}"
     kind = item["kind"]
     if kind == "solve":
-        transcript, usage, verifier_fail = await _converse(
+        transcript, usage, verifier_fail, independent = await _converse(
             factory, item, [item["question"]], Mode.solve, prefix, collector
         )
         raw = extract_final_answer(transcript[-1]["content"])
@@ -179,12 +185,15 @@ async def run_attempt(
         checks = {"correct": graded.correct, "verifier_accepted": verifier_fail is False}
         row = _row(item, attempt, checks, transcript, usage)
         row["answer"] = answer
+        row["independent_check"] = independent
         return row
     messages = (
         [first_message(item), *item["turns"][1:]] if kind == "tutor_multiturn"
         else [first_message(item)]
     )
-    transcript, usage, _ = await _converse(factory, item, messages, Mode.tutor, prefix, collector)
+    transcript, usage, _, _ = await _converse(
+        factory, item, messages, Mode.tutor, prefix, collector
+    )
     replies = [m["content"] for m in transcript if m["role"] == "tutor"]
     per_reply = [graders.grade_tutor_reply(r, item) for r in replies]
     checks = {name: all(c[name] for c in per_reply) for name in per_reply[0]}
@@ -210,7 +219,7 @@ async def run_security_case(item: dict[str, Any], skill: VerifyMathSkill) -> dic
     }
 
 
-# ── wrong_but_verified: does the product's check accept a wrong answer? ─────
+# ── wrong_but_verified: does the product's independent check accept a wrong answer? ──
 
 
 def seeded_wrong_answer(item: dict[str, Any]) -> str | None:
@@ -230,54 +239,108 @@ def seeded_wrong_answer(item: dict[str, Any]) -> str | None:
     return ",".join(shifted) or None
 
 
+def stub_expression(item: dict[str, Any]) -> str | None:
+    """
+    What the model writes for the independent check, with no model involved: the item's own
+    `expression`, or None for a quantitative comparison (its answer is a letter, so the real
+    prompt tells the model to write NONE). The offline suite uses it as its fake model's reply,
+    so the seeded measurement exercises the product's comparison and nothing else: it says
+    nothing about how well a real model writes the equation.
+    """
+    if item["question_type"] == "quantitative_comparison":
+        return None
+    return str(item["expression"]) or None
+
+
 def _is_wrong_but_verified(row: dict[str, Any]) -> bool:
-    return not row["checks"]["correct"] and row["checks"]["verifier_accepted"]
+    return not row["checks"]["correct"] and row.get("independent_check") == "agrees"
+
+
+async def _verdicts(
+    items: list[dict[str, Any]], agent: QuantAgent, answer_of: Callable[[dict[str, Any]], str]
+) -> dict[str, str]:
+    """The independent check's verdict per item id, for the answer `answer_of(item)`."""
+    out: dict[str, str] = {}
+    for item in items:
+        text = f"1. Work.\n**Answer: {answer_of(item)}**"
+        claimed = agent._extract_final_answer(text) or ""
+        out[item["id"]] = (await agent._independent_check(stub_expression(item), claimed)).verdict
+    return out
+
+
+def _tally(verdicts: dict[str, str]) -> dict[str, int]:
+    return {
+        v: sum(1 for x in verdicts.values() if x == v)
+        for v in ("agrees", "disagrees", "not_checkable")
+    }
 
 
 async def wrong_but_verified(
     items: list[dict[str, Any]], agent: QuantAgent, rows: list[dict[str, Any]]
 ) -> dict[str, Any]:
     """
-    How often the product's solve-turn check accepts an answer the golden key says is wrong.
+    How often the product's independent check agrees with an answer the golden key says is wrong.
 
     `seeded` needs no model: each solve item gets a wrong answer (`seeded_wrong_answer`), which
     sympy confirms against the golden key is wrong, and the answer goes through the same
-    extract-then-`_verify` step a solve turn runs. `observed` counts real solve attempts in
-    `rows` that were wrong and still accepted. While `_verify` compares an answer with itself,
-    `seeded` is expected to be near 100%: the check is of form, not of correctness.
+    extract-then-`_independent_check` step a solve turn runs, with `stub_expression` as the
+    model's expression. `self_compare` is the same answers through `_verify`, the well-formed
+    check the live path ran alone before the independent check existed (it compares an answer
+    with itself, so it was near 100%): the "before" for the same items. `control` runs the golden
+    key through the independent check, to show it does not simply reject everything.
+    `observed` counts real solve attempts in `rows` that were wrong and still got "agrees".
+    "not_checkable" is never counted as verified: the learner is told it was not checked.
     """
-    accepted: list[str] = []
-    n = 0
+    seeded_items: list[dict[str, Any]] = []
+    wrong_answers: dict[str, str] = {}
     for item in items:
         wrong = seeded_wrong_answer(item) if item["kind"] == "solve" else None
         if wrong is None or (await grade_quant_item(item, candidate_answer=wrong)).correct:
             continue
-        n += 1
-        text = f"1. Work.\n**Answer: {wrong}**"
+        seeded_items.append(item)
+        wrong_answers[item["id"]] = wrong
+    verdicts = await _verdicts(seeded_items, agent, lambda i: wrong_answers[i["id"]])
+    well_formed: list[str] = []
+    for item in seeded_items:
+        text = f"1. Work.\n**Answer: {wrong_answers[item['id']]}**"
         claimed = agent._extract_final_answer(text) or ""
         if (await agent._verify(text, claimed)).verified:
-            accepted.append(item["id"])
+            well_formed.append(item["id"])
+    control = await _verdicts(seeded_items, agent, lambda i: str(i["ground_truth"]))
+    accepted = sorted(i for i, v in verdicts.items() if v == "agrees")
     solve_rows = [r for r in rows if r["kind"] == "solve"]
     wrong_rows = [r for r in solve_rows if not r["checks"]["correct"]]
     count = sum(_is_wrong_but_verified(r) for r in wrong_rows)
     return {
         "definition": "a wrong answer (per the golden key, graded by sympy) that the product's "
-                      "solve-turn check accepted, so the turn is not degraded",
-        "seeded": {**stats.rate(len(accepted), n), "count": len(accepted),
-                   "accepted_items": sorted(accepted)},
+                      "independent check agreed with, so the reply says \"Independent check: "
+                      "agrees\"",
+        "seeded": {**stats.rate(len(accepted), len(seeded_items)), "count": len(accepted),
+                   **_tally(verdicts), "accepted_items": accepted},
+        "self_compare": {**stats.rate(len(well_formed), len(seeded_items)),
+                         "count": len(well_formed), "accepted_items": sorted(well_formed)},
+        "control": {"n": len(control), **_tally(control)},
         "observed": {**stats.rate(count, len(wrong_rows)), "count": count,
-                     "solve_attempts": len(solve_rows)},
+                     "solve_attempts": len(solve_rows),
+                     "not_checkable": sum(
+                         r.get("independent_check") == "not_checkable" for r in wrong_rows
+                     )},
     }
 
 
 def wrong_but_verified_caveats(result: dict[str, Any]) -> list[str]:
     seeded, observed = result["seeded"], result["observed"]
     return [
-        f"wrong_but_verified: {seeded['count']} of {seeded['n']} seeded wrong answers passed the "
-        f"product's solve-turn check; {observed['count']} of {observed['solve_attempts']} real "
-        "solve attempts were wrong and still accepted. The check compares an answer with "
-        "itself, so it measures form, not correctness; the seeded answers are one "
-        "perturbation of each key, not every way a model can be wrong.",
+        f"wrong_but_verified: {seeded['count']} of {seeded['n']} seeded wrong answers got "
+        f"\"agrees\" from the independent check ({seeded['disagrees']} disagreed, "
+        f"{seeded['not_checkable']} not checkable); the well-formed check alone accepted "
+        f"{result['self_compare']['count']} of {seeded['n']}. "
+        f"{observed['count']} of {observed['solve_attempts']} real solve attempts were wrong "
+        "and still got \"agrees\". The seeded run uses each item's own expression as the model's "
+        "expression, so it tests the comparison, not how well a model writes the equation; the "
+        "seeded answers are one perturbation of each key, not every way a model can be wrong. "
+        "The check covers numeric answers only (ADR-0012), and a model that misreads a problem "
+        "the same way in its working and in its equation still agrees with itself.",
     ]
 
 
