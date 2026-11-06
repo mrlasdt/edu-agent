@@ -69,7 +69,11 @@ export function App() {
           if (event.kind === "text") {
             return { ...m, content: m.content + event.text, status: undefined };
           }
-          return { ...m, mathVerified: event.mathVerified };
+          return {
+            ...m,
+            mathVerified: event.mathVerified,
+            independentCheck: event.independentCheck,
+          };
         });
       }
       patchMessage(agentId, (m) => ({

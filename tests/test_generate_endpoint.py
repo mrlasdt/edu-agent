@@ -138,3 +138,26 @@ def test_generate_reports_a_failed_verification():
                   "mode": "solve"},
         )
     assert resp.text.endswith('\x1e{"math_verified":false}')
+
+
+def test_generate_puts_the_independent_check_in_the_trailer():
+    class FakeAgent:
+        async def run(self, session, message, trace_id=""):
+            yield "Work shown. **Answer: 2, 4**"
+            yield {"independent_check": {"verdict": "disagrees", "solver": "2, 3"}}
+            yield {"verifier_fail": True}
+
+    class FakeRegistry:
+        def get(self, test_type, section):
+            return FakeAgent
+
+    with patch("services.agent.src.agent.main._registry", FakeRegistry()):
+        resp = client.post(
+            "/generate",
+            json={"candidate_id": "c1", "test_type": "gre", "section": "quant", "message": "x",
+                  "mode": "solve"},
+        )
+    assert resp.text == (
+        'Work shown. **Answer: 2, 4**'
+        '\x1e{"math_verified":false,"independent_check":{"verdict":"disagrees","solver":"2, 3"}}'
+    )

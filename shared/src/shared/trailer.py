@@ -2,10 +2,11 @@
 A one-line metadata trailer at the end of a plain-text answer stream.
 
 The agent service and the gateway stream the answer as `text/plain`, and a reply's metadata (so
-far, whether the math verifier accepted the final answer) is only known once it is written, too
-late for a response header. It travels as the last bytes of the stream instead: the record
-separator character, then a JSON object. Each hop peels it off before the text reaches a
-guardrail and the gateway re-emits it, validated, for the web app.
+far, whether the math verifier accepted the final answer, and what the independent check of it
+said) is only known once it is written, too late for a response header. It travels as the last
+bytes of the stream instead: the record separator character, then a JSON object. Each hop peels
+it off before the text reaches a guardrail and the gateway re-emits it, validated, for the web
+app.
 """
 from __future__ import annotations
 
@@ -49,3 +50,25 @@ class TrailerSplitter:
         except ValueError:
             return {}
         return value if isinstance(value, dict) else {}
+
+
+_VERDICTS = ("agrees", "disagrees", "not_checkable")
+_SOLVER_MAX_CHARS = 80
+
+
+def independent_check_trailer(value: object) -> dict[str, str]:
+    """
+    The independent answer check's entry for the trailer, or {} when `value` is not one.
+
+    The gateway re-emits it for the web app, so it is checked on the way: one of three verdicts,
+    and a `solver` text (the value the solver computed) only for "disagrees", short and printable.
+    """
+    if not isinstance(value, dict) or value.get("verdict") not in _VERDICTS:
+        return {}
+    out = {"verdict": str(value["verdict"])}
+    solver = value.get("solver")
+    if out["verdict"] == "disagrees" and isinstance(solver, str):
+        text = "".join(ch for ch in solver if ch.isprintable())[:_SOLVER_MAX_CHARS].strip()
+        if text:
+            out["solver"] = text
+    return out

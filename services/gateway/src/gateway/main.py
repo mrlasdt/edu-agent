@@ -43,7 +43,7 @@ from shared.src.shared.config import get_settings
 from shared.src.shared.feedback import capture_turn, default_capture_log
 from shared.src.shared.models import Message, MessageRole, Mode, Session
 from shared.src.shared.observability import setup_observability
-from shared.src.shared.trailer import MARK, TrailerSplitter, encode
+from shared.src.shared.trailer import MARK, TrailerSplitter, encode, independent_check_trailer
 from shared.src.shared.turn_meter import TurnMeter
 
 _log = logging.getLogger(__name__)
@@ -242,7 +242,11 @@ async def chat(req: ChatRequest) -> StreamingResponse:
                 flags.append("answer_leak_flagged")
             verified = trailer.meta.get("math_verified")
             if isinstance(verified, bool):
-                tail += encode({"math_verified": verified})
+                answer_meta: dict[str, Any] = {"math_verified": verified}
+                check = independent_check_trailer(trailer.meta.get("independent_check"))
+                if check:
+                    answer_meta["independent_check"] = check
+                tail += encode(answer_meta)
             if tail:
                 yield tail.encode("utf-8")
 

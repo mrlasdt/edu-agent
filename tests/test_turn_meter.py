@@ -280,7 +280,7 @@ async def test_quant_solve_with_retry_and_escalation_counts_every_call(turn_log)
     assert "verify" in record["phases_ms"]
 
 
-async def test_quant_solve_record_says_its_check_is_not_independent(turn_log):
+async def test_quant_solve_record_says_when_the_answer_was_not_independently_checked(turn_log):
     agent = QuantAgent(model_config_path="config/model_config.dev.yaml")
     with (
         patch("litellm.acompletion", side_effect=known_usage_stream(50, 10)),
@@ -295,7 +295,9 @@ async def test_quant_solve_record_says_its_check_is_not_independent(turn_log):
             pass
 
     (record,) = turn_log.read()
-    assert record["verified_independent"] is False
+    # the stubbed model wrote no <expr> tag, so there was nothing to compute
+    assert record["verified_independent"] == "not_checkable"
+    assert record["independent_reason"]
 
 
 async def test_quant_tutor_record_has_no_verification_field(turn_log):

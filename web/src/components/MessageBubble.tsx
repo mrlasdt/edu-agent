@@ -1,4 +1,4 @@
-import type { Message } from "../types";
+import type { IndependentCheck, Message } from "../types";
 import { ESSAY_DISCLAIMER } from "../types";
 import { renderMarkdown } from "../markdown";
 
@@ -51,6 +51,22 @@ function renderContentWithCitations(
   );
 }
 
+// The independent check covers only questions whose answer is a number a solver can recompute
+// (ADR-0012), so every verdict says so: "agrees" is not "the problem was read correctly".
+function IndependentCheckNote({ check }: { check: IndependentCheck }) {
+  return (
+    <p className={`math-check independent-check independent-check--${check.verdict}`} role="note">
+      <strong>Independent check: </strong>
+      {check.verdict === "agrees" &&
+        "agrees. A solver computed the problem from a separately written equation and got the same answer. Numeric answers only."}
+      {check.verdict === "disagrees" &&
+        `disagrees${check.solver ? ` (solver: ${check.solver})` : ""}. Numeric answers only.`}
+      {check.verdict === "not_checkable" &&
+        "not checkable. It covers only questions with a numeric answer."}
+    </p>
+  );
+}
+
 export function MessageBubble({ message, onCitationClick, onFeedback, onRegenerate }: Props) {
   const isAgent = message.role === "agent";
 
@@ -74,6 +90,7 @@ export function MessageBubble({ message, onCitationClick, onFeedback, onRegenera
             : "The math verifier could not confirm the final answer. Check the working yourself."}
         </p>
       )}
+      {message.independentCheck && <IndependentCheckNote check={message.independentCheck} />}
       {isAgent && onRegenerate && (
         <div className="message-actions">
           <button type="button" className="regenerate-btn" onClick={onRegenerate}>

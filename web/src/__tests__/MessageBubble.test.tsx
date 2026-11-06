@@ -155,6 +155,48 @@ describe("MessageBubble — math verification", () => {
   });
 });
 
+describe("MessageBubble — independent check", () => {
+  const solved = { ...baseMsg, content: "**Answer: 2, 4**", mathVerified: true };
+
+  it("says the check agrees, and that it covers numeric answers only", () => {
+    render(<MessageBubble message={{ ...solved, independentCheck: { verdict: "agrees" } }} />);
+    const note = screen.getByText(/Independent check:/).closest("p")!;
+    expect(note).toHaveTextContent(/agrees/);
+    expect(note).toHaveTextContent(/numeric answers only/i);
+    expect(note).toHaveClass("independent-check--agrees");
+  });
+
+  it("shows what the solver computed when it disagrees", () => {
+    render(
+      <MessageBubble
+        message={{
+          ...solved,
+          mathVerified: false,
+          independentCheck: { verdict: "disagrees", solver: "2, 3" },
+        }}
+      />
+    );
+    const note = screen.getByText(/Independent check:/).closest("p")!;
+    expect(note).toHaveTextContent("disagrees (solver: 2, 3)");
+    expect(note).toHaveClass("independent-check--disagrees");
+    expect(screen.getByText(/could not confirm/i)).toBeInTheDocument();
+  });
+
+  it("says not checkable, with the limit, for a problem with no numeric answer", () => {
+    render(
+      <MessageBubble message={{ ...solved, independentCheck: { verdict: "not_checkable" } }} />
+    );
+    expect(screen.getByText(/Independent check:/).closest("p")).toHaveTextContent(
+      /not checkable. It covers only questions with a numeric answer/
+    );
+  });
+
+  it("shows no independent check when the reply has none", () => {
+    render(<MessageBubble message={solved} />);
+    expect(screen.queryByText(/Independent check:/)).not.toBeInTheDocument();
+  });
+});
+
 describe("MessageBubble — disclaimer", () => {
   it("renders disclaimer text in a distinct disclaimer element", () => {
     const msg = { ...baseMsg, content: `Great essay.\n\n${ESSAY_DISCLAIMER}` };

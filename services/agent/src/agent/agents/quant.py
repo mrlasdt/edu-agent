@@ -7,8 +7,10 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from services.agent.src.agent import independent_check
 from services.agent.src.agent.answers import extract_final_answer, normalize_answer
 from services.agent.src.agent.base import BaseAgent
+from services.agent.src.agent.independent_check import IndependentCheck
 from services.agent.src.agent.skills.math_tools import MATH_TOOL_SPECS, MathToolsSkill
 from services.agent.src.agent.skills.retrieve_corpus import CorpusChunk, RetrieveCorpusSkill
 from services.agent.src.agent.skills.verify_math import VerifyMathResult, VerifyMathSkill
@@ -30,11 +32,15 @@ _NO_REPLY = "I could not finish working that out just now. Could you send the pr
 _MAX_RETRIES = 2
 
 
+def _read_prompt(agent: str, mode: str, version: str) -> str:
+    """The prompt file for (agent, mode, version), without its YAML frontmatter."""
+    raw = (_PROMPT_ROOT / agent / mode / f"{version}.md").read_text()
+    return re.sub(r"^---\n.*?\n---\n", "", raw, flags=re.DOTALL).strip()
+
+
 def _load_prompt(mode: Mode, version: str, agent: str = _AGENT) -> str:
     """Load the system prompt for the given mode + version, stripping YAML frontmatter."""
-    path = _PROMPT_ROOT / agent / mode.value / f"{version}.md"
-    raw = path.read_text()
-    return re.sub(r"^---\n.*?\n---\n", "", raw, flags=re.DOTALL).strip()
+    return _read_prompt(agent, mode.value, version)
 
 
 def _format_chunks_for_context(chunks: list[CorpusChunk]) -> str:
@@ -128,17 +134,89 @@ class _ToolTurn:
         return {"tool_trace": [c.public() for c in self.calls]}
 
 
+class _SolveChecks:
+    """
+    The checks on one solve turn's answers. The well-formed check runs on every attempt; the
+    independent check only on a well-formed answer, so a garbled answer does not cost the extra
+    model call. The model writes its expression from the problem alone, so the same expression
+    serves every attempt: it is asked for once per turn.
+    """
+
+    def __init__(
+        self,
+        agent: QuantAgent,
+        session: Session,
+        message: str,
+        meter: TurnMeter,
+    ) -> None:
+        self._agent = agent
+        self._session = session
+        self._message = message
+        self._meter = meter
+        self._asked = False
+        self._expression: str | None = None
+        self.last = IndependentCheck(
+            independent_check.NOT_CHECKABLE, reason="no answer has been checked yet"
+        )
+        self._record()
+
+    async def passes(self, full_text: str, claimed: str) -> bool:
+        """Whether the answer survives both checks; `last` holds the independent verdict."""
+        with self._meter.phase("verify"):
+            well_formed = await self._agent._verify(full_text, claimed)
+        if not well_formed.verified:
+            self.last = IndependentCheck(
+                independent_check.NOT_CHECKABLE, reason="the answer is not well-formed"
+            )
+            self._record()
+            return False
+        if not self._asked:
+            self._asked = True
+            self._expression = await self._agent._formalize(
+                self._session, self._message, self._meter
+            )
+        with self._meter.phase("independent_check"):
+            self.last = await self._agent._independent_check(self._expression, claimed)
+        self._record()
+        return self.last.verdict != independent_check.DISAGREES
+
+    def _record(self) -> None:
+        fields: dict[str, Any] = {"verified_independent": self.last.verdict}
+        if self.last.solver:
+            fields["independent_solver"] = self.last.solver
+        if self.last.reason:
+            fields["independent_reason"] = self.last.reason
+        self._meter.annotate(**fields)
+
+    def retry_note(self, prev_answer: str) -> str:
+        """What the model is told before its second attempt."""
+        if self.last.verdict == independent_check.DISAGREES:
+            return (
+                f"[My previous answer {prev_answer!r} disagreed with an independent calculation "
+                f"of the problem, which gave {self.last.solver}. Let me check my work and "
+                "try again.]"
+            )
+        return f"[My previous answer {prev_answer!r} could not be verified. Let me try again.]"
+
+    def report(self) -> dict[str, Any]:
+        return {"independent_check": self.last.public()}
+
+
 class QuantAgent(BaseAgent):
     """
     GRE Quantitative Reasoning agent.
 
     Tutor mode: scaffolds toward the answer; verifier is NOT called.
-    Solve mode: returns a fully worked solution; the verify-math Skill checks that the final
-                answer is well-formed (it parses and evaluates). The check compares the answer
-                with itself, so it does not establish that the answer is right; the turn record
-                says so with `verified_independent: false`.  Retry / escalation pipeline:
+    Solve mode: returns a fully worked solution and checks the final answer twice with the
+                verify-math Skill. The well-formed check (it parses and evaluates) compares the
+                answer with itself, so it does not establish that the answer is right. The
+                independent check does: one extra short model call writes the problem as an
+                expression without seeing the answer, the solver computes it, and the result is
+                compared with the claimed answer (see `independent_check`). The turn record's
+                `verified_independent` says agrees, disagrees or not_checkable. A disagreement
+                counts as a failed check.  Retry / escalation pipeline:
                   attempt 1 (quant_agent model)
-                  → if the check fails: attempt 2 (quant_agent model, mismatch context)
+                  → if a check fails:   attempt 2 (quant_agent model, mismatch context)
                   → if still failing:   attempt 3 (math_escalation model)
                   → if still failing:   degrade gracefully (emit verifier_fail metadata)
     """
@@ -169,6 +247,10 @@ class QuantAgent(BaseAgent):
 
         Metadata dict shapes:
           {"sources": int}          — first item, only when corpus notes were retrieved
+          {"independent_check": {"verdict": "agrees" | "disagrees" | "not_checkable",
+                                 "solver": str}}
+                                    — Solve mode, just before verifier_fail; `solver` (what the
+                                      solver computed) only when the verdict is "disagrees"
           {"verifier_fail": bool}   — only emitted in Solve mode, after the answer text
           {"tool_trace": [...]}     — last item, only when the model called a math tool: each
                                       call with its arguments and result (for evals and
@@ -269,8 +351,7 @@ class QuantAgent(BaseAgent):
             else _load_prompt(Mode.solve, version)
         )
         base_messages = _build_messages(session, message, system_prompt, chunk_context)
-        # `_verify` compares the answer with itself: a well-formedness check, not a correctness one.
-        meter.annotate(verified_independent=False)
+        checks = _SolveChecks(self, session, message, meter)
 
         # Attempt 1 and 2: quant_agent model
         model = self._model_config.litellm_model("quant_agent")
@@ -282,13 +363,7 @@ class QuantAgent(BaseAgent):
             if attempt > 0 and prev_answer:
                 # Inject mismatch context so the model knows to reconsider
                 messages = base_messages + [
-                    {
-                        "role": "assistant",
-                        "content": (
-                            f"[My previous answer {prev_answer!r} could not be verified. "
-                            "Let me try again.]"
-                        ),
-                    }
+                    {"role": "assistant", "content": checks.retry_note(prev_answer)}
                 ]
 
             if tools is not None:
@@ -307,11 +382,10 @@ class QuantAgent(BaseAgent):
                 tokens, full_text = await _collect_stream(response)
             prev_answer = self._extract_final_answer(full_text)
 
-            with meter.phase("verify"):
-                result = await self._verify(full_text, prev_answer or "")
-            if result.verified:
+            if await checks.passes(full_text, prev_answer or ""):
                 for token in tokens:
                     yield token
+                yield checks.report()
                 yield {"verifier_fail": False}
                 return
 
@@ -340,18 +414,12 @@ class QuantAgent(BaseAgent):
             )
             tokens, full_text = await _collect_stream(response)
         prev_answer = self._extract_final_answer(full_text)
-        with meter.phase("verify"):
-            result = await self._verify(full_text, prev_answer or "")
-        if result.verified:
-            for token in tokens:
-                yield token
-            yield {"verifier_fail": False}
-            return
-
-        # Degradation: emit best reasoning with verifier_fail metadata
+        passed = await checks.passes(full_text, prev_answer or "")
         for token in tokens:
             yield token
-        yield {"verifier_fail": True}
+        yield checks.report()
+        # Degradation: emit best reasoning with verifier_fail metadata when the last check failed
+        yield {"verifier_fail": not passed}
 
     # ── helpers (designed as seams for unit test patching) ────────────────────
 
@@ -385,10 +453,51 @@ class QuantAgent(BaseAgent):
         """
         Call the verify-math Skill with the claimed answer as both `expression` and `expected`.
         That only shows the answer is well-formed (parses and evaluates); a wrong but parseable
-        answer passes. An independent check needs an expression that does not come from the
-        answer itself. This seam is patched in tests.
+        answer passes. `_independent_check` is the check that does not come from the answer
+        itself. This seam is patched in tests.
         """
         return await self._verify_skill.verify(
             expression=claimed_answer,
             expected=claimed_answer,
         )
+
+    async def _formalize(
+        self,
+        session: Session,
+        message: str,
+        meter: TurnMeter,
+    ) -> str | None:
+        """
+        The one extra short model call of the independent check: the problem written as an
+        expression or equation, from the problem alone (the model never sees an answer). None
+        when the model says the problem has no numeric answer, wrote no `<expr>` tag, or the call
+        failed: a failed check never fails the turn. This seam is patched in tests.
+        """
+        version = self._model_config.prompt_version(_AGENT, "formalize")
+        messages = _build_messages(
+            session, message, _read_prompt(_AGENT, "formalize", version)
+        )
+        try:
+            with meter.phase("formalize"):
+                _, text = await _collect_stream(
+                    meter.stream(
+                        model=self._model_config.litellm_model("quant_agent"),
+                        messages=messages,
+                        temperature=0,
+                        **build_llm_metadata(
+                            trace_id=meter.trace_id, prompt_version=f"formalize-{version}"
+                        ),
+                    )
+                )
+        except Exception:
+            _log.warning("independent check: the formalize call failed", exc_info=True)
+            return None
+        expression = independent_check.parse_expression(text)
+        _log.info("independent check expression: %r", expression)
+        return expression
+
+    async def _independent_check(
+        self, expression: str | None, claimed_answer: str
+    ) -> IndependentCheck:
+        """Compute `expression` with the solver and compare it with the claimed answer."""
+        return await independent_check.compare(self._verify_skill, expression, claimed_answer)

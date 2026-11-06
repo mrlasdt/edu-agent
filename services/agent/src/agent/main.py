@@ -117,13 +117,20 @@ async def generate(req: GenerateRequest, request: Request) -> StreamingResponse 
     async def token_stream() -> AsyncGenerator[bytes, None]:
         if isinstance(first, str):
             yield strip_mark(first).encode("utf-8")
+        independent: object = None
         async for item in items:
             if isinstance(item, str):
                 yield strip_mark(item).encode("utf-8")
+            elif isinstance(item, dict) and "independent_check" in item:
+                independent = item["independent_check"]
             elif isinstance(item, dict) and isinstance(item.get("verifier_fail"), bool):
                 # The verifier's verdict is only known with the finished answer: it ends the
-                # stream as a trailer the gateway passes on. Other metadata is not streamed.
-                yield encode({"math_verified": not item["verifier_fail"]}).encode("utf-8")
+                # stream as a trailer the gateway passes on, with the independent check's
+                # verdict when the agent ran one. Other metadata is not streamed.
+                meta: dict[str, object] = {"math_verified": not item["verifier_fail"]}
+                if independent is not None:
+                    meta["independent_check"] = independent
+                yield encode(meta).encode("utf-8")
 
     return StreamingResponse(
         token_stream(), media_type="text/plain; charset=utf-8", headers=headers

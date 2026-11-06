@@ -1,4 +1,4 @@
-import type { Message, Mode, Subject } from "./types";
+import type { IndependentCheck, Message, Mode, Subject } from "./types";
 
 export interface ChatTurn {
   candidateId: string;
@@ -25,7 +25,7 @@ export function toHistoryPayload(history: Message[]) {
 export type ChatEvent =
   | { kind: "trace"; traceId: string }
   | { kind: "text"; text: string }
-  | { kind: "meta"; mathVerified?: boolean };
+  | { kind: "meta"; mathVerified?: boolean; independentCheck?: IndependentCheck };
 
 // The gateway names each turn in this response header; feedback on the reply refers to it.
 export const TRACE_ID_HEADER = "X-Trace-Id";
@@ -34,12 +34,31 @@ export const TRACE_ID_HEADER = "X-Trace-Id";
 // shared/trailer.py). It is metadata about the answer, never part of its text.
 const TRAILER_MARK = "\x1e";
 
+const VERDICTS = ["agrees", "disagrees", "not_checkable"];
+
+function parseIndependentCheck(value: unknown): IndependentCheck | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const { verdict, solver } = value as { verdict?: unknown; solver?: unknown };
+  if (typeof verdict !== "string" || !VERDICTS.includes(verdict)) return undefined;
+  return {
+    verdict: verdict as IndependentCheck["verdict"],
+    ...(typeof solver === "string" && solver ? { solver } : {}),
+  };
+}
+
 function parseTrailer(raw: string): ChatEvent | null {
   try {
     const value: unknown = JSON.parse(raw);
     if (typeof value !== "object" || value === null) return null;
-    const verified = (value as { math_verified?: unknown }).math_verified;
-    return { kind: "meta", mathVerified: typeof verified === "boolean" ? verified : undefined };
+    const { math_verified: verified, independent_check: independent } = value as {
+      math_verified?: unknown;
+      independent_check?: unknown;
+    };
+    return {
+      kind: "meta",
+      mathVerified: typeof verified === "boolean" ? verified : undefined,
+      independentCheck: parseIndependentCheck(independent),
+    };
   } catch {
     return null;
   }
