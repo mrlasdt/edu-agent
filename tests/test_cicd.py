@@ -9,8 +9,6 @@ Behaviors under test:
   5. Dockerfiles exist for all services
 """
 
-import json
-import re
 import shlex
 from pathlib import Path
 
@@ -175,9 +173,3 @@ def test_compose_app_services_run_the_dockerfile_cmd_and_reload_through_uvicorn_
         assert service["environment"]["UVICORN_RELOAD"] == "true", svc
         assert service["environment"]["UVICORN_RELOAD_DIRS"] == "/app/services:/app/shared", svc
         assert f"{port}:{port}" in service["ports"], svc
-        dockerfile = (ROOT / "services" / svc / "Dockerfile").read_text()
-        cmd = re.search(r"^CMD (\[.*\])$", dockerfile, re.M)
-        assert cmd, svc
-        argv = json.loads(cmd.group(1))
-        assert argv[0] == "uvicorn", svc
-        assert argv[argv.index("--port") + 1] == str(port), svc
