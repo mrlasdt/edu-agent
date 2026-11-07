@@ -7,6 +7,7 @@ OpenRouter model with no OpenAI key.
 """
 from unittest.mock import patch
 
+import pytest
 import yaml
 
 from shared.src.shared.config import Settings, load_model_config
@@ -43,14 +44,78 @@ IELTS_BACKUPS = [
 ]
 
 
-def test_free_config_covers_every_dev_role_and_prompt_version_on_one_free_model():
-    free = yaml.safe_load(open(FREE).read())
-    dev = yaml.safe_load(open(DEV).read())
-    assert free["roles"].keys() == dev["roles"].keys()
-    assert free["prompts"] == dev["prompts"]
-    models = {
-        (r["provider"], r["model"]) for name, r in free["roles"].items() if name not in IELTS_ROLES
-    }
+# The role -> temperature table both configs carried line by line before the YAML anchors, and
+# the (provider, model, fallbacks) each group of roles resolved to.
+TEMPERATURES = {
+    "orchestrator": 0,
+    "quant_agent": 0.2,
+    "aw_agent": 0.5,
+    "math_retry": 0.2,
+    "math_escalation": 1,
+    "style_critic": 0,
+    "aw_judge_nightly": 0,
+    "aw_judge_pr": 0,
+    "question_planner": 0,
+    "question_generator": 0.4,
+    "question_critic": 0,
+    "ielts_grader": 0.3,
+    "ielts_feedback": 0.3,
+    "style_extractor": 0,
+}
+MODELS = {
+    DEV: {"default": ("openai", "gpt-4o-mini", []), "ielts": ("openai", "gpt-4.1-mini", [])},
+    FREE: {
+        "default": ("openrouter", "recursive/flint-v1.0:free", []),
+        "ielts": ("gemini", "gemma-4-26b-a4b-it", IELTS_BACKUPS),
+    },
+}
+PROMPT_PINS = {
+    "quant_agent": {"tutor": "v3", "solve": "v2", "formalize": "v1"},
+    "quant_agent_math_tools": {"tutor": "v1", "solve": "v1"},
+    "aw_agent": {"tutor": "v1", "solve": "v1"},
+    "ielts_grader": {"writing_t2": "v1"},
+    "ielts_feedback": {"writing_t2": "v2"},
+    "question_pipeline": {
+        "planner": "v1",
+        "numeric_expert": "v1",
+        "choice_expert": "v1",
+        "comparison_expert": "v1",
+        "critic": "v1",
+        "baseline": "v1",
+    },
+}
+
+
+@pytest.mark.parametrize("path", [DEV, FREE])
+def test_each_config_resolves_to_the_same_roles_models_and_temperatures_as_before(path):
+    cfg = load_model_config(path)
+    assert cfg.roles.keys() == TEMPERATURES.keys()
+    for name, role in cfg.roles.items():
+        group = "ielts" if name in IELTS_ROLES else "default"
+        assert (role.provider, role.model, role.fallbacks) == MODELS[path][group], name
+        assert role.temperature == TEMPERATURES[name], name
+
+
+@pytest.mark.parametrize("path", [DEV, FREE])
+def test_both_configs_get_the_one_shared_set_of_prompt_pins(path):
+    assert yaml.safe_load(open(path).read()).get("prompts") is None
+    assert load_model_config(path).prompts == PROMPT_PINS
+    assert load_model_config(DEV).prompts == load_model_config(FREE).prompts
+
+
+def test_a_config_with_its_own_prompts_section_keeps_it(tmp_path):
+    path = tmp_path / "model_config.yaml"
+    path.write_text(
+        "roles:\n  orchestrator: {provider: openai, model: m}\n"
+        "prompts:\n  quant_agent: {tutor: v9}\n"
+    )
+    cfg = load_model_config(str(path))
+    assert cfg.prompts == {"quant_agent": {"tutor": "v9"}}
+
+
+def test_free_config_runs_every_role_but_the_ielts_ones_on_one_free_model():
+    cfg = load_model_config(FREE)
+    models = {(r.provider, r.model) for name, r in cfg.roles.items() if name not in IELTS_ROLES}
     assert len(models) == 1
     provider, model = next(iter(models))
     assert provider == "openrouter"

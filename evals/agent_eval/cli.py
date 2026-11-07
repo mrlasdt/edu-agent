@@ -53,6 +53,7 @@ from evals.agent_eval.judges import HeuristicJudge, Judge, JudgeQuestion, LLMJud
 from evals.agent_eval.transport import AllModelsFailedError, FakeToolCalls, MeteredTransport
 from evals.exam_set.schema import ExamItem
 from evals.loader import load_exam_items, load_golden_set, sample_golden_set
+from evals.read_transcripts import DEFAULT_RUNS_DIR
 from evals.regression import check_regression
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.ielts import llm
@@ -68,7 +69,6 @@ FREE_MODELS = [
     "openrouter/poolside/laguna-s-2.1:free",
 ]
 OPENAI_MODEL = "openai/gpt-4o-mini"
-DEFAULT_RUNS_DIR = Path(".eval-runs")
 OFFLINE_MODEL = "offline/fake"
 SEED = 42
 DEFAULT_MIN_COVERAGE = 0.8

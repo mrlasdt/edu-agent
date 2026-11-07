@@ -11,6 +11,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Request header carrying Settings.ingestion_admin_key to the ingestion service's /admin routes.
 ADMIN_KEY_HEADER = "X-Admin-Key"
 
+# Defaults that more than one module needs; Settings below and every fallback read these.
+DEFAULT_MODEL_CONFIG_PATH = "config/model_config.free.yaml"
+# The active prompt version per (agent, mode), shared by every model config that has no
+# `prompts:` section of its own.
+PROMPT_PINS_PATH = "config/prompt_pins.yaml"
+DEFAULT_TURN_LOG_PATH = ".turn-log/turns.jsonl"
+DEFAULT_FEEDBACK_LOG_PATH = ".turn-log/feedback.jsonl"
+
 
 class ModelRoleConfig(BaseModel):
     provider: str
@@ -23,6 +31,7 @@ class ModelConfig(BaseModel):
     roles: dict[str, ModelRoleConfig]
     # Active prompt version per agent → mode (e.g. {"quant_agent": {"tutor": "v1"}}).
     # Absent entries default to "v1", so a config without this section stays valid.
+    # load_model_config fills it from PROMPT_PINS_PATH when the config file has no section.
     prompts: dict[str, dict[str, str]] = {}
 
     def role(self, name: str) -> ModelRoleConfig:
@@ -51,6 +60,7 @@ def load_model_config(path: str | None = None) -> ModelConfig:
     The model config at `path`; without one, the file named by MODEL_CONFIG_PATH (default
     config/model_config.free.yaml, every role on a free OpenRouter model), so every service
     honours the same switch (config/model_config.dev.yaml is the paid OpenAI config).
+    A config with no `prompts:` section gets the shared pins in config/prompt_pins.yaml.
     """
     return _load_model_config(path or get_settings().model_config_path)
 
@@ -58,6 +68,8 @@ def load_model_config(path: str | None = None) -> ModelConfig:
 @lru_cache
 def _load_model_config(path: str) -> ModelConfig:
     raw: dict[str, Any] = yaml.safe_load(Path(path).read_text())
+    if "prompts" not in raw:
+        raw["prompts"] = yaml.safe_load(Path(PROMPT_PINS_PATH).read_text())
     return ModelConfig(**raw)
 
 
@@ -101,10 +113,10 @@ class Settings(BaseSettings):
     ai_ledger_path: str = ".eval-ledger/ledger.jsonl"
     # Per-turn measurement of the live chat path (shared.turn_meter): one JSON line per service
     # per turn, read by `python -m evals.turn_report`. Recorded, never capped. Empty = off.
-    turn_log_path: str = ".turn-log/turns.jsonl"
+    turn_log_path: str = DEFAULT_TURN_LOG_PATH
     # Thumbs up/down from the web app (POST /feedback), one JSON line each, keyed by trace id.
     # No message text. Empty = /feedback is switched off.
-    feedback_log_path: str = ".turn-log/feedback.jsonl"
+    feedback_log_path: str = DEFAULT_FEEDBACK_LOG_PATH
     # Opt-in local capture of the learner's question and the reply, keyed by trace id, so a
     # thumbs-down can become a complete draft eval item (evals.feedback_to_item). Off by default:
     # the turn log never holds message text. The file is local and gitignored, never sent anywhere.
@@ -122,7 +134,7 @@ class Settings(BaseSettings):
     # Dev-only: a message containing this text is treated as a self-harm moderation hit, so the
     # supportive reply can be tried without a paid moderation key. Ignored unless ENV=dev.
     safety_test_trigger: str = ""
-    model_config_path: str = "config/model_config.free.yaml"
+    model_config_path: str = DEFAULT_MODEL_CONFIG_PATH
 
 
 @lru_cache

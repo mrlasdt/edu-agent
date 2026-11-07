@@ -221,7 +221,7 @@ The math verifier (port 8090) is a cluster-internal service, not a client-facing
 
 ## Models
 
-`config/model_config.free.yaml` (the default) maps roles (orchestrator, `quant_agent`, `aw_agent`, math escalation, critics, graders, question-pipeline roles) to models; swapping a role to another provider is one line. `config/model_config.dev.yaml` is the paid OpenAI variant. Prompts are versioned under `prompts/`.
+`config/model_config.free.yaml` (the default) maps roles (orchestrator, `quant_agent`, `aw_agent`, math escalation, critics, graders, question-pipeline roles) to models; swapping a role to another provider is one line. `config/model_config.dev.yaml` is the paid OpenAI variant. Prompts are versioned under `prompts/`; the active version per agent and mode is pinned once for every model config in `config/prompt_pins.yaml`.
 
 ## Deployment
 
