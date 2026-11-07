@@ -11,8 +11,9 @@ Agent-in-the-loop eval CLI.
   python -m evals.agent_eval --mode live --suite ielts_writing --max-items 6   # needs local data
   python -m evals.agent_eval --mode live --suite ielts_report --suite ielts_adversarial
 
-Live runs need keys in the environment (OPENROUTER_API_KEY and/or OPENAI_API_KEY); the CLI
-only checks that they are set and never prints or stores them. Cumulative spend across runs is
+Live runs need the keys litellm names for each model in the chain and the judge (for example
+OPENROUTER_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY); the CLI only checks that they are set
+and never prints or stores them. Cumulative spend across runs is
 capped by the shared spend ledger (default AI_LEDGER_PATH and AI_SPEND_CAP_USD, 5 USD, the cap
 the IELTS mock also obeys) and checked before every call.
 Exit code: 0 ok, 1 regression vs --baseline, 2 budget exceeded, run failure or coverage below

@@ -71,7 +71,7 @@ Moderation API). See README "Not built yet" for what is still missing.
 - Evals are small (5 Quant and 2 AW golden items). evals/agent_eval runs the real QuantAgent
   (leak rate, sympy-graded accuracy, judge-vs-golden agreement, cost/latency, shared 5 USD ledger);
   AW is judge calibration only. No baseline is measured/checked in; CI runs it offline only.
-- QuantAgent._verify still compares the agent's answer to itself (parse/well-formedness only);
+- QuantAgent.verify_well_formed still compares the agent's answer to itself (parse/well-formedness only);
   multi-value and prose answers no longer spuriously fail it. The independent check (ADR-0015)
   now runs after it: one extra short model call writes the problem as an equation, the solver
   computes it, and the reply shows agrees / disagrees / not checkable. Numeric answers only. No
