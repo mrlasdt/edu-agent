@@ -285,3 +285,62 @@ def test_the_same_filename_in_another_test_type_is_a_different_document(client, 
     stored = asyncio_run(corpus.points())
     assert {p.payload["test_type"] for p in stored} == {"gre", "ielts"}
     assert len(stored) % 2 == 0 and len(stored) == len({p.id for p in stored})
+
+
+def test_reuploading_a_document_removes_its_legacy_random_id_points(client, corpus):
+    # A collection filled before ids were deterministic holds each chunk under a random uuid4.
+    doc = _doc(paragraphs=12)
+    assert _post(client, doc).status_code == 200
+    current = asyncio_run(corpus.points())
+    asyncio_run(_replace_with_legacy_ids(corpus, current))
+    legacy_ids = {p.id for p in asyncio_run(corpus.points())}
+    other = asyncio_run(_add_point(corpus, "other.txt"))
+    assert legacy_ids and not legacy_ids & {p.id for p in current}
+
+    assert _post(client, doc).status_code == 200
+
+    stored = asyncio_run(corpus.points())
+    notes = [p for p in stored if p.payload["source_uri"] == "notes.txt"]
+    assert sorted(p.id for p in notes) == sorted(p.id for p in current)
+    assert not legacy_ids & {p.id for p in stored}
+    assert other in {p.id for p in stored}  # another document is left alone
+
+
+async def _replace_with_legacy_ids(corpus: _Corpus, points) -> None:
+    import uuid
+
+    from qdrant_client import models
+
+    full = await corpus.client.scroll(COLLECTION, limit=10_000, with_vectors=True)
+    await corpus.client.delete(
+        COLLECTION, points_selector=models.PointIdsList(points=[p.id for p in points])
+    )
+    await corpus.client.upsert(
+        COLLECTION,
+        points=[
+            models.PointStruct(id=str(uuid.uuid4()), vector=p.vector, payload=p.payload)
+            for p in full[0]
+        ],
+    )
+
+
+async def _add_point(corpus: _Corpus, source_uri: str) -> str:
+    import uuid
+
+    from qdrant_client import models
+
+    point_id = str(uuid.uuid4())
+    await corpus.client.upsert(
+        COLLECTION,
+        points=[
+            models.PointStruct(
+                id=point_id,
+                vector={"dense": [1.0, 0.0, 0.5, 0.25]},
+                payload={
+                    "source_uri": source_uri, "tier": "global", "test_type": "gre",
+                    "chunk_index": 0, "text": "x",
+                },
+            )
+        ],
+    )
+    return point_id

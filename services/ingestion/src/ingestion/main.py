@@ -244,18 +244,21 @@ async def run_ingestion_pipeline(
             for chunk, vector in zip(chunks, vectors)
         ]
         await client.upsert(collection_name=COLLECTION, points=points)
-        # A shorter new version of the same document must not keep the old version's tail. This
-        # runs after the upsert, so a failure leaves old plus new chunks, never none.
-        await _delete_stale_tail(client, chunks)
+        # The upload replaces the whole document: delete every other point of it, which is the
+        # tail of a longer old version and any point stored under a random id before ids were
+        # deterministic. This runs after the upsert, so a failure leaves old plus new chunks,
+        # never none.
+        await _delete_replaced_points(client, chunks, [p.id for p in points])
     finally:
         await client.close()
     return {"chunks_indexed": len(points)}
 
 
-async def _delete_stale_tail(client: AsyncQdrantClient, chunks: list[dict[str, Any]]) -> None:
-    """Delete the points of this document (same source, tier and test type) past its last chunk."""
+async def _delete_replaced_points(
+    client: AsyncQdrantClient, chunks: list[dict[str, Any]], keep_ids: list[Any]
+) -> None:
+    """Delete the points of this document (same source, tier and test type) not in `keep_ids`."""
     first = chunks[0]
-    last_index = max(c["chunk_index"] for c in chunks)
     await client.delete(
         collection_name=COLLECTION,
         points_selector=models.FilterSelector(
@@ -268,8 +271,8 @@ async def _delete_stale_tail(client: AsyncQdrantClient, chunks: list[dict[str, A
                     models.FieldCondition(
                         key="test_type", match=models.MatchValue(value=first["test_type"])
                     ),
-                    models.FieldCondition(key="chunk_index", range=models.Range(gt=last_index)),
-                ]
+                ],
+                must_not=[models.HasIdCondition(has_id=keep_ids)],
             )
         ),
     )
