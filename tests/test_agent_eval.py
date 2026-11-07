@@ -187,6 +187,63 @@ async def test_llm_judge_parses_yes_no_and_score(monkeypatch: pytest.MonkeyPatch
         await judge.score(q, ["a"] * 6)
 
 
+async def test_llm_judge_score_is_one_based_and_reaches_the_top_level(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The scale counts from 1, like AW_SCALE and the ETS levels, so the top level is reachable."""
+    prompts: list[str] = []
+    replies = iter(["1", "6", "9", "0"])
+
+    async def fake(**kw: Any) -> Any:
+        prompts.append(kw["messages"][0]["content"])
+        return _resp(next(replies))
+
+    monkeypatch.setattr("litellm.acompletion", fake)
+    judge = LLMJudge("m")
+    q = JudgeQuestion("i", "m")
+    criteria = [f"{n} - level" for n in range(1, 7)]
+    assert await judge.score(q, criteria) == 1.0
+    assert await judge.score(q, criteria) == 6.0
+    assert await judge.score(q, criteria) == 6.0  # clamped to the top level
+    assert await judge.score(q, criteria) == 1.0  # clamped to the bottom level
+    assert "1: 1 - level" in prompts[0] and "6: 6 - level" in prompts[0]
+    assert "0:" not in prompts[0]
+
+
+async def test_run_aw_scores_a_judge_that_answers_the_correct_level():
+    """A judge that answers each essay's true level must score a perfect run, level 6 included."""
+    from evals.agent_eval.runner import run_aw
+
+    items = [{"prompt": "p", "anchor_essays": {str(n): f"essay {n}" for n in range(1, 7)}}]
+
+    class ExactLLM(LLMJudge):
+        async def _ask(self, system: str, q: JudgeQuestion) -> str:
+            return str(int(q.facts["gold"]))
+
+    out = await run_aw(items, ExactLLM("m"))
+    assert out["mae"] == 0.0 and out["within_tolerance"] == 1.0
+    assert out["n_judgements"] == 6
+
+
+async def test_llm_judge_retries_an_empty_reply_once(monkeypatch: pytest.MonkeyPatch):
+    replies = iter(["", "YES", "", "4", "", ""])
+    calls = 0
+
+    async def fake(**kw: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        return _resp(next(replies))
+
+    monkeypatch.setattr("litellm.acompletion", fake)
+    judge = LLMJudge("m")
+    q = JudgeQuestion("i", "m")
+    assert (await judge.yes_no(q)).answer is True and calls == 2
+    assert await judge.score(q, ["a"] * 6) == 4.0 and calls == 4
+    with pytest.raises(JudgeError):  # a second empty reply is still an error, with no third call
+        await judge.yes_no(q)
+    assert calls == 6
+
+
 async def test_jev_judge_maps_choice_and_score(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     sent: list[dict[str, Any]] = []
     bodies = iter(
@@ -215,7 +272,9 @@ async def test_jev_judge_maps_choice_and_score(tmp_path: Path, monkeypatch: pyte
     judge = JevJudge("k", t)
     verdict = await judge.yes_no(JudgeQuestion("is it?", "state"))
     assert verdict.answer is True and verdict.p_yes == 0.9
-    assert await judge.score(JudgeQuestion("rate", "state"), ["lo", "hi"]) == 1.99
+    # jev's 0-based expected index 1.99 is level 2.99 on the 1-based scale
+    level = await judge.score(JudgeQuestion("rate", "state"), ["lo", "mid", "hi"])
+    assert level == pytest.approx(2.99)
     assert sent[0]["questions"]["q"]["type"] == "choice"
     assert sent[1]["questions"]["q"]["type"] == "score"
     assert t.spent_this_run == pytest.approx(0.002)
