@@ -26,6 +26,9 @@ from shared.src.shared.observability import build_llm_metadata
 PROMPT_ROOT = Path("prompts")
 GRADER_ROLE = "ielts_grader"
 FEEDBACK_ROLE = "ielts_feedback"
+# Google answers its own transient trouble with HTTP 500/503 (about 1 call in 6 for 26b in the
+# ADR-0014 run); litellm retries those itself, so a blip does not cost the grade its best model.
+GOOGLE_RETRIES = 2
 _SECRET = re.compile(r"(sk-[\w-]{8,}|Bearer\s+\S+)", re.I)
 
 
@@ -101,6 +104,10 @@ class LiteLLMCompleter:
         extra: dict[str, Any] = (
             build_llm_metadata(trace_id, prompt_version or "v1") if trace_id else {}
         )
+        if model.startswith("gemini/"):
+            extra["num_retries"] = GOOGLE_RETRIES
+            if key := get_settings().gemini_api_key:
+                extra["api_key"] = key  # .env is read by Settings, not exported to litellm
         ledger = self.ledger
         prompt_tokens = estimate_tokens("\n".join(m["content"] for m in messages))
         projected = estimate_cost(model, prompt_tokens, max_tokens)

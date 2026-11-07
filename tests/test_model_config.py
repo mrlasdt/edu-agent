@@ -36,8 +36,11 @@ def test_an_explicit_path_wins_over_the_setting():
 
 
 IELTS_ROLES = {"ielts_grader", "ielts_feedback"}
-IELTS_MODEL = "google/gemma-4-26b-a4b-it:free"
-IELTS_BACKUP = "openrouter/google/gemma-4-31b-it:free"
+IELTS_MODEL = "gemini/gemma-4-26b-a4b-it"
+IELTS_BACKUPS = [
+    "openrouter/google/gemma-4-26b-a4b-it:free",
+    "openrouter/google/gemma-4-31b-it:free",
+]
 
 
 def test_free_config_covers_every_dev_role_and_prompt_version_on_one_free_model():
@@ -57,8 +60,8 @@ def test_free_config_covers_every_dev_role_and_prompt_version_on_one_free_model(
 def test_free_config_grades_ielts_on_the_gated_gemma_with_the_other_gemma_as_backup():
     cfg = load_model_config(FREE)
     for role in IELTS_ROLES:
-        assert cfg.litellm_model(role) == f"openrouter/{IELTS_MODEL}"
-        assert cfg.litellm_fallbacks(role) == [IELTS_BACKUP]
+        assert cfg.litellm_model(role) == IELTS_MODEL
+        assert cfg.litellm_fallbacks(role) == IELTS_BACKUPS
     assert cfg.litellm_fallbacks("orchestrator") == []
     assert load_model_config(DEV).litellm_fallbacks("ielts_grader") == []
 

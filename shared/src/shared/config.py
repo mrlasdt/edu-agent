@@ -66,6 +66,9 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     anthropic_api_key: str = ""
+    # Google AI Studio key: the IELTS mock's default models run on Google directly (provider
+    # `gemini`). Empty = those calls fail fast and the role's OpenRouter fallbacks grade instead.
+    gemini_api_key: str = ""
     database_url: str = "postgresql+asyncpg://edu:edu@localhost:5432/edu_agent"
     qdrant_url: str = "http://localhost:6333"
     langfuse_secret_key: str = ""

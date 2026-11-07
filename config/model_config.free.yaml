@@ -80,19 +80,21 @@ roles:
 
   # IELTS Writing mock: rubric grader and examiner-style feedback writer. These two roles are
   # the exception to the one-model rule: gemma-4-26b-a4b-it passed the ADR-0014 development gate
-  # and flint did not (see the ADR's measured results). When 26b is rate limited or fails, the
-  # completer tries the fallbacks in order (gemma-4-31b-it passed the same gate).
+  # and flint did not (see the ADR's measured results). They run on Google AI Studio directly
+  # (needs GEMINI_API_KEY; the completer retries Google's transient 500/503 a couple of times).
+  # With no key, or when Google is down, the completer tries the fallbacks in order: the same
+  # 26b and then 31b on OpenRouter's free tier (gemma-4-31b-it passed the same gate).
   ielts_grader:
-    provider: openrouter
-    model: google/gemma-4-26b-a4b-it:free
+    provider: gemini
+    model: gemma-4-26b-a4b-it
     temperature: 0.3
-    fallbacks: [openrouter/google/gemma-4-31b-it:free]
+    fallbacks: [openrouter/google/gemma-4-26b-a4b-it:free, openrouter/google/gemma-4-31b-it:free]
 
   ielts_feedback:
-    provider: openrouter
-    model: google/gemma-4-26b-a4b-it:free
+    provider: gemini
+    model: gemma-4-26b-a4b-it
     temperature: 0.3
-    fallbacks: [openrouter/google/gemma-4-31b-it:free]
+    fallbacks: [openrouter/google/gemma-4-26b-a4b-it:free, openrouter/google/gemma-4-31b-it:free]
 
   # Background jobs
   style_extractor:

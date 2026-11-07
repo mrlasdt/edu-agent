@@ -56,6 +56,8 @@ The default config moved to free OpenRouter models, which moved the IELTS roles 
 |---|---|---|---|---|---|---|---|
 | google/gemma-4-26b-a4b-it | 18 | 0.83 | -0.14 | 0.42 | 0.82 | 2 | PASS |
 | google/gemma-4-31b-it | 17 | 0.82 | -0.26 | 0.44 | 0.79 | 21 | PASS |
+| google/gemma-4-26b-a4b-it (Google AI Studio direct, one run) | 19 | 0.84 | -0.08 | 0.45 | 0.80 | 0 | PASS |
+| google/gemma-4-31b-it (Google AI Studio direct, one run) | 19 | 0.89 | -0.18 | - | 0.83 | 0 | PASS |
 | recursive/flint-v1.0 | 13 | 0.62 | -0.62 | 0.69 | 0.27 | 0 | FAIL |
 | cohere/north-mini-code | 15 | 0.60 | -0.47 | 0.60 | 0.58 | 0 | FAIL |
 | xingchen-agi/xing4.0-29b-a4b | 17 | 0.71 | -0.41 | 0.53 | 0.68 | 25 | FAIL |
@@ -64,8 +66,9 @@ The default config moved to free OpenRouter models, which moved the IELTS roles 
 | Free router (reference, table above) | 17 | 0.47 | -0.79 | - | 0.53 | - | FAIL |
 
 - The 31b row is from a run paced at under 20 requests per minute; an earlier unpaced run graded 2 essays with 53 rate-limited calls.
+- The two Google-direct rows are a single run on the same 19 essays, 3 samples each, max 4000 tokens, at about 8 calls a minute with no 429 in about 125 calls. Google returned transient HTTP 500 "Internal error encountered" on 16% of 26b calls and 503 "high demand" on some 31b calls, so the completer retries those. MAE for 31b was not recorded.
 - Excluded before measuring: `nvidia/nemotron-3-ultra-550b-a55b`, `nvidia/nemotron-3.5-super-vl`, `nvidia/nemotron-3.5-lightning`, `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` and `liquid/lfm-2.5-2.6b` (blocked by the account data policy; owner rule: no models that train on or keep prompts), and `stealth/crouton-alpha` (trains on prompts). Not measured: Gemini 3.8 flash and GLM 5.3 flash.
-- **Decision:** in `config/model_config.free.yaml`, `ielts_grader` and `ielts_feedback` run on `google/gemma-4-26b-a4b-it:free`, with `google/gemma-4-31b-it:free` as the automatic backup. Every other role stays on `recursive/flint-v1.0:free`, and `config/model_config.dev.yaml` is unchanged. A role may list `fallbacks` (LiteLLM model strings, tried in order); the IELTS completer tries them when the primary raises or returns an empty reply, and each attempt is metered under the model actually used. Evals that pin one model drop role fallbacks.
+- **Decision (2026-11-07, supersedes the OpenRouter-only default):** in `config/model_config.free.yaml`, `ielts_grader` and `ielts_feedback` run on `gemini/gemma-4-26b-a4b-it` (Google AI Studio, `GEMINI_API_KEY`, litellm `num_retries=2` for Google's 500/503), with `openrouter/google/gemma-4-26b-a4b-it:free` then `openrouter/google/gemma-4-31b-it:free` as the automatic backups, so a missing key or a Google outage still grades. OpenRouter has no Google host for this model, so the Google call must be direct. Before that, both roles ran on `google/gemma-4-26b-a4b-it:free` with `google/gemma-4-31b-it:free` as backup. Every other role stays on `recursive/flint-v1.0:free`, and `config/model_config.dev.yaml` is unchanged. A role may list `fallbacks` (LiteLLM model strings, tried in order); the IELTS completer tries them when the primary raises or returns an empty reply, and each attempt is metered under the model actually used. Evals that pin one model drop role fallbacks.
 
 ## Consequences
 

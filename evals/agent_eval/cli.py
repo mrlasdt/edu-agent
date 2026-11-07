@@ -64,6 +64,7 @@ from shared.src.shared.config import load_model_config
 # is the most reliable first choice; the pinned models are fallbacks for when it errors.
 FREE_MODELS = [
     "openrouter/openrouter/free",
+    "openrouter/google/gemma-4-26b-a4b-it:free",
     "openrouter/google/gemma-4-31b-it:free",
     "openrouter/poolside/laguna-s-2.1:free",
 ]
@@ -99,7 +100,10 @@ def provider_chain(provider: str, model: str | None = None) -> list[str]:
 def required_keys(provider: str, judge: str, model: str | None = None) -> list[str]:
     if model:
         keys = [
-            {"openrouter": "OPENROUTER_API_KEY", "openai": "OPENAI_API_KEY"}.get(
+            {
+                "openrouter": "OPENROUTER_API_KEY", "openai": "OPENAI_API_KEY",
+                "gemini": "GEMINI_API_KEY",
+            }.get(
                 model.partition("/")[0], "OPENROUTER_API_KEY"
             )
         ]
