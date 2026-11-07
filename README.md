@@ -1,6 +1,6 @@
 # edu-agent - Multi-Exam Tutor and Agentic AI Engineering Reference Implementation
 
-An exam-prep tutor built as a reference implementation of agentic AI engineering techniques: RAG pipelines, MCP servers, multi-model cost tiering, layered guardrails, eval-as-CI and k8s manifests.
+An exam-prep tutor built as a reference implementation of agentic AI engineering techniques: RAG pipelines, MCP servers, multi-model cost tiering, layered guardrails and eval-as-CI.
 
 What it covers today, by exam:
 
@@ -225,7 +225,7 @@ The math verifier (port 8090) is a cluster-internal service, not a client-facing
 
 ## Deployment
 
-`infra/k8s/` holds Deployment and Service manifests for gateway, agent, corpus, ingestion and math-verifier; unit tests check their structure. The gateway and agent read their model keys from the `edu-agent-secrets` Secret (`openai-api-key`, `openrouter-api-key`); the default model config needs `openrouter-api-key`. `.github/workflows/deploy.yml` builds images to GHCR on merge to main and deploys to staging only when the repo variable `DEPLOY_ENABLED` is `true` and the `KUBE_CONFIG_STAGING` secret is set. There is no production deploy job, canary or automatic rollback: the workflow stops at staging, and there is no metrics backend to judge a canary by.
+Docker Compose (`infra/docker-compose.yml`) is the one supported way to run the system. There is no cluster deploy: Kubernetes manifests and a deploy workflow existed but were never applied and disagreed with each other, so they were removed (they are in git history if a cluster deploy is wanted later).
 
 ## Adding an exam or section
 
@@ -242,7 +242,7 @@ The math verifier (port 8090) is a cluster-internal service, not a client-facing
 - Question generation over HTTP, dedup against a bank, and difficulty calibration.
 - A calibrated IELTS grader (needs an examiner or blind-scored set of 60 essays).
 - A durable human review queue (in memory only).
-- A real cluster deploy: the k8s manifests have never been applied.
+- A cluster deploy (Kubernetes): only Docker Compose is supported.
 
 ## Repository layout
 
@@ -255,7 +255,7 @@ seed/       self-written GRE Quant notes ingested on first start
 evals/      eval harness, golden sets, baselines, exam_set tooling
 prompts/    versioned system prompts
 config/     model configs and IELTS calibration
-infra/      docker-compose.yml, k8s/
+infra/      docker-compose.yml
 docs/       adr/ (decision records), design-log/, walkthrough/, CONTEXT.md at the repo root
 ```
 

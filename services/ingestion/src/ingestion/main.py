@@ -39,8 +39,9 @@ app = FastAPI(title="Ingestion Service")
 _log = logging.getLogger(__name__)
 
 # Job records live in this process's memory: they are lost on a restart and invisible to a second
-# replica, so the ingestion service runs as a single replica (infra/k8s/ingestion.yaml). A
-# durable job table with a real queue is the Phase 2 follow-up (ADR-0011).
+# replica, so the ingestion service runs as a single replica (one container in
+# infra/docker-compose.yml). A durable job table with a real queue is the Phase 2 follow-up
+# (ADR-0011).
 _jobs: dict[str, dict[str, Any]] = {}
 
 # Files under this threshold are indexed inside the upload request; larger ones are indexed by a

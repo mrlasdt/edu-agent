@@ -22,7 +22,7 @@ Moderation API). See README "Not built yet" for what is still missing.
 - [x] 13 Web UI upload overlay + preferences panel components
 - [x] 14 Admin UI components (AdminUploadForm, JobsTable)
 - [x] 15 MCP servers (Candidate + Admin; 6 tools)
-- [x] 16 k8s manifests, GitHub Actions CI/CD, Dockerfiles for all services
+- [x] 16 GitHub Actions CI, Dockerfiles for all services (k8s manifests and the deploy workflow were removed unapplied, 2026-11-07)
 - [x] 17 Langfuse observability (setup_observability called at gateway and agent startup, build_llm_metadata, QuantAgent wired)
 
 ### Work after the 17 slices
@@ -77,7 +77,7 @@ Moderation API). See README "Not built yet" for what is still missing.
   computes it, and the reply shows agrees / disagrees / not checkable. Numeric answers only. No
   live run has measured it yet (offline: 0 of 16 seeded wrong answers agreed, was 16 of 16).
 - No ETS corpus is checked in, so AW citations have nothing to cite until one is ingested.
-- k8s manifests and deploy workflow were never applied to a cluster.
+- No cluster deploy: the k8s manifests and deploy workflow were never applied and were removed; Docker Compose is the only deploy path.
 - Question-generation pipeline: library + eval target only (no HTTP endpoint, UI, dedup, difficulty
   calibration or review-queue store). The only live run (free models, 3 requests) was inconclusive:
   5 of 6 units dropped as the free tier was unavailable. Offline before/after uses a fake model with

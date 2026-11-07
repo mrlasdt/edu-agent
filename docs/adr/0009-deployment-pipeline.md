@@ -6,11 +6,11 @@ The agent ships via a trunk-based development workflow on GitHub Actions, target
 
 Accepted.
 
-**Implementation status (2026-11-04).** Not everything above was built. Built: trunk-based CI, image builds to GHCR, and an opt-in staging deploy (`.github/workflows/deploy.yml`). **Not built:** the production deploy, the 5% canary, auto-rollback and the metrics they would read (the `deploy-prod-canary` job targeted a deployment that does not exist and was removed), and Alembic migrations (no migrations exist and the dependency was dropped). The canary and migration statements in this record are the original intent, not a description of the system.
+**Implementation status (2026-11-04).** Not everything above was built. Built: trunk-based CI. **Not built:** the Kubernetes manifests, the GHCR image build and staging deploy (`.github/workflows/deploy.yml`) and the production deploy; the manifests were never applied and disagreed with the workflow and with each other, so `infra/k8s/` and `deploy.yml` were removed (2026-11-07) and Docker Compose is the one supported deploy path (they are in git history). Also not built: the 5% canary, auto-rollback and the metrics they would read (the `deploy-prod-canary` job targeted a deployment that does not exist and was removed), and Alembic migrations (no migrations exist and the dependency was dropped). The canary and migration statements in this record are the original intent, not a description of the system.
 
 ## Phases
 
-**Phase 1 — localhost:** Docker Compose orchestrates all services (gateway, agent, corpus, ingestion worker, math-verifier MCP server, Postgres, Qdrant, Langfuse, BGE-M3 TEI server). No cloud infra. Eval, guardrail, and agent pipelines fully functional against local Qdrant + Postgres. Secrets via `.env` (git-ignored). The k8s manifests are written in Phase 1 so they're tested before cloud is needed.
+**Phase 1 — localhost:** Docker Compose orchestrates all services (gateway, agent, corpus, ingestion worker, math-verifier MCP server, Postgres, Qdrant, Langfuse, BGE-M3 TEI server). No cloud infra. Eval, guardrail, and agent pipelines fully functional against local Qdrant + Postgres. Secrets via `.env` (git-ignored). (The k8s manifests this paragraph once promised were removed unapplied; see the implementation status.)
 
 **Phase 2 — cloud k8s:** Apply manifests to a managed k8s cluster (GKE, EKS, or AKS — one config change). Neon or managed Postgres replaces local Postgres. Qdrant Cloud replaces local Qdrant. GitHub Actions promotes images on merge to main; canary + rollback policies activate.
 
@@ -25,7 +25,7 @@ Accepted.
 
 - **Trunk-based dev means every merge to main must pass all CI gates** — lint, type-check, unit tests, integration tests, and the path-gated per-PR eval slice (ADR-0006). PRs are short-lived (≤1 day); feature flags gate incomplete features rather than long-lived branches.
 - **Prompt versioning is git-native.** `prompts/{agent}/{mode}/v{N}.md` with YAML frontmatter. Active version per `(agent, mode)` set in `model_config.yaml`. Old versions retained in git; never deleted. A/B traffic splits configured in the same file: `aw_agent.tutor: { v3: 90, v4: 10 }`.
-- **k8s manifests are first-class artifacts.** Written in Phase 1, validated with `kubectl --dry-run=client` in CI, applied to staging on merge to main, applied to prod on tagged release.
+- **k8s manifests are first-class artifacts.** (Original intent; not built, see the implementation status.) Written in Phase 1, validated with `kubectl --dry-run=client` in CI, applied to staging on merge to main, applied to prod on tagged release.
 - **Canary auto-rollback is the load-bearing production safety feature.** 5% canary for 30 min; rollback on error rate >2× baseline OR eval key metrics regress >5%. Promotion to 100% is automatic on healthy.
 - **Database migrations are Alembic, forward-only in staging/prod.** Column/table removal goes via two-phase deploy: ship code that doesn't use the column; drop in a subsequent release. No down-migrations in production.
 - **Per-PR Neon preview branches** (Phase 2) give each PR an isolated Postgres for integration tests. Phase 1 uses a local Postgres container reset between runs.
