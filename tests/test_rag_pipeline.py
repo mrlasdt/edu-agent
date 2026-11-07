@@ -26,7 +26,7 @@ from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedR
 
 from services.corpus.src.corpus.main import app, lifespan, search_corpus
 from services.corpus.src.corpus.retriever import build_search_filter
-from services.ingestion.src.ingestion.main import run_ingestion_pipeline
+from services.ingestion.src.ingestion.main import chunk_point_id, run_ingestion_pipeline
 from shared.src.shared.config import Settings
 from shared.src.shared.vectorstore import CollectionSchemaError, ensure_collection
 
@@ -343,8 +343,8 @@ async def test_run_ingestion_pipeline_upserts_one_point_per_chunk(
     client = AsyncMock()
     mock_factory.return_value = client
     chunks = [
-        {"text": "alpha", "tier": "global", "test_type": "gre"},
-        {"text": "beta", "tier": "global", "test_type": "gre"},
+        {"text": t, "tier": "global", "test_type": "gre", "source_uri": "n.txt", "chunk_index": i}
+        for i, t in enumerate(["alpha", "beta"])
     ]
 
     result = await run_ingestion_pipeline(chunks, {"tier": "global"})
@@ -355,6 +355,9 @@ async def test_run_ingestion_pipeline_upserts_one_point_per_chunk(
     points = client.upsert.call_args.kwargs["points"]
     assert len(points) == 2
     assert {p.payload["text"] for p in points} == {"alpha", "beta"}
+    # the ids come from the document and chunk position, so a re-upload replaces these points
+    assert [p.id for p in points] == [chunk_point_id(c) for c in chunks]
+    assert len({p.id for p in points}) == 2
     # 8. both named vectors are written
     for p in points:
         assert set(p.vector) == {"dense", "sparse"}

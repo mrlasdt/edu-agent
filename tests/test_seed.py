@@ -5,25 +5,22 @@ Behaviors under test:
   1. Every shipped seed note is an allowed, non-empty upload with a heading
   2. An empty corpus gets every note uploaded with the admin key and no tier field (the
      ingestion service files it under the global tier); a missing key fails before any upload
-  3. A fully seeded corpus is left alone (idempotent restart)
-  4. An interrupted seed is finished on the next run without re-uploading indexed notes
-  5. A 4xx from ingestion fails at once; a 5xx is retried
+  3. A restart uploads every note again: the ingestion service replaces a note's chunks in place
+     (see tests/test_ingestion_api.py), so the seed no longer asks Qdrant what is indexed
+  4. A 4xx from ingestion fails at once; a 5xx is retried
 """
 
-import uuid
 from collections.abc import Callable
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import httpx
 import pytest
-from qdrant_client import AsyncQdrantClient, models
 
 from services.ingestion.src.ingestion import seed
 from services.ingestion.src.ingestion.chunker import chunk_text
 from services.ingestion.src.ingestion.parser import is_allowed, parse_bytes
 from shared.src.shared.config import ADMIN_KEY_HEADER, get_settings
-from shared.src.shared.vectorstore import COLLECTION, DENSE_VECTOR, ensure_collection
 
 ADMIN_KEY = "seed-test-key"
 
@@ -45,37 +42,6 @@ def test_seed_notes_are_ingestible():
         chunks = chunk_text(parse_bytes(note.read_bytes(), note.name))
         assert chunks, note.name
         assert all(c.section_title for c in chunks), note.name
-
-
-class _Corpus:
-    """An in-memory Qdrant that survives the seed job closing its client."""
-
-    def __init__(self) -> None:
-        self.client = AsyncQdrantClient(location=":memory:")
-
-    def get_client(self) -> AsyncQdrantClient:
-        return self.client
-
-    async def index(self, source_uri: str, tier: str = "global") -> None:
-        await ensure_collection(self.client, dim=4)
-        await self.client.upsert(
-            collection_name=COLLECTION,
-            points=[
-                models.PointStruct(
-                    id=str(uuid.uuid4()),
-                    vector={DENSE_VECTOR: [0.1, 0.2, 0.3, 0.4]},
-                    payload={"source_uri": source_uri, "tier": tier, "test_type": "gre"},
-                )
-            ],
-        )
-
-
-@pytest.fixture
-def corpus():
-    c = _Corpus()
-    with patch.object(seed, "get_qdrant_client", c.get_client), \
-         patch.object(c.client, "close", AsyncMock()):
-        yield c
 
 
 def _ingestion(responses: Callable[[str], httpx.Response] | None = None):
@@ -103,7 +69,7 @@ async def _run_main(transport: httpx.MockTransport) -> int:
 
 
 @pytest.mark.asyncio
-async def test_empty_corpus_gets_every_note_uploaded_with_the_admin_key(corpus):
+async def test_empty_corpus_gets_every_note_uploaded_with_the_admin_key():
     transport, posted = _ingestion()
 
     assert await _run_main(transport) == 0
@@ -113,7 +79,7 @@ async def test_empty_corpus_gets_every_note_uploaded_with_the_admin_key(corpus):
 
 
 @pytest.mark.asyncio
-async def test_missing_admin_key_fails_before_any_upload(corpus, monkeypatch):
+async def test_missing_admin_key_fails_before_any_upload(monkeypatch):
     monkeypatch.setenv("INGESTION_ADMIN_KEY", "")
     get_settings.cache_clear()
     transport, posted = _ingestion()
@@ -124,33 +90,17 @@ async def test_missing_admin_key_fails_before_any_upload(corpus, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_seeded_corpus_is_not_reuploaded(corpus):
-    for note in SEED_NOTES:
-        await corpus.index(note.name)
+async def test_a_restart_uploads_every_note_again():
     transport, posted = _ingestion()
 
     assert await _run_main(transport) == 0
-
-    assert posted == []
-
-
-@pytest.mark.asyncio
-async def test_interrupted_seed_uploads_only_the_missing_notes(corpus):
-    done, rest = SEED_NOTES[:4], SEED_NOTES[4:]
-    for note in done:
-        await corpus.index(note.name)
-    # Unrelated documents (another tier, or another source) do not count as seeded.
-    await corpus.index(rest[0].name, tier="school")
-    await corpus.index("someone-elses-notes.txt")
-    transport, posted = _ingestion()
-
     assert await _run_main(transport) == 0
 
-    assert [name for name, _ in posted] == [n.name for n in rest]
+    assert [name for name, _ in posted] == [n.name for n in SEED_NOTES] * 2
 
 
 @pytest.mark.asyncio
-async def test_client_error_fails_fast_without_retrying(corpus):
+async def test_client_error_fails_fast_without_retrying():
     transport, posted = _ingestion(lambda _: httpx.Response(415, text="unsupported"))
 
     with patch.object(seed, "_READY_TIMEOUT_S", 3600.0), patch.object(seed, "_RETRY_DELAY_S", 0):
@@ -160,7 +110,7 @@ async def test_client_error_fails_fast_without_retrying(corpus):
 
 
 @pytest.mark.asyncio
-async def test_server_error_is_retried(corpus):
+async def test_server_error_is_retried():
     attempts: dict[str, int] = {}
 
     def flaky(name: str) -> httpx.Response:

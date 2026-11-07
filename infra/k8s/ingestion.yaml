@@ -5,7 +5,7 @@ metadata:
   labels:
     app: ingestion
 spec:
-  replicas: 1
+  replicas: 1  # keep 1: job records are in this process's memory (ADR-0011)
   selector:
     matchLabels:
       app: ingestion

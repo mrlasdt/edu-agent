@@ -57,10 +57,10 @@ def test_upload_without_the_right_key_is_401_and_writes_nothing(configured, head
 def test_job_status_route_needs_the_key_too(configured):
     client = TestClient(app)
     assert client.get("/admin/documents/job-1").status_code == 401
-    with patch(
-        "services.ingestion.src.ingestion.main.get_job", new_callable=AsyncMock
-    ) as get_job:
-        get_job.return_value = {"job_id": "job-1", "status": "completed"}
+    with patch.dict(
+        "services.ingestion.src.ingestion.main._jobs",
+        {"job-1": {"job_id": "job-1", "status": "completed"}},
+    ):
         resp = client.get("/admin/documents/job-1", headers={ADMIN_KEY_HEADER: KEY})
     assert resp.status_code == 200
 

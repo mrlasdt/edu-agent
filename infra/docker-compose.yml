@@ -209,9 +209,9 @@ services:
         condition: service_healthy
     command: ["uvicorn", "services.agent.src.agent.main:app", "--host", "0.0.0.0", "--port", "8002", "--reload", "--reload-dir", "/app/services", "--reload-dir", "/app/shared"]
 
-  # One-shot job: ingests seed/gre-quant/*.txt into the global corpus on first start
-  # (skips notes already indexed). `docker compose up` waits for it, so the
-  # web app only comes up once there is something to retrieve.
+  # One-shot job: ingests seed/gre-quant/*.txt into the global corpus on every start
+  # (ingestion replaces a note already indexed, never duplicates it). `docker compose up`
+  # waits for it, so the web app only comes up once there is something to retrieve.
   seed:
     build:
       context: ..

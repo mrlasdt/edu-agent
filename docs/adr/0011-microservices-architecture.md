@@ -9,7 +9,7 @@ The system is decomposed into five persistent microservices and one CLI tool, al
 | **gateway** | External API (HTTP + SSE), auth, rate-limiting, session management, Orchestrator logic (validate → enrich → classify → route), Admin UI backend | `/chat`, `/upload`, `/admin/*` |
 | **agent** | Quant Agent + AW Agent via plugin registry, Skill loading, post-gen critics (style critic, citation checker), streaming to gateway | internal HTTP |
 | **corpus** | Qdrant interface, hybrid search (BGE-M3 dense + sparse + RRF), BGE reranker, ACL enforcement, citation metadata | internal HTTP |
-| **ingestion** | Async queue worker (pgmq), document parsing (PDF/DOCX/TXT), chunking, embedding, Qdrant indexing, job management API | internal HTTP |
+| **ingestion** | Document parsing (PDF/DOCX/TXT), chunking, embedding, Qdrant indexing, job management API; large files are indexed by an in-process background task (see "Amendment: ingestion without a queue worker") | internal HTTP |
 | **math-verifier** | sympy sandbox, local MCP server; accepts `verify_math(expression, expected)` tool calls | MCP protocol (Unix socket in Phase 1, cluster-internal in Phase 2) |
 
 **Not a service:** the Eval harness (`evals/`) is a CLI tool invoked by CI and nightly cron. It calls the Agent Service and judges directly. Spinning up a persistent eval service would add operational surface for no benefit.
@@ -37,7 +37,7 @@ Accepted. Supersedes the monolithic service implied by the earlier ADRs; all ser
 - **Monolith with internal modules** — rejected: the math verifier needs process-level isolation; corpus retrieval has a natural scaling unit different from agent turns; ingestion is purely async and doesn't belong in the request path.
 - **Math Verifier as HTTP microservice** — rejected in favour of MCP server: loses the MCP demo surface, gains nothing at our scale.
 - **Math Verifier as in-process Skill** — rejected: sympy sandbox isolation requires process separation; a crash in the verifier would take down the Agent Service.
-- **Message broker (Kafka, RabbitMQ) between request-path services** — rejected: the request path is synchronous (Gateway → Agent → Corpus, Agent → Math Verifier). Message brokers add latency and operational complexity without benefit on synchronous call chains. Async ingestion uses the existing Postgres pgmq queue, which is sufficient.
+- **Message broker (Kafka, RabbitMQ) between request-path services** — rejected: the request path is synchronous (Gateway → Agent → Corpus, Agent → Math Verifier). Message brokers add latency and operational complexity without benefit on synchronous call chains. Async ingestion was meant to use the existing Postgres pgmq queue; see "Amendment: ingestion without a queue worker" for what is built.
 - **Separate eval service** — rejected: the eval harness needs to be invocable as a CLI tool from CI. Wrapping it in a persistent service adds an HTTP layer and a deployment dependency for no benefit. The harness calls Agent and Corpus services directly.
 - **Admin UI as a separate service** — rejected: too thin (upload form + job table). Belongs in Gateway as protected routes calling Ingestion API.
 
@@ -51,3 +51,15 @@ Accepted. Supersedes the monolithic service implied by the earlier ADRs; all ser
 - **`test_type` is on session state from day one.** v1 supports only `test_type=gre`; v2 adds `ielts`, `gmat`, etc. The field is present in all session state, corpus document metadata, and the Admin UI upload form even though only one value is valid in v1.
 - **Inter-service auth is internal network trust in Phase 1** (Docker Compose network). Phase 2 uses mTLS or an internal JWT between services — a k8s secret. Not built in Phase 1.
 - **LiteLLM is used only in the Agent Service and Eval harness.** No other service makes LLM calls. This keeps the model config surface area contained.
+
+## Amendment: ingestion without a queue worker (2026-11)
+
+The decision above named a pgmq queue and a worker for large uploads. Neither was ever built: `enqueue_ingestion_job` only wrote a record into a Python dict, so a file of 1 MB or more got `202 queued` and was never indexed, and the test that should have caught it mocked the stub. The code now does the smallest thing that is true:
+
+- **Large files are indexed by a FastAPI `BackgroundTasks` task**, the mechanism the gateway's IELTS grading already uses. `POST /admin/documents` still answers files under 1 MB with `200 completed` after indexing them, and larger ones with `202 queued` at once. The task then parses (off the event loop), chunks, embeds and indexes, and `GET /admin/documents/{job_id}` reports `processing`, then `completed` with `chunks_indexed`, or `failed` with `error_stage` (`parse` or `index`) and `error`.
+- **Job records are per process.** They live in a dict in the service's memory: a restart loses them, and a second replica would not see them. The service therefore stays a single replica (`infra/k8s/ingestion.yaml`). A task that is running when the process stops is lost with it, and the upload has to be repeated; that is safe, because of the next point.
+- **Point ids are deterministic.** A chunk's Qdrant id is `uuid5(namespace, "<tier>:<test_type>:<source_uri>:<chunk_index>")`, so uploading a document again (same filename, tier and test type) replaces its points instead of adding a second copy, and after the upsert every other point of that document (same filename, tier and test type) is deleted: the tail of a longer old version, and any point stored under a random id before ids were deterministic. The seed job relies on this and uploads every note on every start instead of asking Qdrant what is indexed. The namespace in `ingestion/main.py` must never change.
+
+A collection filled before this change (random ids) needs no manual cleanup: the first upload of each document removes its legacy points as part of the replace, so the seed job's first start on an existing volume leaves one copy of each note, not two. Documents that are never uploaded again keep their legacy points.
+
+**Still open.** A durable queue (pgmq or arq) with a worker and a Postgres job table, which would survive restarts and allow more than one replica. Until then the "pgmq" wording above describes the intent, not the code.
