@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { IeltsMock } from "./ielts/IeltsMock";
 import "./styles.css";
 
@@ -8,5 +9,7 @@ import "./styles.css";
 const isIeltsMock = window.location.pathname.replace(/\/+$/, "") === "/ielts-mock";
 
 createRoot(document.getElementById("root")!).render(
-  <StrictMode>{isIeltsMock ? <IeltsMock /> : <App />}</StrictMode>
+  <StrictMode>
+    <ErrorBoundary>{isIeltsMock ? <IeltsMock /> : <App />}</ErrorBoundary>
+  </StrictMode>
 );

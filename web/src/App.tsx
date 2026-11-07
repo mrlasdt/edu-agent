@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { MessageBubble } from "./components/MessageBubble";
 import { ModeSwitch } from "./components/ModeSwitch";
 import { SubjectPicker } from "./components/SubjectPicker";
+import { newId } from "./newId";
 import { MAX_MESSAGE_CHARS, sendFeedback, streamChat } from "./chat";
 import type { Vote } from "./chat";
 import type { Message, Mode, Subject } from "./types";
@@ -17,7 +18,7 @@ export function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
-  const candidateId = useRef(crypto.randomUUID());
+  const [candidateId] = useState(newId); // lazy: runs once, not on every render
   const nextId = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -61,7 +62,7 @@ export function App() {
     setBusy(true);
     try {
       for await (const event of streamChat(
-        { candidateId: candidateId.current, subject, mode, message: text, history },
+        { candidateId, subject, mode, message: text, history },
         controller.signal
       )) {
         patchMessage(agentId, (m) => {
