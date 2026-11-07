@@ -2,10 +2,12 @@
 The /ielts API and attempt store: server-authoritative clock, autosave, resume, late submit,
 background marking and retry. A scripted completer replaces the model.
 """
+import asyncio
 import json
 from collections.abc import Iterator
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -94,15 +96,34 @@ def test_autosave_works_until_deadline_plus_grace(store: AttemptStore, clock: Cl
 def test_submit_is_idempotent_and_late_after_the_grace_window(store: AttemptStore, clock: Clock):
     on_time = store.start(store.create("p1", "P").id)
     clock.now += ALLOWED_S + GRACE_S
-    done = store.submit(on_time.id, "essay")
+    done, _ = store.submit(on_time.id, "essay")
     assert not done.late and done.final_text == "essay" and done.status == "submitted"
-    assert store.submit(on_time.id, "changed").final_text == "essay"
+    assert store.submit(on_time.id, "changed")[0].final_text == "essay"
 
     late = store.start(store.create("p1", "P").id)
     store.save_draft(late.id, "saved words")
     clock.now += ALLOWED_S + GRACE_S + 1
-    submitted = store.submit(late.id, "saved words and words written after time was up")
+    submitted, _ = store.submit(late.id, "saved words and words written after time was up")
     assert submitted.late and submitted.final_text == "saved words"
+
+
+def test_store_transitions_say_whether_this_call_made_them(store: AttemptStore):
+    attempt = store.start(store.create("p1", "P").id)
+    first, made = store.submit(attempt.id, "essay")
+    again, repeated = store.submit(attempt.id, "other")
+    assert made and not repeated and first.status == again.status == "submitted"
+    assert again.final_text == "essay"
+
+    began, started = store.begin_grading(attempt.id)
+    still, restarted = store.begin_grading(attempt.id)  # already grading: not a second start
+    assert started and not restarted and began.status == still.status == "grading"
+
+    store.fail(attempt.id, "down")
+    retried, reopened = store.begin_grading(attempt.id)  # a retryable failure re-opens once
+    assert reopened and retried.status == "grading"
+    store.finish(attempt.id, "{}", graded=True)
+    with pytest.raises(AttemptStateError):
+        store.begin_grading(attempt.id)
 
 
 def test_a_created_attempt_cannot_be_saved_or_submitted(store: AttemptStore):
@@ -224,9 +245,51 @@ def test_marking_interrupted_by_a_restart_is_offered_as_a_retry(
     attempt_id = new_attempt(client)
     client.post(f"/ielts/attempts/{attempt_id}/start")
     store.submit(attempt_id, ESSAY)
-    store.begin_grading(attempt_id)  # the process died here: nothing is in flight
-    view = client.get(f"/ielts/attempts/{attempt_id}").json()
+    store.begin_grading(attempt_id)  # the process died here: nothing is marking it any more
+    with TestClient(app) as restarted:  # startup sweeps what the old process left behind
+        view = restarted.get(f"/ielts/attempts/{attempt_id}").json()
     assert view["status"] == "ungraded" and view["retryable"] and "interrupted" in view["error"]
+
+
+def test_reading_an_attempt_never_writes(client: TestClient, store: AttemptStore):
+    attempt_id = new_attempt(client)
+    client.post(f"/ielts/attempts/{attempt_id}/start")
+    store.submit(attempt_id, ESSAY)
+    store.begin_grading(attempt_id)  # marking is running in another worker, or was lost
+    before = store.get(attempt_id)
+    for url in (f"/ielts/attempts/{attempt_id}", "/ielts/attempts"):
+        client.get(url)
+    assert store.get(attempt_id) == before and before.status == "grading"
+
+
+@pytest.mark.parametrize("simultaneous", [2, 16])
+async def test_simultaneous_submits_queue_exactly_one_marking(
+    client: TestClient, store: AttemptStore, completer: Scripted, monkeypatch: pytest.MonkeyPatch,
+    simultaneous: int,
+):
+    completer.grades = [grade_reply(6, 6, 6, 6)] * 200
+    queued: list[str] = []
+    real = ielts_api.grade_attempt
+
+    async def counting(attempt_id, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
+        queued.append(attempt_id)
+        await real(attempt_id, *args, **kwargs)
+
+    monkeypatch.setattr(ielts_api, "grade_attempt", counting)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
+        for _ in range(25):  # the window is a few milliseconds: many trials, one must lose
+            ielts_api._limiter.reset()
+            attempt_id = new_attempt(client)
+            client.post(f"/ielts/attempts/{attempt_id}/start")
+            queued.clear()
+            replies = await asyncio.gather(*(
+                http.post(f"/ielts/attempts/{attempt_id}/submit", json={"text": ESSAY})
+                for _ in range(simultaneous)
+            ))
+            assert {r.status_code for r in replies} == {200}
+            assert queued == [attempt_id]
+            assert store.get(attempt_id).status == "graded"
 
 
 def test_second_attempt_reports_the_change_since_the_first(

@@ -4,7 +4,8 @@ import codecs
 import logging
 import time
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
@@ -33,6 +34,10 @@ from services.gateway.src.gateway.guardrails.supportive import (
     SUPPORTIVE_MESSAGE,
     is_self_harm_reason,
 )
+from services.gateway.src.gateway.ielts_api import (
+    get_store,
+    recover_interrupted_attempts,
+)
 from services.gateway.src.gateway.ielts_api import router as ielts_router
 from services.gateway.src.gateway.orchestrator import (
     ClarificationTurn,
@@ -48,7 +53,15 @@ from shared.src.shared.turn_meter import TurnMeter
 
 _log = logging.getLogger(__name__)
 
-app = FastAPI(title="Gateway Service")
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # honour a test's dependency override, so the sweep sees the store the requests will use
+    get_attempt_store = app.dependency_overrides.get(get_store, get_store)
+    recover_interrupted_attempts(get_attempt_store())
+    yield
+
+
+app = FastAPI(title="Gateway Service", lifespan=_lifespan)
 app.include_router(ielts_router)
 app.include_router(feedback_router)
 
