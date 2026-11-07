@@ -6,7 +6,8 @@ import re
 
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
 from services.gateway.src.gateway.guardrails.verdict import Verdict
-from shared.src.shared.config import get_settings, load_model_config
+from services.gateway.src.gateway.settings import get_settings
+from shared.src.shared.config import load_model_config
 from shared.src.shared.models import Mode
 from shared.src.shared.turn_meter import TurnMeter
 

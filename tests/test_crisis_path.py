@@ -15,7 +15,7 @@ from services.gateway.src.gateway.guardrails.supportive import (
 )
 from services.gateway.src.gateway.guardrails.verdict import Verdict
 from services.gateway.src.gateway.main import app
-from shared.src.shared.config import Settings
+from services.gateway.src.gateway.settings import GatewaySettings
 from shared.src.shared.turn_outcome import Outcome
 from tests.gateway_fakes import agent_replies
 
@@ -42,13 +42,13 @@ def _agent() -> MagicMock:
 def _post(
     client: TestClient,
     moderation: dict[str, Any],
-    settings: Settings | None = None,
+    settings: GatewaySettings | None = None,
     message: str = "hello",
 ) -> Any:
     """POST /chat; returns (response, completeness mock, agent mock)."""
     completeness = AsyncMock(return_value=Verdict.allow())
     agent = _agent()
-    settings = settings or Settings(openai_api_key="k", env="prod")
+    settings = settings or GatewaySettings(openai_api_key="k", env="prod")
     with (
         patch(f"{_INPUT}.get_settings", return_value=settings),
         patch(f"{_INPUT}._call_moderation_api", new_callable=AsyncMock, return_value=moderation),
@@ -130,7 +130,7 @@ def test_is_self_harm_reason(reason, expected):
 
 @pytest.mark.asyncio
 async def test_trigger_reports_a_self_harm_hit_in_dev_without_a_moderation_call():
-    settings = Settings(env="dev", safety_test_trigger=_TRIGGER)
+    settings = GatewaySettings(env="dev", safety_test_trigger=_TRIGGER)
     with patch(f"{_INPUT}.get_settings", return_value=settings), \
          patch(f"{_INPUT}._call_moderation_api", new_callable=AsyncMock) as moderation:
         verdict = await check_content_safety(f"help {_TRIGGER.upper()}", "t")
@@ -141,7 +141,7 @@ async def test_trigger_reports_a_self_harm_hit_in_dev_without_a_moderation_call(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("env", ["prod", "staging"])
 async def test_trigger_is_inert_outside_dev(env):
-    settings = Settings(env=env, safety_test_trigger=_TRIGGER, openai_api_key="k")
+    settings = GatewaySettings(env=env, safety_test_trigger=_TRIGGER, openai_api_key="k")
     clean = {"flagged": False, "categories": {}}
     with patch(f"{_INPUT}.get_settings", return_value=settings), \
          patch(f"{_INPUT}._call_moderation_api", new_callable=AsyncMock, return_value=clean) as mod:
@@ -151,13 +151,13 @@ async def test_trigger_is_inert_outside_dev(env):
 
 @pytest.mark.asyncio
 async def test_trigger_is_off_when_unset():
-    settings = Settings(env="dev")
+    settings = GatewaySettings(env="dev")
     with patch(f"{_INPUT}.get_settings", return_value=settings):
         assert await check_content_safety("help __test_self_harm__", "t") == Verdict.allow()
 
 
 def test_chat_with_the_trigger_in_dev_gets_the_supportive_reply(client, turn_log):
-    settings = Settings(env="dev", safety_test_trigger=_TRIGGER)
+    settings = GatewaySettings(env="dev", safety_test_trigger=_TRIGGER)
     completeness, agent = AsyncMock(), _agent()
     with (
         patch(f"{_INPUT}.get_settings", return_value=settings),
@@ -177,7 +177,7 @@ def test_chat_with_the_trigger_outside_dev_is_not_a_supportive_reply(client, tur
     response, _, _ = _post(
         client,
         {"flagged": False, "categories": {}},
-        Settings(env="prod", safety_test_trigger=_TRIGGER, openai_api_key="k"),
+        GatewaySettings(env="prod", safety_test_trigger=_TRIGGER, openai_api_key="k"),
         message=f"{_TRIGGER} please",
     )
     assert response.text == "Isolate x first."

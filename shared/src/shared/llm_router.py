@@ -44,7 +44,7 @@ import litellm
 from litellm.router import Router
 from litellm.types.router import RetryPolicy
 
-from shared.src.shared.config import ModelConfig, get_settings, load_model_config
+from shared.src.shared.config import ModelConfig, get_llm_settings, load_model_config
 
 # litellm prints multi-line "Give Feedback / Provider List" banners to stdout on errors, which
 # corrupts the JSON summary the eval CLI prints.
@@ -152,12 +152,12 @@ def build_router(
     ordered = list(dict.fromkeys([
         *role_models, *models, *chains, *(b for backups in chains.values() for b in backups)
     ]))
-    gemini_key = get_settings().gemini_api_key
+    gemini_key = get_llm_settings().gemini_api_key
     model_list: list[dict[str, Any]] = []
     for name in ordered:
         params: dict[str, Any] = {"model": name}
         if name.startswith("gemini/") and gemini_key:
-            params["api_key"] = gemini_key  # .env is read by Settings, not exported to litellm
+            params["api_key"] = gemini_key  # .env is read by LlmSettings, not exported to litellm
         params.update((deployment_params or {}).get(name, {}))
         model_list.append({
             "model_name": name, "litellm_params": params,
@@ -223,7 +223,7 @@ def get_router() -> Completions:
     global _default
     if _installed is not None:
         return _installed
-    settings = get_settings()
+    settings = get_llm_settings()
     key = (settings.model_config_path, settings.gemini_api_key)
     if _default is None or _default[0] != key:
         _default = (key, build_router(load_model_config(settings.model_config_path)))

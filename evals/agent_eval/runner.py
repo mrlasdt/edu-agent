@@ -57,7 +57,7 @@ from services.agent.src.agent.skills.math_tools import MathToolsSkill
 from services.agent.src.agent.skills.retrieve_corpus import RetrieveCorpusSkill
 from services.agent.src.agent.skills.verify_math import VerifyMathSkill
 from services.math_verifier.src.math_verifier.server import mcp as math_verifier_mcp
-from shared.src.shared.config import DEFAULT_MODEL_CONFIG_PATH
+from shared.src.shared.config import anchor, get_llm_settings
 from shared.src.shared.events import Token, Verified
 from shared.src.shared.models import Mode, Session
 
@@ -115,9 +115,9 @@ def build_quant_agent(
     )
 
 
-def write_model_config(model: str, base_path: str = DEFAULT_MODEL_CONFIG_PATH) -> str:
-    """A model config identical to the default one but with every role routed to `model`."""
-    raw = yaml.safe_load(Path(base_path).read_text())
+def write_model_config(model: str, base_path: str | None = None) -> str:
+    """The active model config (MODEL_CONFIG_PATH) with every role routed to `model`."""
+    raw = yaml.safe_load(anchor(base_path or get_llm_settings().model_config_path).read_text())
     provider, _, name = model.partition("/")
     for role in raw["roles"].values():
         role["provider"], role["model"] = provider, name

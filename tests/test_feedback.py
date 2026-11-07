@@ -32,7 +32,7 @@ from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
 from services.gateway.src.gateway.guardrails.verdict import Verdict
 from services.gateway.src.gateway.main import app
 from shared.src.shared import observability
-from shared.src.shared.config import Settings, get_settings
+from shared.src.shared.config import FeedbackSettings, get_feedback_settings
 from shared.src.shared.feedback import default_capture_log, default_feedback_log
 from shared.src.shared.turn_meter import TurnLog
 from tests.gateway_fakes import agent_replies, rate_limiter_of
@@ -175,7 +175,7 @@ def test_feedback_blocking_log_scan_runs_off_the_event_loop(turn_log):
 def test_feedback_says_so_when_it_is_switched_off(turn_log, monkeypatch):
     trace_id = chat().headers["x-trace-id"]
     monkeypatch.setenv("FEEDBACK_LOG_PATH", "")
-    get_settings.cache_clear()
+    get_feedback_settings.cache_clear()
     resp = client.post("/feedback", json={"trace_id": trace_id, "vote": "up"})
     assert resp.status_code == 503
 
@@ -185,18 +185,18 @@ def test_feedback_says_so_when_it_is_switched_off(turn_log, monkeypatch):
 
 def test_text_capture_is_off_by_default(monkeypatch):
     monkeypatch.delenv("TURN_CAPTURE_TEXT", raising=False)
-    assert Settings(_env_file=None).turn_capture_text is False  # type: ignore[call-arg]
+    assert FeedbackSettings(_env_file=None).turn_capture_text is False  # type: ignore[call-arg]
 
 
 def test_nothing_is_captured_unless_opted_in(turn_log):
     chat()
     assert default_capture_log() is None
-    assert not Path(get_settings().turn_capture_path).exists()
+    assert not Path(get_feedback_settings().turn_capture_path).exists()
 
 
 def test_opted_in_capture_keeps_question_and_reply_without_the_trailer(turn_log, monkeypatch):
     monkeypatch.setenv("TURN_CAPTURE_TEXT", "1")
-    get_settings.cache_clear()
+    get_feedback_settings.cache_clear()
     trace_id = chat().headers["x-trace-id"]
 
     capture = default_capture_log()
@@ -225,7 +225,7 @@ def test_the_vote_is_also_sent_to_langfuse_when_configured(turn_log, offline_gat
 def test_langfuse_score_is_a_no_op_without_keys(monkeypatch):
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "")
-    get_settings.cache_clear()
+    get_feedback_settings.cache_clear()
     with patch.object(observability, "_langfuse_client") as make:
         assert observability.post_user_feedback("t", "down") is False
     make.assert_not_called()
@@ -234,7 +234,7 @@ def test_langfuse_score_is_a_no_op_without_keys(monkeypatch):
 def test_langfuse_score_is_posted_on_the_trace(monkeypatch):
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-real")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-real")
-    get_settings.cache_clear()
+    get_feedback_settings.cache_clear()
     fake = MagicMock()
     with patch.object(observability, "_langfuse_client", return_value=fake):
         assert observability.post_user_feedback("trace-1", "up", "nice") is True
@@ -251,7 +251,7 @@ def test_langfuse_score_is_posted_on_the_trace(monkeypatch):
 def test_a_changed_vote_reuses_the_langfuse_score_id(monkeypatch):
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-real")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-real")
-    get_settings.cache_clear()
+    get_feedback_settings.cache_clear()
     fake = MagicMock()
     with patch.object(observability, "_langfuse_client", return_value=fake):
         observability.post_user_feedback("trace-1", "up")
@@ -263,7 +263,7 @@ def test_a_changed_vote_reuses_the_langfuse_score_id(monkeypatch):
 def test_a_langfuse_failure_never_raises(monkeypatch):
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-real")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-real")
-    get_settings.cache_clear()
+    get_feedback_settings.cache_clear()
     with patch.object(observability, "_langfuse_client", side_effect=RuntimeError("down")):
         assert observability.post_user_feedback("t", "down") is False
 
@@ -346,7 +346,7 @@ def test_draft_item_is_a_stub_without_captured_text(turn_log, tmp_path, capsys):
 
 def test_draft_item_is_complete_when_text_was_captured(turn_log, tmp_path, monkeypatch):
     monkeypatch.setenv("TURN_CAPTURE_TEXT", "1")
-    get_settings.cache_clear()
+    get_feedback_settings.cache_clear()
     trace_id = rated_turn(turn_log)
     out = tmp_path / "drafts.jsonl"
     assert to_item_main([trace_id, "--out", str(out), "--log", str(turn_log.path)]) == 0
@@ -360,13 +360,13 @@ def test_draft_item_ignores_an_old_capture_file_once_capture_is_off(
     turn_log, tmp_path, monkeypatch, capsys
 ):
     monkeypatch.setenv("TURN_CAPTURE_TEXT", "1")
-    get_settings.cache_clear()
+    get_feedback_settings.cache_clear()
     trace_id = rated_turn(turn_log)
     capture = default_capture_log()
     assert capture is not None and capture.last_with_trace(trace_id) is not None
 
     monkeypatch.setenv("TURN_CAPTURE_TEXT", "0")
-    get_settings.cache_clear()
+    get_feedback_settings.cache_clear()
     out = tmp_path / "drafts.jsonl"
     assert to_item_main([trace_id, "--out", str(out), "--log", str(turn_log.path)]) == 0
     [item] = [json.loads(line) for line in out.read_text().splitlines()]

@@ -15,7 +15,7 @@ from services.gateway.src.gateway.guardrails.input import (
 )
 from services.gateway.src.gateway.guardrails.verdict import Verdict
 from services.gateway.src.gateway.main import app
-from shared.src.shared.config import Settings
+from services.gateway.src.gateway.settings import GatewaySettings
 from shared.src.shared.turn_meter import TurnMeter
 from tests.gateway_fakes import agent_replies
 
@@ -25,8 +25,8 @@ _BODY = {"candidate_id": "c1", "test_type": "gre", "section": "quant", "message"
 _OUTAGE = httpx.ConnectError("All connection attempts failed")
 
 
-def _settings(**kw: Any) -> Settings:
-    return Settings(openai_api_key="k", **kw)
+def _settings(**kw: Any) -> GatewaySettings:
+    return GatewaySettings(openai_api_key="k", **kw)
 
 
 # ── check_content_safety: the policy ─────────────────────────────────────────
@@ -72,7 +72,7 @@ def client() -> Iterator[TestClient]:
     yield TestClient(app, raise_server_exceptions=False)
 
 
-def _chat(client: TestClient, settings: Settings) -> Any:
+def _chat(client: TestClient, settings: GatewaySettings) -> Any:
     async def agent_stream(payload: dict[str, Any], meta: dict[str, Any] | None = None) -> Any:
         yield b"Isolate x first."
 

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from shared.src.shared.budget import Ledger
-from shared.src.shared.config import Settings, load_model_config
+from shared.src.shared.config import LlmSettings, load_model_config
 from shared.src.shared.ielts import llm
 from shared.src.shared.ielts.llm import LiteLLMCompleter, ModelUnavailableError
 from shared.src.shared.llm_router import build_router, configured_chain
@@ -84,8 +84,8 @@ async def test_the_shipped_free_config_feeds_the_chain(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     monkeypatch.setattr(
-        llm, "get_settings",
-        lambda: Settings(model_config_path="config/model_config.free.yaml", gemini_api_key="k"),
+        llm, "get_llm_settings",
+        lambda: LlmSettings(model_config_path="config/model_config.free.yaml", gemini_api_key="k"),
     )
     config = load_model_config("config/model_config.free.yaml")
     outcomes = {GOOGLE: SERVER_ERROR, PRIMARY: SERVER_ERROR, BACKUP: "from 31b"}

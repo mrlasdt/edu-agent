@@ -9,11 +9,9 @@ from __future__ import annotations
 
 import httpx
 
-from shared.src.shared.config import get_settings
-
 
 async def rerank_texts(
-    query: str, texts: list[str], *, url: str | None = None, timeout: float = 2.0
+    query: str, texts: list[str], *, url: str, timeout: float = 2.0
 ) -> list[float]:
     """
     Score each text against the query via the TEI server's /rerank endpoint.
@@ -25,7 +23,7 @@ async def rerank_texts(
     """
     if not texts:
         return []
-    base = (url or get_settings().tei_reranker_url).rstrip("/")
+    base = url.rstrip("/")
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(f"{base}/rerank", json={"query": query, "texts": texts})
         resp.raise_for_status()

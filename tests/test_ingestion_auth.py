@@ -19,7 +19,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from services.ingestion.src.ingestion.main import app
-from shared.src.shared.config import ADMIN_KEY_HEADER, get_settings
+from services.ingestion.src.ingestion.settings import get_settings
+from shared.src.shared.config import ADMIN_KEY_HEADER
 
 KEY = "correct-horse-battery-staple"
 PIPELINE = "services.ingestion.src.ingestion.main.run_ingestion_pipeline"

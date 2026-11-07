@@ -9,7 +9,7 @@ import litellm
 import pytest
 
 from shared.src.shared.budget import BudgetExceededError, Ledger
-from shared.src.shared.config import Settings, load_model_config
+from shared.src.shared.config import LlmSettings, load_model_config
 from shared.src.shared.llm_router import (
     EVAL_POLICY,
     LIVE_POLICY,
@@ -70,7 +70,7 @@ def test_two_roles_on_one_model_share_a_merged_chain_without_repeats():
 
 def test_the_google_key_goes_to_google_deployments_only(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
-        "shared.src.shared.llm_router.get_settings", lambda: Settings(gemini_api_key="g-key")
+        "shared.src.shared.llm_router.get_llm_settings", lambda: LlmSettings(gemini_api_key="g-key")
     )
     router = build_router(load_model_config("config/model_config.free.yaml"))
     keys = {d["model_name"]: d["litellm_params"].get("api_key") for d in router.model_list}
@@ -86,15 +86,15 @@ def test_the_cooldown_threshold_differs_from_litellms_own_default():
 
 def test_the_process_router_follows_the_model_config(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("MODEL_CONFIG_PATH", "config/model_config.free.yaml")
-    from shared.src.shared.config import get_settings
+    from shared.src.shared.config import clear_settings_caches
 
-    get_settings.cache_clear()
+    clear_settings_caches()
     reset_router()
     first = get_router()
     assert get_router() is first  # built once
     assert configured_chain(first, GOOGLE) == [GOOGLE, OR_26B, OR_31B]
     monkeypatch.setenv("MODEL_CONFIG_PATH", "config/model_config.dev.yaml")
-    get_settings.cache_clear()
+    clear_settings_caches()
     assert get_router() is not first  # the config path changed: rebuilt
 
 

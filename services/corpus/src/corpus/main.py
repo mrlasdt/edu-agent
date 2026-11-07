@@ -17,7 +17,7 @@ from services.corpus.src.corpus.retriever import (
     _tier_tiebreak,
     build_search_filter,
 )
-from shared.src.shared.config import get_settings
+from services.corpus.src.corpus.settings import get_settings
 from shared.src.shared.corpus import ChunkPayload
 from shared.src.shared.embedder import embed_query
 from shared.src.shared.reranker import rerank_texts
@@ -62,7 +62,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     indexed, so a collection loaded before the indexes existed must be
     re-ingested into a fresh collection to recover recall.
     """
-    client = get_qdrant_client()
+    client = get_qdrant_client(get_settings().qdrant_url)
     try:
         if await client.collection_exists(COLLECTION):
             await check_collection_schema(client)
@@ -149,7 +149,11 @@ async def _rerank(query: str, ranked: list[dict[str, Any]], top_k: int) -> list[
     if not window:
         return ranked
     try:
-        scores = await rerank_texts(query, [h["payload"].get("text", "") for h in window])
+        scores = await rerank_texts(
+            query,
+            [h["payload"].get("text", "") for h in window],
+            url=get_settings().tei_reranker_url,
+        )
         if len(scores) != len(window):
             raise ValueError(f"reranker returned {len(scores)} scores for {len(window)} texts")
     except (httpx.HTTPError, ValueError, KeyError, TypeError):
@@ -198,7 +202,7 @@ async def search_corpus(
     settings = get_settings()
     hybrid = settings.hybrid_retrieval_enabled
     try:
-        query_vec = await embed_query(query)
+        query_vec = await embed_query(query, url=settings.tei_embedder_url)
     except (httpx.HTTPError, ValueError, KeyError):  # embedder down or malformed body
         logger.warning("embedder unavailable; returning no chunks", exc_info=True)
         return []
@@ -209,7 +213,7 @@ async def search_corpus(
     try:
         search_filter = build_search_filter(candidate_id, school_id, test_type)
         limit = max(top_k, RERANK_CANDIDATES)  # over-fetch for fusion, tiebreak and rerank
-        client = get_qdrant_client()
+        client = get_qdrant_client(settings.qdrant_url)
         try:
             if not await client.collection_exists(COLLECTION):
                 return []

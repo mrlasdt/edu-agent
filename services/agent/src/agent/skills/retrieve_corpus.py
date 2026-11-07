@@ -5,7 +5,7 @@ from typing import Any, cast
 
 import httpx
 
-from shared.src.shared.config import get_settings
+from services.agent.src.agent.settings import get_settings
 
 
 @dataclass

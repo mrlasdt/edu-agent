@@ -12,7 +12,6 @@ Run with:
 """
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -20,6 +19,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from services.math_verifier.src.math_verifier.sandbox import run_math_tool, verify_expression
+from services.math_verifier.src.math_verifier.settings import get_settings
 from services.math_verifier.src.math_verifier.tools import TOOLS
 
 mcp = FastMCP(
@@ -29,8 +29,8 @@ mcp = FastMCP(
         "math_compare tools the Quant agent calls: allow-listed math notation only, "
         "each check in a child process killed after a 5s timeout"
     ),
-    host=os.getenv("MATH_VERIFIER_HOST", "127.0.0.1"),
-    port=int(os.getenv("MATH_VERIFIER_PORT", "8090")),
+    host=get_settings().math_verifier_host,
+    port=get_settings().math_verifier_port,
 )
 
 

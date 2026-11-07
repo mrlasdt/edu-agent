@@ -21,7 +21,7 @@ from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
 from services.gateway.src.gateway.guardrails.supportive import SUPPORTIVE_MESSAGE
 from services.gateway.src.gateway.main import app
 from services.gateway.src.gateway.orchestrator import ClarificationTurn
-from shared.src.shared.config import Settings
+from services.gateway.src.gateway.settings import GatewaySettings
 from shared.src.shared.turn_outcome import Outcome
 from tests.gateway_fakes import agent_replies, orchestrator_of, rate_limiter_of
 
@@ -64,7 +64,7 @@ def _run(
         else AsyncMock(return_value=completeness)
     )
     with (
-        patch(f"{_INPUT}.get_settings", return_value=Settings(openai_api_key="k", env=env)),
+        patch(f"{_INPUT}.get_settings", return_value=GatewaySettings(openai_api_key="k", env=env)),
         patch(f"{_INPUT}._call_moderation_api", moderation_mock),
         patch(f"{_INPUT}._call_enrichment_llm", completeness_mock),
         patch(f"{_OUTPUT}._call_leak_checker", AsyncMock(return_value=llm_leak)),

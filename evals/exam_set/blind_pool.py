@@ -31,15 +31,20 @@ from evals.exam_set.schema import (
     LabelTier,
     Source,
 )
+from services.gateway.src.gateway.settings import GatewaySettings
 from shared.src.shared.ielts.scoring import round_overall
 
-BLIND_DIR = Path("ielts-local/blind")
 ESSAYS_MD = "essays.md"
 ESSAYS_JSONL = "essays.jsonl"
 KEY_FILE = "key-do-not-open-until-scored.jsonl"
 SCORE_SHEET = "scores.csv"
 IMPORTED_FILE = "ielts_captain_blind.jsonl"  # written into the local golden directory
 TARGET_BANDS = (4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0)
+
+
+def default_blind_dir() -> Path:
+    """`blind/` inside the gateway's IELTS data directory, so both always name the same folder."""
+    return Path(GatewaySettings().ielts_data_dir) / "blind"
 
 # What an essay at each level typically looks like, so the drafts spread across the scale
 # instead of all sounding like a fluent model. The owner's scores, not these targets, are labels.

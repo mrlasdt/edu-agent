@@ -7,14 +7,13 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 from typing import Any, Protocol
 
-from shared.src.shared.config import ModelConfig, load_model_config
+from shared.src.shared.config import PROJECT_ROOT, ModelConfig, load_model_config
 from shared.src.shared.llm_router import get_router
 from shared.src.shared.observability import build_llm_metadata
 
-_PROMPT_ROOT = Path("prompts/question_pipeline")
+_PROMPT_ROOT = PROJECT_ROOT / "prompts" / "question_pipeline"
 PROMPT_AGENT = "question_pipeline"
 # Generous: free routed models spend part of the budget on hidden reasoning, and a reply cut off
 # mid-JSON is an unparseable item.

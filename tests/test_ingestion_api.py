@@ -21,7 +21,8 @@ from qdrant_client import AsyncQdrantClient
 
 from services.ingestion.src.ingestion import main as ingestion_main
 from services.ingestion.src.ingestion.main import app
-from shared.src.shared.config import ADMIN_KEY_HEADER, get_settings
+from services.ingestion.src.ingestion.settings import get_settings
+from shared.src.shared.config import ADMIN_KEY_HEADER
 from shared.src.shared.vectorstore import COLLECTION
 
 ADMIN_KEY = "test-admin-key"
@@ -72,7 +73,7 @@ class _Corpus:
         self.client = AsyncQdrantClient(location=":memory:")
         self.embed_error: Exception | None = None
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    async def embed(self, texts: list[str], *, url: str = "") -> list[list[float]]:
         if self.embed_error:
             raise self.embed_error
         return [[1.0, float(len(t) % 7), 0.5, 0.25] for t in texts]
@@ -87,7 +88,7 @@ class _Corpus:
 @pytest.fixture
 def corpus(client):
     c = _Corpus()
-    with patch.object(ingestion_main, "get_qdrant_client", lambda: c.client), \
+    with patch.object(ingestion_main, "get_qdrant_client", lambda url: c.client), \
          patch.object(ingestion_main, "embed_texts", c.embed), \
          patch.object(c.client, "close", AsyncMock()):
         yield c

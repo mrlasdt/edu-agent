@@ -25,13 +25,13 @@ from services.gateway.src.gateway.ielts_store import (
     AttemptStateError,
     AttemptStore,
 )
+from services.gateway.src.gateway.settings import get_settings
 from shared.src.shared.budget import (
     BudgetExceededError,
     Ledger,
     UnreadableLedgerError,
     spend_ledger,
 )
-from shared.src.shared.config import get_settings
 from shared.src.shared.ielts.checks import words
 from shared.src.shared.ielts.grading import GradingError
 from shared.src.shared.ielts.llm import Completer, LiteLLMCompleter

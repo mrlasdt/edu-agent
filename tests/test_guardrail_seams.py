@@ -37,7 +37,7 @@ from services.gateway.src.gateway.guardrails.input import (
 from services.gateway.src.gateway.guardrails.output import check_answer_leak
 from services.gateway.src.gateway.guardrails.supportive import SUPPORTIVE_MESSAGE
 from services.gateway.src.gateway.guardrails.verdict import Verdict
-from shared.src.shared.config import Settings
+from services.gateway.src.gateway.settings import GatewaySettings
 from shared.src.shared.llm_router import use_router
 from shared.src.shared.models import Message, MessageRole, Mode, Session
 from shared.src.shared.structured import StructuredOutputError
@@ -68,7 +68,7 @@ def _moderation_reply(flagged: bool, **categories: bool) -> httpx.Response:
 @pytest.fixture
 def moderation_settings():
     """A prod-like setup with a key; the settings the seam reads are the ones patched here."""
-    settings = Settings(openai_api_key="sk-test-123", env="prod")
+    settings = GatewaySettings(openai_api_key="sk-test-123", env="prod")
     with patch(f"{_INPUT}.get_settings", return_value=settings):
         yield settings
 
@@ -161,7 +161,7 @@ async def test_a_reply_without_results_fails_closed_outside_dev(moderation_setti
 @pytest.mark.asyncio
 @respx.mock
 async def test_a_bad_status_fails_open_when_the_policy_says_open():
-    settings = Settings(openai_api_key="k", env="prod", moderation_on_error="open")
+    settings = GatewaySettings(openai_api_key="k", env="prod", moderation_on_error="open")
     respx.post(_MODERATIONS_URL).mock(return_value=httpx.Response(500))
     with patch(f"{_INPUT}.get_settings", return_value=settings):
         assert await check_content_safety("Solve x + 1 = 2", "t-open") == Verdict.allow()
@@ -177,7 +177,7 @@ def _reply(content: str) -> Any:
 def leak_settings():
     """Both provider keys set, so the LLM stage is not skipped for a missing key."""
     with patch(f"{_OUTPUT}.get_settings",
-               return_value=Settings(openai_api_key="k", anthropic_api_key="k")):
+               return_value=GatewaySettings(openai_api_key="k", anthropic_api_key="k")):
         yield
 
 
