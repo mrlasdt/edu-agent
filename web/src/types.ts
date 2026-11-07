@@ -30,6 +30,8 @@ export interface Message {
   // Absent when the check did not run (tutor mode).
   independentCheck?: IndependentCheck;
   citation_stripped?: boolean;
+  // "essay" when the reply is a sample essay: the bubble shows ESSAY_DISCLAIMER under it.
+  disclaimer?: "essay";
   // The gateway's id for the turn that produced this reply; feedback is filed against it.
   traceId?: string;
   vote?: "up" | "down";

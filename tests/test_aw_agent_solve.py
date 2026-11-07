@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from services.agent.src.agent.agents.aw import ESSAY_DISCLAIMER, AWAgent
+from services.agent.src.agent.agents.aw import AWAgent
 from shared.src.shared.models import Mode, Session
 
 
@@ -222,7 +222,7 @@ async def test_personal_style_noop_with_fewer_than_2_essays():
 
 
 @pytest.mark.asyncio
-async def test_disclaimer_always_appended_to_solve_output():
+async def test_solve_output_is_flagged_as_a_sample_essay_and_carries_no_disclaimer_text():
     agent = AWAgent(model_config_path="config/model_config.dev.yaml")
 
     with (
@@ -237,9 +237,10 @@ async def test_disclaimer_always_appended_to_solve_output():
         mock_llm.return_value = mock_stream(["essay content here"])
         items = [item async for item in agent.run(make_session(Mode.solve), "Discuss tech")]
 
-    text_items = [i for i in items if isinstance(i, str)]
-    full_output = "".join(text_items)
-    assert ESSAY_DISCLAIMER in full_output
+    # The notice is metadata for the web app to render, not text: no sentence, no markdown rule.
+    full_output = "".join(i for i in items if isinstance(i, str))
+    assert full_output == "essay content here"
+    assert {"disclaimer": "essay"} in items
 
 
 # ── 7. Citation checker runs on Solve output ─────────────────────────────────

@@ -118,19 +118,30 @@ async def generate(req: GenerateRequest, request: Request) -> StreamingResponse 
         if isinstance(first, str):
             yield strip_mark(first).encode("utf-8")
         independent: object = None
+        verifier_fail: bool | None = None
+        essay = False
         async for item in items:
             if isinstance(item, str):
                 yield strip_mark(item).encode("utf-8")
             elif isinstance(item, dict) and "independent_check" in item:
                 independent = item["independent_check"]
             elif isinstance(item, dict) and isinstance(item.get("verifier_fail"), bool):
-                # The verifier's verdict is only known with the finished answer: it ends the
-                # stream as a trailer the gateway passes on, with the independent check's
-                # verdict when the agent ran one. Other metadata is not streamed.
-                meta: dict[str, object] = {"math_verified": not item["verifier_fail"]}
-                if independent is not None:
-                    meta["independent_check"] = independent
-                yield encode(meta).encode("utf-8")
+                verifier_fail = item["verifier_fail"]
+            elif isinstance(item, dict) and item.get("disclaimer") == "essay":
+                essay = True
+        # What the agent reports about the finished answer ends the stream as a trailer the
+        # gateway passes on: the math verifier's verdict (with the independent check's, when the
+        # agent ran one) and the sample-essay flag the web app shows its notice for. Other
+        # metadata is not streamed.
+        meta: dict[str, object] = {}
+        if verifier_fail is not None:
+            meta["math_verified"] = not verifier_fail
+            if independent is not None:
+                meta["independent_check"] = independent
+        if essay:
+            meta["disclaimer"] = "essay"
+        if meta:
+            yield encode(meta).encode("utf-8")
 
     return StreamingResponse(
         token_stream(), media_type="text/plain; charset=utf-8", headers=headers

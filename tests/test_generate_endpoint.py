@@ -161,3 +161,23 @@ def test_generate_puts_the_independent_check_in_the_trailer():
         'Work shown. **Answer: 2, 4**'
         '\x1e{"math_verified":false,"independent_check":{"verdict":"disagrees","solver":"2, 3"}}'
     )
+
+
+def test_generate_puts_the_essay_disclaimer_in_the_trailer_not_the_text():
+    class FakeAgent:
+        async def run(self, session, message, trace_id=""):
+            yield "A sample essay."
+            yield {"disclaimer": "essay"}
+            yield {"citation_stripped": False}
+
+    class FakeRegistry:
+        def get(self, test_type, section):
+            return FakeAgent
+
+    with patch("services.agent.src.agent.main._registry", FakeRegistry()):
+        resp = client.post(
+            "/generate",
+            json={"candidate_id": "c1", "test_type": "gre", "section": "aw", "message": "x",
+                  "mode": "solve"},
+        )
+    assert resp.text == 'A sample essay.\x1e{"disclaimer":"essay"}'

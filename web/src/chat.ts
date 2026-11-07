@@ -25,7 +25,13 @@ export function toHistoryPayload(history: Message[]) {
 export type ChatEvent =
   | { kind: "trace"; traceId: string }
   | { kind: "text"; text: string }
-  | { kind: "meta"; mathVerified?: boolean; independentCheck?: IndependentCheck };
+  | {
+      kind: "meta";
+      mathVerified?: boolean;
+      independentCheck?: IndependentCheck;
+      // Set for a sample essay: the app shows its own notice, the text carries none.
+      disclaimer?: "essay";
+    };
 
 // The gateway names each turn in this response header; feedback on the reply refers to it.
 export const TRACE_ID_HEADER = "X-Trace-Id";
@@ -50,14 +56,20 @@ function parseTrailer(raw: string): ChatEvent | null {
   try {
     const value: unknown = JSON.parse(raw);
     if (typeof value !== "object" || value === null) return null;
-    const { math_verified: verified, independent_check: independent } = value as {
+    const {
+      math_verified: verified,
+      independent_check: independent,
+      disclaimer,
+    } = value as {
       math_verified?: unknown;
       independent_check?: unknown;
+      disclaimer?: unknown;
     };
     return {
       kind: "meta",
       mathVerified: typeof verified === "boolean" ? verified : undefined,
       independentCheck: parseIndependentCheck(independent),
+      ...(disclaimer === "essay" ? { disclaimer } : {}),
     };
   } catch {
     return null;
