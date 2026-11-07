@@ -198,12 +198,24 @@ describe("MessageBubble — independent check", () => {
 });
 
 describe("MessageBubble — disclaimer", () => {
-  it("renders disclaimer text in a distinct disclaimer element", () => {
-    const msg = { ...baseMsg, content: `Great essay.\n\n${ESSAY_DISCLAIMER}` };
+  it("renders the notice in a distinct disclaimer element when the reply is flagged", () => {
+    const msg = { ...baseMsg, content: "Great essay.", disclaimer: "essay" as const };
     render(<MessageBubble message={msg} />);
     const disclaimer = screen.getByTestId("essay-disclaimer");
     expect(disclaimer).toBeInTheDocument();
+    expect(disclaimer).toHaveTextContent(ESSAY_DISCLAIMER);
     expect(disclaimer).toHaveTextContent(/study purposes only/i);
+  });
+
+  it("shows no notice when the reply is not flagged", () => {
+    render(<MessageBubble message={{ ...baseMsg, content: "Great essay." }} />);
+    expect(screen.queryByTestId("essay-disclaimer")).not.toBeInTheDocument();
+  });
+
+  it("does not look for the notice in the text", () => {
+    const msg = { ...baseMsg, content: `Great essay.\n\n${ESSAY_DISCLAIMER}` };
+    render(<MessageBubble message={msg} />);
+    expect(screen.queryByTestId("essay-disclaimer")).not.toBeInTheDocument();
   });
 });
 

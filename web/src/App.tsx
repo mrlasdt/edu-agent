@@ -74,6 +74,7 @@ export function App() {
             ...m,
             mathVerified: event.mathVerified,
             independentCheck: event.independentCheck,
+            disclaimer: event.disclaimer,
           };
         });
       }

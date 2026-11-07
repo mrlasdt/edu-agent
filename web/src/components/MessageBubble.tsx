@@ -11,16 +11,12 @@ interface Props {
 
 function renderContentWithCitations(
   content: string,
+  hasDisclaimer: boolean,
   onCitationClick?: (index: number) => void
 ) {
-  // Split content at the disclaimer boundary
-  const parts = content.split(ESSAY_DISCLAIMER);
-  const mainContent = parts[0];
-  const hasDisclaimer = parts.length > 1;
-
   return (
     <>
-      {renderMarkdown(mainContent, (idx, key) =>
+      {renderMarkdown(content, (idx, key) =>
         // The web app has no sources panel yet, so a marker is plain text unless something
         // handles the click: a button that does nothing is worse than no button.
         onCitationClick ? (
@@ -78,7 +74,7 @@ export function MessageBubble({ message, onCitationClick, onFeedback, onRegenera
         </p>
       )}
       <div className="message-content">
-        {renderContentWithCitations(message.content, onCitationClick)}
+        {renderContentWithCitations(message.content, message.disclaimer === "essay", onCitationClick)}
       </div>
       {message.mathVerified !== undefined && (
         <p

@@ -73,6 +73,19 @@ describe("streamChat", () => {
     expect(events[events.length - 1]).toEqual({ kind: "meta", mathVerified: true });
   });
 
+  it("reports the essay disclaimer flag the gateway sends after an essay", async () => {
+    respondWith('A sample essay.\x1e{"disclaimer":"essay"}');
+    const events = await collect();
+    expect(text(events)).toBe("A sample essay.");
+    expect(events[events.length - 1]).toEqual({ kind: "meta", disclaimer: "essay" });
+  });
+
+  it("ignores a disclaimer value it does not recognise", async () => {
+    respondWith('Fine.\x1e{"math_verified":true,"disclaimer":"other"}');
+    const events = await collect();
+    expect(events[events.length - 1]).toEqual({ kind: "meta", mathVerified: true });
+  });
+
   it("ignores a trailer it cannot read", async () => {
     respondWith("Fine.\x1enot json");
     const events = await collect();
