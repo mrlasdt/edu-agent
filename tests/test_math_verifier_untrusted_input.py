@@ -134,19 +134,9 @@ async def test_a_solve_turn_whose_final_answer_is_hostile_degrades_and_still_ans
     from typing import Any
     from unittest.mock import AsyncMock, patch
 
+    from evals.agent_eval.runner import in_process_verify_skill
     from services.agent.src.agent.agents.quant import QuantAgent
-    from services.agent.src.agent.skills.verify_math import VerifyMathSkill
     from shared.src.shared.models import Mode, Session
-
-    class RealVerifierSkill(VerifyMathSkill):
-        """The product skill with the HTTP hop replaced by the same verifier code."""
-
-        def __init__(self) -> None:
-            pass
-
-        async def _call_mcp_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-            r = await verify_expression(arguments["expression"], arguments["expected"])
-            return {"verified": r.verified, "computed": r.computed, "error": r.error}
 
     reply = 'Working it out.\n**Answer: __import__("os").getpid()**'
 
@@ -157,7 +147,8 @@ async def test_a_solve_turn_whose_final_answer_is_hostile_degrades_and_still_ans
         return stream()
 
     agent = QuantAgent(
-        model_config_path="config/model_config.dev.yaml", verify_math_skill=RealVerifierSkill()
+        model_config_path="config/model_config.dev.yaml",
+        verify_math_skill=in_process_verify_skill(),
     )
     session = Session(candidate_id="c1", test_type="gre", section="quant", mode=Mode.solve)
     with patch("litellm.acompletion", new=AsyncMock(side_effect=respond)):

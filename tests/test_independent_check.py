@@ -13,17 +13,21 @@ from typing import Any
 
 import pytest
 
-from evals.agent_eval.runner import InProcessVerifySkill
+from evals.agent_eval.runner import in_process_verify_skill
 from services.agent.src.agent import independent_check as ic
 from services.agent.src.agent.agents.quant import QuantAgent
-from services.agent.src.agent.skills.verify_math import VERIFIER_UNREACHABLE, VerifyMathResult
+from services.agent.src.agent.skills.verify_math import (
+    VERIFIER_UNREACHABLE,
+    VerifyMathResult,
+    VerifyMathSkill,
+)
 from shared.src.shared.models import Mode, Session
 from shared.src.shared.turn_meter import TurnLog
 
 
 @pytest.fixture
-def skill() -> InProcessVerifySkill:
-    return InProcessVerifySkill()
+def skill() -> VerifyMathSkill:
+    return in_process_verify_skill()
 
 
 # ── reading the model's reply ────────────────────────────────────────────────
@@ -149,7 +153,7 @@ async def test_not_checkable_is_never_a_verdict_on_the_answer(
 
 
 async def test_a_verifier_outage_is_not_checkable_not_a_disagreement() -> None:
-    class Down(InProcessVerifySkill):
+    class Down(VerifyMathSkill):
         async def verify(self, expression: str, expected: str) -> VerifyMathResult:
             return VerifyMathResult(verified=False, computed="", error=VERIFIER_UNREACHABLE)
 
@@ -195,7 +199,8 @@ async def _solve(
     monkeypatch.setattr("litellm.acompletion", model)
     monkeypatch.setattr("shared.src.shared.turn_meter.default_turn_log", lambda: log)
     agent = QuantAgent(
-        model_config_path="config/model_config.dev.yaml", verify_math_skill=InProcessVerifySkill()
+        model_config_path="config/model_config.dev.yaml",
+        verify_math_skill=in_process_verify_skill(),
     )
     session = Session(candidate_id="c", test_type="gre", section="quant", mode=Mode.solve)
     out = [o async for o in agent.run(session, PROBLEM, trace_id="t-1")]

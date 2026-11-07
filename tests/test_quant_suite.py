@@ -58,7 +58,7 @@ async def test_every_solve_items_ground_truth_agrees_with_its_expression():
 
 
 async def test_every_hostile_string_is_rejected_by_the_real_verifier():
-    skill = runner.InProcessVerifySkill()
+    skill = runner.in_process_verify_skill()
     for item in ITEMS:
         if item["kind"] == "security":
             row = await quant_suite.run_security_case(item, skill)
@@ -221,7 +221,7 @@ async def _run(
     transport = MeteredTransport(
         Ledger(tmp_path / "ledger.json", 5.0), "t", fake_model=_fake(behave)
     )
-    skill = runner.InProcessVerifySkill()
+    skill = runner.in_process_verify_skill()
     config = runner.write_model_config("offline/fake")
 
     def factory(notes: list[str]) -> QuantAgent:

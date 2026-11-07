@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from evals.agent_eval.runner import InProcessVerifySkill
+from evals.agent_eval.runner import in_process_verify_skill
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.answers import extract_final_answer, normalize_answer
 from shared.src.shared.models import Mode, Session
@@ -61,7 +61,7 @@ async def test_correct_multi_value_answer_passes_verifier_first_try(
         return _stream("<expr>x^2 - 5x + 6 = 0</expr>" if calls[-1] == "formalize" else reply)
 
     monkeypatch.setattr("litellm.acompletion", fake)
-    agent = QuantAgent(verify_math_skill=InProcessVerifySkill())
+    agent = QuantAgent(verify_math_skill=in_process_verify_skill())
     session = Session(candidate_id="c", test_type="gre", section="quant", mode=Mode.solve)
     out = [o async for o in agent.run(session, "Solve x^2 - 5x + 6 = 0")]
     assert out[-1] == {"verifier_fail": False}

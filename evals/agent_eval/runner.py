@@ -20,6 +20,7 @@ from collections.abc import Coroutine, Sequence
 from pathlib import Path
 from typing import Any
 
+import httpx
 import yaml
 
 from evals.agent_eval.judges import Judge, JudgeError, JudgeQuestion, YesNo
@@ -43,7 +44,7 @@ from evals.loader import load_golden_set, sample_golden_set
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.skills.math_tools import MathToolsSkill
 from services.agent.src.agent.skills.verify_math import VerifyMathSkill
-from services.math_verifier.src.math_verifier.sandbox import run_math_tool, verify_expression
+from services.math_verifier.src.math_verifier.server import mcp as math_verifier_mcp
 from shared.src.shared.models import Mode, Session
 
 AW_SCALE = [
@@ -61,25 +62,21 @@ AW_INSTRUCTIONS = (
 AW_AGREE_TOLERANCE = 1.0
 
 
-class InProcessVerifySkill(VerifyMathSkill):
-    """The product's verify-math skill, with the HTTP hop replaced by the same sympy sandbox."""
-
-    def __init__(self) -> None:
-        pass
-
-    async def _call_mcp_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        result = await verify_expression(arguments["expression"], arguments["expected"])
-        return {"verified": result.verified, "computed": result.computed, "error": result.error}
+def _in_process_client() -> httpx.AsyncClient:
+    """An HTTP client wired straight to the math-verifier's real routes (REST facade), no socket."""
+    return httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=math_verifier_mcp.sse_app()), base_url="http://math-verifier"
+    )
 
 
-class InProcessMathTools(MathToolsSkill):
-    """The product's math-tools skill, with the HTTP hop replaced by the same sympy sandbox."""
+def in_process_verify_skill() -> VerifyMathSkill:
+    """The product's verify-math skill, reaching the real verifier routes in this process."""
+    return VerifyMathSkill(client=_in_process_client())
 
-    def __init__(self) -> None:
-        pass
 
-    async def _post(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        return await run_math_tool(name, arguments)
+def in_process_math_tools() -> MathToolsSkill:
+    """The product's math-tools skill, reaching the real verifier routes in this process."""
+    return MathToolsSkill(client=_in_process_client())
 
 
 def write_model_config(model: str, base_path: str = "config/model_config.free.yaml") -> str:

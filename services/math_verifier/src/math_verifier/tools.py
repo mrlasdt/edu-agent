@@ -2,8 +2,8 @@
 The computations behind the three math tools a model can call: `math_evaluate`, `math_solve`,
 `math_compare`.
 
-The model-facing descriptions live with the agent (`agent.skills.math_tools`); this module is
-the sympy side. Every function here:
+The model-facing descriptions and argument schemas live in `shared.math_tool_specs`, which the
+agent also imports; this module is the sympy side. Every function here:
 
 - takes untrusted text a language model wrote, and parses it only through `parse_math` (the
   allow-list in `safe_parser`);
@@ -33,14 +33,16 @@ from services.math_verifier.src.math_verifier.safe_parser import (
     MathSyntaxError,
     parse_math,
 )
+from shared.src.shared.math_tool_specs import TOOL_NAMES, optional_arguments, required_arguments
 
-# Tool name -> the argument names it takes (the first are required).
+# Tool name -> the argument names it takes, read from the contract the agent's model is shown
+# (`shared.math_tool_specs`), so a changed parameter is one edit.
 REQUIRED: dict[str, tuple[str, ...]] = {
-    "math_evaluate": ("expression",),
-    "math_solve": ("equation",),
-    "math_compare": ("quantity_a", "quantity_b"),
+    name: required_arguments(name) for name in TOOL_NAMES
 }
-OPTIONAL: dict[str, tuple[str, ...]] = {"math_solve": ("variable",)}
+OPTIONAL: dict[str, tuple[str, ...]] = {
+    name: optional_arguments(name) for name in TOOL_NAMES if optional_arguments(name)
+}
 
 DECIMAL_DIGITS = 10
 _MAX_DIGITS_SHOWN = 30
