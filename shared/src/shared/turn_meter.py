@@ -38,8 +38,6 @@ from shared.src.shared.llm_router import answered_model, get_router
 
 _log = logging.getLogger(__name__)
 
-RECORD_VERSION = 1
-
 
 class TurnLog:
     """An append-only JSON-lines file; the one place the meters write and the report reads."""
@@ -300,7 +298,6 @@ class TurnMeter:
         )
         first_ttft = next((c.ttft_ms for c in calls if c.ttft_ms is not None), None)
         return {
-            "v": RECORD_VERSION,
             "ts": time.time(),
             "trace_id": self.trace_id,
             "source": self.source,

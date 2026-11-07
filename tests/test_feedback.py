@@ -107,7 +107,7 @@ def test_feedback_is_appended_with_no_message_text(turn_log):
     log = default_feedback_log()
     assert log is not None
     [record] = lines(log)
-    assert set(record) == {"v", "ts", "trace_id", "vote", "comment"}
+    assert set(record) == {"ts", "trace_id", "vote", "comment"}
     assert (record["trace_id"], record["vote"], record["comment"]) == (trace_id, "down", "wrong")
     raw = log.path.read_text(encoding="utf-8")
     assert "zebra-quokka" not in raw

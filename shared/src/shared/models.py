@@ -11,11 +11,6 @@ class Mode(StrEnum):
     solve = "solve"
 
 
-class Complexity(StrEnum):
-    basic = "basic"
-    advanced = "advanced"  # architected but not implemented in v1
-
-
 class MessageRole(StrEnum):
     candidate = "candidate"
     agent = "agent"
@@ -37,17 +32,8 @@ class Session(BaseModel):
     test_type: str  # "gre" in v1; "ielts", "gmat", … in v2
     section: str  # "quant", "aw" for gre; section names vary per test_type
     mode: Mode = Mode.tutor
-    complexity: Complexity = Complexity.basic
     history: list[Message] = Field(default_factory=list)
     personal_style_enabled: bool = False
-
-    def switch_mode(self, new_mode: Mode) -> Session:
-        """Return a new Session with mode switched. Immutable update."""
-        return self.model_copy(update={"mode": new_mode})
-
-    def reset_mode(self) -> Session:
-        """Reset mode to tutor at the start of a new question."""
-        return self.model_copy(update={"mode": Mode.tutor})
 
     def append_message(self, role: MessageRole, content: str) -> Session:
         return self.model_copy(

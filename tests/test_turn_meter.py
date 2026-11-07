@@ -23,6 +23,7 @@ from services.agent.src.agent.skills.verify_math import VerifyMathResult
 from services.gateway.src.gateway.guardrails.verdict import Verdict
 from services.gateway.src.gateway.main import app
 from shared.src.shared.budget import estimate_cost, estimate_tokens
+from shared.src.shared.feedback import latest_votes
 from shared.src.shared.models import Mode, Session
 from shared.src.shared.turn_meter import TurnLog, TurnMeter
 from shared.src.shared.turn_outcome import Outcome
@@ -228,6 +229,20 @@ def test_the_log_skips_a_torn_line(turn_log):
     with turn_log.path.open("a") as fh:
         fh.write('{"trace_id": "t2", "llm_cal')
     assert [r["trace_id"] for r in turn_log.read()] == ["t1"]
+
+
+def test_records_written_before_the_version_key_was_dropped_still_load(turn_log):
+    """Old lines carry `"v": 1`; nothing reads it, so they load and report like any other."""
+    legacy = {"v": 1, "ts": 1.0, "trace_id": "t1", "source": "agent", "agent": "quant_agent",
+              "mode": "tutor", "llm_calls": 1, "input_tokens": 10, "output_tokens": 5,
+              "cost_usd": 0.0, "usage": "provider"}
+    turn_log.path.parent.mkdir(parents=True, exist_ok=True)
+    turn_log.path.write_text(json.dumps(legacy, separators=(",", ":")) + "\n", encoding="utf-8")
+    turn_log.append({"ts": 2.0, "trace_id": "t2", "vote": "down"})
+    assert [r["trace_id"] for r in turn_log.read()] == ["t1", "t2"]
+    assert turn_log.last_with_trace("t1") == legacy
+    assert latest_votes(turn_log.read()) == {"t2": {"ts": 2.0, "trace_id": "t2", "vote": "down"}}
+    assert [t["trace_id"] for t in merge_turns(turn_log.read())] == ["t1", "t2"]
 
 
 # ── The real agents with a fake model of known usage ─────────────────────────

@@ -25,9 +25,6 @@ from shared.src.shared.turn_meter import TurnLog
 
 _log = logging.getLogger(__name__)
 
-FEEDBACK_VERSION = 1
-CAPTURE_VERSION = 1
-
 # Request size caps (a thumbs click carries a trace id, a vote and a short comment).
 MAX_TRACE_ID_CHARS = 64
 MAX_COMMENT_CHARS = 1_000
@@ -51,7 +48,6 @@ def default_capture_log() -> TurnLog | None:
 def feedback_record(trace_id: str, vote: str, comment: str | None = None) -> dict[str, Any]:
     """One feedback line. There is deliberately no field for message text."""
     record: dict[str, Any] = {
-        "v": FEEDBACK_VERSION,
         "ts": time.time(),
         "trace_id": trace_id,
         "vote": vote,
@@ -68,7 +64,6 @@ def capture_turn(log: TurnLog | None, trace_id: str, question: str, reply: str) 
     try:
         log.append(
             {
-                "v": CAPTURE_VERSION,
                 "ts": time.time(),
                 "trace_id": trace_id,
                 "question": question,
