@@ -258,7 +258,8 @@ def test_assemble_ships_only_what_each_service_imports(tmp_path):
     assert not any(p.startswith("services/agent/") for p in shipped["corpus"])
     assert {f"shared/src/shared/{m}.py" for m in SHARED_MODULES} <= shipped["agent"]
     assert {"config/x.yaml", "prompts/x.yaml"} <= shipped["agent"]
-    assert "services/agent/src/agent/__init__.py" in shipped["gateway"]
+    # The gateway no longer imports agent code (ielts and critics live in shared/).
+    assert not any(p.startswith("services/agent/") for p in shipped["gateway"])
     assert "services/gateway/src/gateway/__init__.py" not in shipped["agent"]
 
 
