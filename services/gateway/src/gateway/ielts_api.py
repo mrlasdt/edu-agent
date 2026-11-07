@@ -40,7 +40,6 @@ router = APIRouter(prefix="/ielts", tags=["ielts"])
 
 _CANDIDATE = "ielts-local"  # single local user
 _limiter = RateLimiter(max_per_minute=10, max_per_day=60)
-_inflight: set[str] = set()  # attempts being marked by this process
 
 # One mock costs about 0.01 to 0.02 USD with the default model. A new attempt (or a retry) is
 # refused unless at least this much of the spend cap is left, so a candidate is not asked to
@@ -121,24 +120,30 @@ def _overall_of(report_json: str | None) -> float | None:
 
 
 def _view(attempt: Attempt, store: AttemptStore) -> AttemptOut:
-    status = attempt.status
-    error, retryable = attempt.error, attempt.retryable
-    if status == "grading" and attempt.id not in _inflight:
-        # the process restarted mid-marking: the essay is safe, marking can be retried
-        attempt = store.fail(
-            attempt.id, "Marking was interrupted. Your essay is saved; try marking again."
-        )
-        status, error, retryable = attempt.status, attempt.error, attempt.retryable
     remaining = None
-    if attempt.deadline_at is not None and status == "in_progress":
+    if attempt.deadline_at is not None and attempt.status == "in_progress":
         remaining = max(0, int(attempt.deadline_at - store.clock()))
     return AttemptOut(
-        id=attempt.id, prompt_id=attempt.prompt_id, prompt=attempt.prompt_text, status=status,
-        allowed_s=ALLOWED_S, remaining_s=remaining, started_at=attempt.started_at,
-        submitted_at=attempt.submitted_at, late=attempt.late, draft=attempt.essay,
-        word_count=len(words(attempt.essay)), error=error, retryable=retryable,
-        overall=_overall_of(attempt.report_json),
+        id=attempt.id, prompt_id=attempt.prompt_id, prompt=attempt.prompt_text,
+        status=attempt.status, allowed_s=ALLOWED_S, remaining_s=remaining,
+        started_at=attempt.started_at, submitted_at=attempt.submitted_at, late=attempt.late,
+        draft=attempt.essay, word_count=len(words(attempt.essay)), error=attempt.error,
+        retryable=attempt.retryable, overall=_overall_of(attempt.report_json),
     )
+
+
+INTERRUPTED_MESSAGE = "Marking was interrupted. Your essay is saved; try marking again."
+
+
+def recover_interrupted_attempts(store: AttemptStore) -> int:
+    """
+    Run once at startup. Marking runs as a background task of this process, so an attempt still
+    'grading' now lost its worker with the previous process: keep the essay, offer a retry.
+    """
+    settled = store.fail_interrupted(INTERRUPTED_MESSAGE)
+    if settled:
+        _log.warning("marked %d attempt(s) interrupted by a restart as retryable", settled)
+    return settled
 
 
 def _load(store: AttemptStore, attempt_id: str) -> Attempt:
@@ -179,10 +184,12 @@ def _limit() -> None:
 async def grade_attempt(
     attempt_id: str, store: AttemptStore, completer: Completer, ledger: Ledger | None = None,
 ) -> None:
-    """Mark a submitted attempt and store the outcome; a model outage leaves it retryable."""
-    _inflight.add(attempt_id)
+    """
+    Mark an attempt the caller already moved to 'grading' and store the outcome; a model outage
+    leaves it retryable. Only the call that made that transition may queue this.
+    """
     try:
-        attempt = store.begin_grading(attempt_id)
+        attempt = store.get(attempt_id)
         assert attempt.started_at is not None and attempt.submitted_at is not None
         previous = store.previous_graded(attempt)
         prev_report = Report.model_validate_json(previous.report_json) if (
@@ -210,8 +217,6 @@ async def grade_attempt(
     except Exception:  # noqa: BLE001 - keep the essay and offer a retry; the cause goes to the log
         _log.exception("marking attempt %s failed", attempt_id)
         store.fail(attempt_id, "Marking failed unexpectedly. Your essay is saved; try again.")
-    finally:
-        _inflight.discard(attempt_id)
 
 
 @router.get("/prompts")
@@ -266,11 +271,11 @@ def submit_attempt(
 ) -> AttemptOut:
     _load(store, attempt_id)
     try:
-        before = store.get(attempt_id).status
-        attempt = store.submit(attempt_id, body.text)
+        attempt, submitted = store.submit(attempt_id, body.text)
     except AttemptStateError as exc:
         raise HTTPException(409, str(exc)) from None
-    if before == "in_progress":  # a repeated submit must not mark twice
+    if submitted:  # only the call that made the transition marks; a repeated submit does not
+        attempt, _ = store.begin_grading(attempt_id)
         background.add_task(grade_attempt, attempt_id, store, completer, ledger)
     return _view(attempt, store)
 
@@ -281,14 +286,16 @@ def regrade_attempt(
     ledger: SpendLedger,
 ) -> AttemptOut:
     attempt = _load(store, attempt_id)
-    view = _view(attempt, store)  # settles a stale 'grading' state first
-    attempt = store.get(attempt_id)
     if attempt.status != "ungraded" or not attempt.retryable:
-        raise HTTPException(409, f"attempt is {view.status}; nothing to retry")
+        raise HTTPException(409, f"attempt is {attempt.status}; nothing to retry")
     _require_budget(ledger)
     _limit()
-    attempt = store.begin_grading(attempt_id)
-    _inflight.add(attempt_id)
+    try:
+        attempt, started = store.begin_grading(attempt_id)
+    except AttemptStateError as exc:  # settled by another request since the check above
+        raise HTTPException(409, str(exc)) from None
+    if not started:
+        raise HTTPException(409, f"attempt is {attempt.status}; nothing to retry")
     background.add_task(grade_attempt, attempt_id, store, completer, ledger)
     return _view(attempt, store)
 
