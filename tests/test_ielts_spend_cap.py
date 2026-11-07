@@ -274,3 +274,32 @@ def test_a_budget_stop_in_the_feedback_stage_keeps_the_essay_and_says_why(
     completer.inner.feedback = feedback_reply()
     assert client.post(f"/ielts/attempts/{attempt_id}/regrade").status_code == 200
     assert client.get(f"/ielts/attempts/{attempt_id}").json()["status"] == "graded"
+
+
+def test_an_unreadable_legacy_ledger_stops_the_mock_with_a_message_not_a_500(
+    client: TestClient, ledger: Ledger, tmp_path: Path
+):
+    path = tmp_path / "ledger.json"
+    path.write_text('{"entries": [{"ts": 1.0, "cost_usd"')
+    assert ledger.path == path
+
+    budget = client.get("/ielts/budget")
+    assert budget.status_code == 200
+    assert budget.json()["exhausted"] and str(path) in budget.json()["message"]
+    refused = client.post("/ielts/attempts", json={"prompt_id": "ielts_writing_prompt_1"})
+    assert refused.status_code == 402 and str(path) in refused.json()["detail"]
+
+    path.unlink()
+    attempt_id = client.post(
+        "/ielts/attempts", json={"prompt_id": "ielts_writing_prompt_1"}
+    ).json()["id"]
+    client.post(f"/ielts/attempts/{attempt_id}/start")
+    path.write_text("not json")  # it breaks while the candidate is writing
+    client.post(f"/ielts/attempts/{attempt_id}/submit", json={"text": ESSAY})
+    view = client.get(f"/ielts/attempts/{attempt_id}").json()
+    assert view["status"] == "ungraded" and view["retryable"] and view["draft"] == ESSAY
+    assert str(path) in view["error"]
+
+    path.unlink()
+    assert client.post(f"/ielts/attempts/{attempt_id}/regrade").status_code == 200
+    assert client.get(f"/ielts/attempts/{attempt_id}").json()["status"] == "graded"

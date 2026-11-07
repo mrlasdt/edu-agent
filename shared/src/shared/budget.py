@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import fcntl
 import json
-import logging
 import math
 import os
 import time
@@ -24,8 +23,6 @@ from pathlib import Path
 from typing import Any
 
 from shared.src.shared.config import get_settings
-
-_log = logging.getLogger(__name__)
 
 DEFAULT_CEILING_USD = 5.0
 DEFAULT_LEDGER_PATH = Path(".eval-ledger/ledger.jsonl")
@@ -48,6 +45,13 @@ _UNKNOWN_PRICE = (10.0, 30.0)
 
 class BudgetExceededError(RuntimeError):
     """Raised before a call that could push cumulative spend over the ceiling."""
+
+
+class UnreadableLedgerError(BudgetExceededError):
+    """The old single-JSON ledger cannot be read, so spend is unknown and no call may be made.
+
+    A budget stop, so callers that already stop on `BudgetExceededError` stop on this too.
+    """
 
 
 def _bare(model: str) -> str:
@@ -119,8 +123,9 @@ class Ledger:
         Serialised across processes with a file lock. The migrated lines are written first and
         the old file is renamed to `<name>.migrated` after, so a crash in between is repaired on
         the next call: the log already holds `migrated` lines, so only the rename is repeated.
-        A legacy file that cannot be parsed (a ledger the old writer corrupted) is set aside as
-        `<name>.unreadable` with a warning; its spend is unknown and is not counted.
+        A legacy file that cannot be parsed (a ledger the old writer corrupted) is left untouched
+        and raises `UnreadableLedgerError`: its spend is unknown, so it is never counted as zero.
+        Repairing or removing the file lets the ledger work again.
         """
         legacy = self._legacy
         if legacy is None or not legacy.exists():
@@ -130,21 +135,21 @@ class Ledger:
             fcntl.flock(lock, fcntl.LOCK_EX)
             if not legacy.exists():  # another process finished the migration while we waited
                 return
-            entries: list[dict[str, Any]] = []
-            suffix = ".migrated"
             try:
                 data = json.loads(legacy.read_text(encoding="utf-8"))
                 entries = [e for e in data["entries"] if _cost_of(e) is not None]
-            except (OSError, ValueError, KeyError, TypeError):
-                suffix = ".unreadable"
-                _log.warning("ledger: %s unreadable; set aside, its spend not counted", legacy)
-            if suffix == ".migrated" and not any(e.get("migrated") for e in self._read_log()):
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                raise UnreadableLedgerError(
+                    f"spend ledger {legacy} cannot be read ({type(exc).__name__}), so spend so "
+                    "far is unknown and no paid call is allowed. Repair the file or remove it."
+                ) from exc
+            if not any(e.get("migrated") for e in self._read_log()):
                 lines = "".join(
                     json.dumps({**e, "migrated": True}, separators=(",", ":")) + "\n"
                     for e in entries
                 )
                 self._append(lines or json.dumps({"migrated": True}) + "\n")
-            os.replace(legacy, legacy.with_name(legacy.name + suffix))
+            os.replace(legacy, legacy.with_name(legacy.name + ".migrated"))
 
     def _read_log(self) -> list[dict[str, Any]]:
         try:

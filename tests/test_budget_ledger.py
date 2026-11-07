@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from shared.src.shared.budget import BudgetExceededError, Ledger
+from shared.src.shared.budget import BudgetExceededError, Ledger, UnreadableLedgerError
 
 WRITERS = 6
 RECORDS_EACH = 40
@@ -95,14 +95,27 @@ def test_an_interrupted_migration_is_not_counted_twice(tmp_path):
     assert not old.exists()
 
 
-def test_an_unreadable_old_ledger_is_set_aside_not_fatal(tmp_path):
+def test_an_unreadable_old_ledger_refuses_with_a_clear_error_until_it_is_fixed(tmp_path):
     old = tmp_path / "ledger.json"
-    old.write_text('{"entries": [{"ts": 1.0, "cost_usd"')  # what the old concurrent writer left
+    corrupt = '{"entries": [{"ts": 1.0, "cost_usd"'  # what the old concurrent writer left
+    old.write_text(corrupt)
     ledger = Ledger(old, ceiling_usd=5.0)
-    assert ledger.spent() == 0.0
-    assert (tmp_path / "ledger.json.unreadable").exists()
-    ledger.record("run", "gpt-4.1-mini", 1.0)
+
+    with pytest.raises(UnreadableLedgerError, match=r"ledger\.json.*[Rr]epair.*remove") as spent:
+        ledger.spent()
+    assert isinstance(spent.value, BudgetExceededError)
+    with pytest.raises(BudgetExceededError, match=r"ledger\.json"):
+        ledger.ensure_capacity(0.01)
+    assert old.read_text() == corrupt  # left in place, untouched
+    assert sorted(p.name for p in tmp_path.iterdir() if p.suffix != ".lock") == ["ledger.json"]
+
+    _old_ledger(old, [1.0])  # the owner repairs it
     assert ledger.spent() == pytest.approx(1.0)
+    old.write_text("garbage")
+    with pytest.raises(UnreadableLedgerError):
+        ledger.spent()
+    old.unlink()  # or removes it
+    assert ledger.spent() == pytest.approx(1.0)  # the migrated spend is still counted
 
 
 def _spent_in_child(path: str, barrier: Any) -> float:
