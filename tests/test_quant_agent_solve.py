@@ -43,8 +43,8 @@ async def test_solve_emits_tokens_when_verified():
     agent = QuantAgent(model_config_path="config/model_config.dev.yaml")
 
     with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm, \
-         patch.object(agent, "_extract_final_answer", return_value="x=2 or x=3"), \
-         patch.object(agent, "_verify", new_callable=AsyncMock) as mock_verify:
+         patch.object(agent, "extract_final_answer", return_value="x=2 or x=3"), \
+         patch.object(agent, "verify_well_formed", new_callable=AsyncMock) as mock_verify:
 
         mock_llm.return_value = mock_stream(["Step 1", " ... ", "**Answer: x=2 or x=3**"])
         mock_verify.return_value = VerifyMathResult(verified=True, computed="[2,3]")
@@ -74,8 +74,8 @@ async def test_solve_retries_on_verifier_mismatch():
         return mock_stream(["Answer: x=1"])  # always wrong
 
     with patch("litellm.acompletion", side_effect=llm_side_effect), \
-         patch.object(agent, "_extract_final_answer", return_value="x=1"), \
-         patch.object(agent, "_verify", new_callable=AsyncMock) as mock_verify:
+         patch.object(agent, "extract_final_answer", return_value="x=1"), \
+         patch.object(agent, "verify_well_formed", new_callable=AsyncMock) as mock_verify:
 
         # First two verifications fail, third (escalation) also fails
         mock_verify.return_value = VerifyMathResult(verified=False, computed="[2,3]")
@@ -107,8 +107,8 @@ async def test_solve_escalates_to_stronger_model_after_retries(tmp_path):
         return mock_stream(["Answer: x=1"])
 
     with patch("litellm.acompletion", side_effect=llm_side_effect), \
-         patch.object(agent, "_extract_final_answer", return_value="x=1"), \
-         patch.object(agent, "_verify", new_callable=AsyncMock) as mock_verify:
+         patch.object(agent, "extract_final_answer", return_value="x=1"), \
+         patch.object(agent, "verify_well_formed", new_callable=AsyncMock) as mock_verify:
 
         mock_verify.return_value = VerifyMathResult(verified=False, computed="[2,3]")
 
@@ -127,8 +127,8 @@ async def test_solve_degrades_gracefully_after_full_pipeline_failure():
     agent = QuantAgent(model_config_path="config/model_config.dev.yaml")
 
     with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm, \
-         patch.object(agent, "_extract_final_answer", return_value="x=1"), \
-         patch.object(agent, "_verify", new_callable=AsyncMock) as mock_verify:
+         patch.object(agent, "extract_final_answer", return_value="x=1"), \
+         patch.object(agent, "verify_well_formed", new_callable=AsyncMock) as mock_verify:
 
         mock_llm.return_value = mock_stream(["My best reasoning..."])
         mock_verify.return_value = VerifyMathResult(verified=False, computed="[2,3]")
@@ -148,7 +148,7 @@ async def test_tutor_mode_does_not_call_verifier():
     agent = QuantAgent(model_config_path="config/model_config.dev.yaml")
 
     with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm, \
-         patch.object(agent, "_verify", new_callable=AsyncMock) as mock_verify:
+         patch.object(agent, "verify_well_formed", new_callable=AsyncMock) as mock_verify:
 
         mock_llm.return_value = mock_stream(["Think about it..."])
 

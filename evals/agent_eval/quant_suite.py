@@ -279,15 +279,20 @@ def _is_wrong_but_verified(row: QuantAttempt) -> bool:
     return not row.checks["correct"] and row.independent_check == "agrees"
 
 
+def _solve_reply(agent: QuantAgent, answer: str) -> tuple[str, str]:
+    """A solve reply that ends in `answer`, and the answer the agent reads back out of it."""
+    text = f"1. Work.\n**Answer: {answer}**"
+    return text, agent.extract_final_answer(text) or ""
+
+
 async def _verdicts(
     items: list[dict[str, Any]], agent: QuantAgent, answer_of: Callable[[dict[str, Any]], str]
 ) -> dict[str, str]:
     """The independent check's verdict per item id, for the answer `answer_of(item)`."""
     out: dict[str, str] = {}
     for item in items:
-        text = f"1. Work.\n**Answer: {answer_of(item)}**"
-        claimed = agent._extract_final_answer(text) or ""
-        out[item["id"]] = (await agent._independent_check(stub_expression(item), claimed)).verdict
+        _, claimed = _solve_reply(agent, answer_of(item))
+        out[item["id"]] = (await agent.check_independently(stub_expression(item), claimed)).verdict
     return out
 
 
@@ -307,11 +312,12 @@ async def wrong_but_verified(
 
     `seeded` needs no model: each solve item gets a wrong answer (`seeded_wrong_answer`), which
     sympy confirms against the golden key is wrong, and the answer goes through the same
-    extract-then-`_independent_check` step a solve turn runs, with `stub_expression` as the
-    model's expression. `self_compare` is the same answers through `_verify`, the well-formed
-    check the live path ran alone before the independent check existed (it compares an answer
-    with itself, so it was near 100%): the "before" for the same items. `control` runs the golden
-    key through the independent check, to show it does not simply reject everything.
+    extract-then-`check_independently` step a solve turn runs, with `stub_expression` as the
+    model's expression. `self_compare` is the same answers through `verify_well_formed`, the
+    well-formed check the live path ran alone before the independent check existed (it compares
+    an answer with itself, so it was near 100%): the "before" for the same items. `control`
+    runs the golden key through the independent check, to show it does not simply reject
+    everything.
     `observed` counts real solve attempts in `rows` that were wrong and still got "agrees".
     "not_checkable" is never counted as verified: the learner is told it was not checked.
     """
@@ -326,9 +332,8 @@ async def wrong_but_verified(
     verdicts = await _verdicts(seeded_items, agent, lambda i: wrong_answers[i["id"]])
     well_formed: list[str] = []
     for item in seeded_items:
-        text = f"1. Work.\n**Answer: {wrong_answers[item['id']]}**"
-        claimed = agent._extract_final_answer(text) or ""
-        if (await agent._verify(text, claimed)).verified:
+        text, claimed = _solve_reply(agent, wrong_answers[item["id"]])
+        if (await agent.verify_well_formed(text, claimed)).verified:
             well_formed.append(item["id"])
     control = await _verdicts(seeded_items, agent, lambda i: str(i["ground_truth"]))
     accepted = sorted(i for i, v in verdicts.items() if v == "agrees")

@@ -31,7 +31,7 @@ from evals.agent_eval.results import (
     GenerationRow,
     GenerationTarget,
 )
-from evals.agent_eval.runner import _guarded, _rate, _yes_no
+from evals.agent_eval.runner import ask_yes_no, guarded, rate_of
 from evals.agent_eval.transport import MeteredTransport, gather_limited, tagged
 from evals.human_review_queue import HumanReviewQueue
 from services.agent.src.agent.pipeline.schema import GenerationRequest, PipelineResult, QuestionItem
@@ -72,7 +72,7 @@ async def _run_one(
     judge_ok: bool | None = None
     if result.item is not None:
         defects = await _audit(result.item, skill)
-        verdict = await _yes_no(
+        verdict = await ask_yes_no(
             judge,
             JudgeQuestion(
                 instructions=GEN_JUDGE_INSTRUCTIONS,
@@ -134,14 +134,14 @@ def _summarise(
         emitted_rate=len(emitted) / len(rows) if rows else None,
         valid_yield=len(valid) / len(rows) if rows else None,
         verifier_reject_rate=_verifier_reject_rate(rows),
-        shipped_defect_rate=_rate([bool(r.defects) for r in emitted]),
+        shipped_defect_rate=rate_of([bool(r.defects) for r in emitted]),
         shipped_defects_by_check=breakdown,
-        escalation_rate=_rate([r.status == "needs_review" for r in rows]),
-        unparseable_rate=_rate([r.status == "unparseable" for r in rows]),
+        escalation_rate=rate_of([r.status == "needs_review" for r in rows]),
+        unparseable_rate=rate_of([r.status == "unparseable" for r in rows]),
         mean_attempts=sum(r.attempts for r in rows) / len(rows) if rows else None,
         mean_llm_calls=sum(r.llm_calls for r in rows) / len(rows) if rows else None,
-        judge_accept_rate=_rate([bool(r.judge_ok) for r in judged]),
-        judge_vs_audit_agreement=_rate([r.judge_ok == (not r.defects) for r in judged]),
+        judge_accept_rate=rate_of([bool(r.judge_ok) for r in judged]),
+        judge_vs_audit_agreement=rate_of([r.judge_ok == (not r.defects) for r in judged]),
         cost=cost,
     )
 
@@ -165,7 +165,7 @@ async def run_generation(
     work = [(n, t, r) for n, t in targets.items() for r in requests]
     out = await gather_limited(
         [
-            _guarded(_run_one(n, t, r, skill, judge, judge_errors), unavailable)
+            guarded(_run_one(n, t, r, skill, judge, judge_errors), unavailable)
             for n, t, r in work
         ]
     )

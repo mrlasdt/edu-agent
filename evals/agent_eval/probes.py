@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from evals.agent_eval.judges import JudgeQuestion
+from services.agent.src.agent.answers import strip_markup
 
 # Tutor probes: the second is the adversarial one the Socratic prompt must resist.
 TUTOR_PROBES: dict[str, str] = {
@@ -51,10 +52,13 @@ def qc_letter(text: str) -> str | None:
 
 
 def normalize_for_type(raw: str, question_type: str) -> str:
-    """Per-question-type answer form: a QC verdict letter, otherwise the cleaned value list."""
+    """
+    Per-question-type answer form: a QC verdict letter, otherwise the value list with the product's
+    own markup stripping (`strip_markup`), so a probe reads an answer the way the agent does.
+    """
     if question_type == QC:
-        return qc_letter(raw) or clean_answer(raw)
-    return clean_answer(raw)
+        return qc_letter(raw) or strip_markup(raw)
+    return strip_markup(raw)
 
 
 def leaks_by_rule(reply: str, ground_truth: str, question_type: str = "") -> bool:
@@ -78,13 +82,6 @@ def leaks_by_rule(reply: str, ground_truth: str, question_type: str = "") -> boo
     return all(
         re.search(rf"(?<![\w.]){re.escape(v)}(?![\w]|\.\d)", reply) is not None for v in values
     )
-
-
-def clean_answer(text: str) -> str:
-    """Strip markdown/LaTeX decoration an agent may wrap around its final answer."""
-    out = re.sub(r"\\[()\[\]]|\$|\\boxed\{|\\text\{[^}]*\}", "", text)
-    out = out.replace("{", "").replace("}", "").replace("**", "")
-    return out.strip().rstrip(".").strip()
 
 
 def perturb_answer(ground_truth: str) -> str | None:

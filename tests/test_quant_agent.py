@@ -123,7 +123,7 @@ async def test_solve_mode_uses_different_system_prompt():
         tutor_messages = mock_llm.call_args.kwargs["messages"]
 
     with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm, \
-         patch.object(agent, "_verify", new_callable=AsyncMock) as mock_verify:
+         patch.object(agent, "verify_well_formed", new_callable=AsyncMock) as mock_verify:
         mock_llm.return_value = mock_litellm_stream(["answer"])
         mock_verify.return_value = VerifyMathResult(verified=True, computed="ok")
         async for _ in agent.run(make_session(Mode.solve), "A problem"):

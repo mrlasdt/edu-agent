@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from evals.agent_eval import cli, generation, offline_generation
+from evals.agent_eval.backend import offline_model
 from evals.agent_eval.budget import BudgetExceededError, Ledger
 from evals.agent_eval.judges import HeuristicJudge
 from evals.agent_eval.results import GenerationResult
@@ -328,7 +329,7 @@ def _offline_run(max_items: int = 12) -> tuple[GenerationResult, list[dict[str, 
         GenerationRequest.model_validate(i) for i in load_golden_set("quant_generation")
     ][:max_items]
     transport = MeteredTransport(
-        Ledger(Path("/nonexistent/ledger.json"), 20.0), "t", fake_model=cli._offline_model
+        Ledger(Path("/nonexistent/ledger.json"), 20.0), "t", fake_model=offline_model
     )
     config = write_model_config("offline/fake")
     judge = HeuristicJudge(lambda q: bool(q.facts["gold"]), lambda q, c: 0.0)

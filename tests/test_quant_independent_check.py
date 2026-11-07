@@ -53,10 +53,10 @@ def _row(kind: str, correct: bool, verdict: str | None) -> QuantAttempt:
 
 async def test_a_wrong_but_parseable_answer_passes_the_well_formed_check():
     agent = _agent()
-    claimed = agent._extract_final_answer("Guess.\n**Answer: x = 5**") or ""
+    claimed = agent.extract_final_answer("Guess.\n**Answer: x = 5**") or ""
 
     graded = await grade_quant_item(QUADRATIC, candidate_answer=claimed)
-    result = await agent._verify("Guess.\n**Answer: x = 5**", claimed)
+    result = await agent.verify_well_formed("Guess.\n**Answer: x = 5**", claimed)
 
     assert graded.correct is False
     assert result.verified is True  # the well-formed check alone cannot tell
@@ -64,13 +64,13 @@ async def test_a_wrong_but_parseable_answer_passes_the_well_formed_check():
 
 async def test_the_independent_check_disagrees_with_that_wrong_answer():
     agent = _agent()
-    check = await agent._independent_check(quant_suite.stub_expression(QUADRATIC), "x = 5")
+    check = await agent.check_independently(quant_suite.stub_expression(QUADRATIC), "x = 5")
     assert check.verdict == "disagrees"
     assert check.solver == "2, 3"
 
 
 async def test_the_well_formed_check_still_rejects_an_unparseable_answer():
-    result = await _agent()._verify("", "the values are two and three")
+    result = await _agent().verify_well_formed("", "the values are two and three")
     assert result.verified is False
 
 
@@ -109,7 +109,7 @@ async def test_the_independent_check_does_not_reject_the_golden_key():
 async def test_the_count_rises_if_the_check_agrees_with_a_wrong_answer():
     agent = _agent()
     agree = IndependentCheck(AGREES)
-    with patch.object(agent, "_independent_check", new=AsyncMock(return_value=agree)):
+    with patch.object(agent, "check_independently", new=AsyncMock(return_value=agree)):
         result = await quant_suite.wrong_but_verified(SOLVE_ITEMS, agent, [])
 
     assert result.seeded.count == 16

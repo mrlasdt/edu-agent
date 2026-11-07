@@ -1,11 +1,11 @@
 """
 The independent answer check for a Quant solve turn.
 
-The well-formedness check in `QuantAgent._verify` compares the model's answer with itself, so a
-wrong answer that parses passes. This check does not: a second, short model call writes the
-problem as an expression or equation WITHOUT seeing the first answer (`parse_expression` reads
-its `<expr>` tag), and the math verifier's sympy sandbox computes that expression. The computed
-value is then compared with the answer the solver claimed (`compare`).
+The well-formedness check, `QuantAgent.verify_well_formed`, compares the model's answer with
+itself, so a wrong answer that parses passes. This check does not: a second, short model call
+writes the problem as an expression or equation WITHOUT seeing the first answer
+(`parse_expression` reads its `<expr>` tag), and the math verifier's sympy sandbox computes that
+expression. The computed value is then compared with the answer the solver claimed (`compare`).
 
   agrees         the computed value matches the claimed answer
   disagrees      it does not; the computed value (`solver`) is shown next to it

@@ -126,7 +126,7 @@ def write_model_config(model: str, base_path: str = DEFAULT_MODEL_CONFIG_PATH) -
     return str(fd)
 
 
-def _rate(flags: Sequence[bool]) -> float | None:
+def rate_of(flags: Sequence[bool]) -> float | None:
     return sum(flags) / len(flags) if flags else None
 
 
@@ -140,7 +140,7 @@ def _agreement(pairs: Sequence[tuple[bool, bool]]) -> LabelAgreement:
     )
 
 
-async def _guarded[T](coro: Coroutine[Any, Any, T], failures: list[str]) -> T | None:
+async def guarded[T](coro: Coroutine[Any, Any, T], failures: list[str]) -> T | None:
     """Isolate one unit of work: a fully unavailable model chain drops that unit, not the run.
 
     BudgetExceededError is deliberately not caught - it must abort the whole run.
@@ -152,7 +152,7 @@ async def _guarded[T](coro: Coroutine[Any, Any, T], failures: list[str]) -> T | 
         return None
 
 
-async def _yes_no(judge: Judge, q: JudgeQuestion, errors: list[str]) -> YesNo | None:
+async def ask_yes_no(judge: Judge, q: JudgeQuestion, errors: list[str]) -> YesNo | None:
     try:
         return await judge.yes_no(q)
     except JudgeError as exc:
@@ -187,7 +187,7 @@ async def run_quant(
             agent, item, Mode.tutor, TUTOR_PROBES[probe].format(question=item["question"])
         )
         rule = leaks_by_rule(reply, item["ground_truth"], item["question_type"])
-        verdict = await _yes_no(judge, leak_question(item, reply, rule), judge_errors)
+        verdict = await ask_yes_no(judge, leak_question(item, reply, rule), judge_errors)
         return TutorRow(
             item_id=item["id"], probe=probe, latency_s=latency,
             leak_rule=rule, leak_judge=None if verdict is None else verdict.answer,
@@ -198,10 +198,12 @@ async def run_quant(
             agent, item, Mode.solve, item["question"]
         )
         answer = normalize_for_type(
-            agent._extract_final_answer(text) or "", item["question_type"]
+            agent.extract_final_answer(text) or "", item["question_type"]
         )
         graded = await grade_quant_item(item, candidate_answer=answer)
-        verdict = await _yes_no(judge, correct_question(item, text, graded.correct), judge_errors)
+        verdict = await ask_yes_no(
+            judge, correct_question(item, text, graded.correct), judge_errors
+        )
         return SolveRow(
             item_id=item["id"], latency_s=latency, answer=answer,
             correct=graded.correct, verifier_fail=verifier_fail,
@@ -214,20 +216,20 @@ async def run_quant(
         leak_pairs: list[tuple[bool, bool]] = []
         correct_pairs: list[tuple[bool, bool]] = []
         for q, gold in leak_calibration(item):
-            v = await _yes_no(judge, q, judge_errors)
+            v = await ask_yes_no(judge, q, judge_errors)
             if v is not None:
                 leak_pairs.append((v.answer, gold))
         for q, gold in correctness_calibration(item):
-            v = await _yes_no(judge, q, judge_errors)
+            v = await ask_yes_no(judge, q, judge_errors)
             if v is not None:
                 correct_pairs.append((v.answer, gold))
         return leak_pairs, correct_pairs
 
     tutor_out = await gather_limited(
-        [_guarded(tutor(i, p), unavailable) for i in items for p in TUTOR_PROBES]
+        [guarded(tutor(i, p), unavailable) for i in items for p in TUTOR_PROBES]
     )
-    solve_out = await gather_limited([_guarded(solve(i), unavailable) for i in items])
-    cal_out = await gather_limited([_guarded(calibrate(i), unavailable) for i in items])
+    solve_out = await gather_limited([guarded(solve(i), unavailable) for i in items])
+    cal_out = await gather_limited([guarded(calibrate(i), unavailable) for i in items])
     tutor_rows = [r for r in tutor_out if r is not None]
     solve_rows = [r for r in solve_out if r is not None]
     calibration = [c for c in cal_out if c is not None]
@@ -243,16 +245,16 @@ async def run_quant(
     return QuantJudgeResult(
         n_items=len(items),
         tutor=TutorSummary(
-            leak_rate_rule=_rate([r.leak_rule for r in tutor_rows]),
-            leak_rate_judge=_rate([r.leak_judge for r in tutor_rows if r.leak_judge is not None]),
+            leak_rate_rule=rate_of([r.leak_rule for r in tutor_rows]),
+            leak_rate_judge=rate_of([r.leak_judge for r in tutor_rows if r.leak_judge is not None]),
             leak_rate_rule_by_probe={
-                p: _rate([r.leak_rule for r in tutor_rows if r.probe == p]) for p in TUTOR_PROBES
+                p: rate_of([r.leak_rule for r in tutor_rows if r.probe == p]) for p in TUTOR_PROBES
             },
             judge_vs_rule_on_agent_output=_agreement(judged_leaks),
         ),
         solve=SolveSummary(
-            accuracy=_rate([r.correct for r in solve_rows]),
-            verifier_fail_rate=_rate(
+            accuracy=rate_of([r.correct for r in solve_rows]),
+            verifier_fail_rate=rate_of(
                 [bool(r.verifier_fail) for r in solve_rows if r.verifier_fail is not None]
             ),
             judge_vs_sympy_on_agent_output=_agreement(judged_correct),
@@ -296,7 +298,7 @@ async def run_aw(items: list[dict[str, Any]], judge: Judge) -> AwResult:
 
     results = await gather_limited(
         [
-            _guarded(one(item, lvl), unavailable)
+            guarded(one(item, lvl), unavailable)
             for item in items
             for lvl in item.get("anchor_essays", {})
         ]
@@ -305,7 +307,7 @@ async def run_aw(items: list[dict[str, Any]], judge: Judge) -> AwResult:
     diffs = [abs(s - g) for s, g in pairs]
     return AwResult(
         n_judgements=len(pairs),
-        within_tolerance=_rate([d <= AW_AGREE_TOLERANCE for d in diffs]),
+        within_tolerance=rate_of([d <= AW_AGREE_TOLERANCE for d in diffs]),
         tolerance=AW_AGREE_TOLERANCE,
         mae=statistics.fmean(diffs) if diffs else None,
         errors=len(errors),

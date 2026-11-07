@@ -9,13 +9,14 @@ from typing import Any
 
 import pytest
 
-from evals.agent_eval import cli
+from evals.agent_eval import cli, runner
+from evals.agent_eval.backend import offline_judge, offline_model
 from evals.agent_eval.budget import BudgetExceededError, Ledger, estimate_cost, is_free
 from evals.agent_eval.cache import ResponseCache
 from evals.agent_eval.judges import JudgeError, JudgeQuestion, LLMJudge
 from evals.agent_eval.probes import (
-    clean_answer,
     leaks_by_rule,
+    normalize_for_type,
     perturb_answer,
 )
 from evals.agent_eval.results import (
@@ -32,6 +33,8 @@ from evals.agent_eval.results import (
 )
 from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport
 from evals.judges.quant_judge import grade_quant_item
+from evals.loader import load_golden_set
+from services.agent.src.agent.answers import normalize_answer
 from shared.src.shared.config import Settings
 from tests.eval_result_fakes import aw_result, eval_report
 from tests.llm_fakes import (
@@ -77,9 +80,22 @@ def test_perturb_changes_answer():
     assert perturb_answer("none") is None
 
 
-def test_clean_answer_strips_markup():
-    assert clean_answer("$x = 2$.") == "x = 2"
-    assert clean_answer("\\boxed{14}") == "14"
+def test_answer_markup_is_stripped():
+    assert normalize_for_type("$x = 2$.", "numeric_entry") == "x = 2"
+    assert normalize_for_type("\\boxed{14}", "numeric_entry") == "14"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [r"$\frac{3}{4}$", r"\dfrac{1}{2}", r"\text{x} = 2", r"**\boxed{14}**."],
+)
+def test_the_probe_reads_an_answer_the_way_production_does(raw: str):
+    """The probe's cleaning is the product's markup stripping, not a copy that can drift from it."""
+    assert normalize_for_type(raw, "numeric_entry") == normalize_answer(raw)
+
+
+def test_a_latex_fraction_becomes_a_quotient():
+    assert normalize_for_type(r"$\frac{3}{4}$", "numeric_entry") == "(3)/(4)"  # a copy gave \frac34
 
 
 # ── budget ledger ────────────────────────────────────────────────────────────
@@ -526,14 +542,14 @@ async def test_generation_run_with_the_model_down_fails_the_coverage_gate():
 
     requests = [
         generation.GenerationRequest.model_validate(i)
-        for i in cli.load_golden_set("quant_generation")
+        for i in load_golden_set("quant_generation")
     ][:4]
     transport = MeteredTransport(
-        Ledger(Path("/nonexistent/ledger.json"), 20.0), "t", fake_model=cli._offline_model
+        Ledger(Path("/nonexistent/ledger.json"), 20.0), "t", fake_model=offline_model
     )
-    skill = cli.runner.in_process_verify_skill()
+    skill = runner.in_process_verify_skill()
     out = await generation.run_generation(
-        requests, {"baseline": Down(), "pipeline": Down()}, cli._offline_judge(), skill, transport
+        requests, {"baseline": Down(), "pipeline": Down()}, offline_judge(), skill, transport
     )
     assert out.units_total == 8 and out.units_dropped == 8
     assert eval_report(generation=out).coverage_failures(0.8) == {"generation": 0.0}
