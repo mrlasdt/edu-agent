@@ -43,7 +43,7 @@ Accepted. Supersedes the monolithic service implied by the earlier ADRs; all ser
 
 ## Consequences
 
-- **Each service has its own Dockerfile and its own entry in Docker Compose and k8s manifests.**
+- **Each service has its own Dockerfile and its own entry in Docker Compose.** (k8s manifests were planned and later removed unapplied, ADR-0009.)
 - **Services share one Postgres instance** (different schemas or tables; no cross-schema foreign keys). Alembic migrations are per-service under `services/{name}/migrations/`.
 - **Services share one Qdrant instance** (one collection, ACL via payload filters — ADR-0004).
 - **The Agent Service is an MCP client.** It connects to the Math Verifier MCP server at startup and holds the connection. If the Math Verifier is unreachable, Quant turns degrade to "unable to verify" (verifier-fail event) rather than failing the whole service.
@@ -57,7 +57,7 @@ Accepted. Supersedes the monolithic service implied by the earlier ADRs; all ser
 The decision above named a pgmq queue and a worker for large uploads. Neither was ever built: `enqueue_ingestion_job` only wrote a record into a Python dict, so a file of 1 MB or more got `202 queued` and was never indexed, and the test that should have caught it mocked the stub. The code now does the smallest thing that is true:
 
 - **Large files are indexed by a FastAPI `BackgroundTasks` task**, the mechanism the gateway's IELTS grading already uses. `POST /admin/documents` still answers files under 1 MB with `200 completed` after indexing them, and larger ones with `202 queued` at once. The task then parses (off the event loop), chunks, embeds and indexes, and `GET /admin/documents/{job_id}` reports `processing`, then `completed` with `chunks_indexed`, or `failed` with `error_stage` (`parse` or `index`) and `error`.
-- **Job records are per process.** They live in a dict in the service's memory: a restart loses them, and a second replica would not see them. The service therefore stays a single replica (`infra/k8s/ingestion.yaml`). A task that is running when the process stops is lost with it, and the upload has to be repeated; that is safe, because of the next point.
+- **Job records are per process.** They live in a dict in the service's memory: a restart loses them, and a second replica would not see them. The service therefore stays a single replica (one container in `infra/docker-compose.yml`). A task that is running when the process stops is lost with it, and the upload has to be repeated; that is safe, because of the next point.
 - **Point ids are deterministic.** A chunk's Qdrant id is `uuid5(namespace, "<tier>:<test_type>:<source_uri>:<chunk_index>")`, so uploading a document again (same filename, tier and test type) replaces its points instead of adding a second copy, and after the upsert every other point of that document (same filename, tier and test type) is deleted: the tail of a longer old version, and any point stored under a random id before ids were deterministic. The seed job relies on this and uploads every note on every start instead of asking Qdrant what is indexed. The namespace in `ingestion/main.py` must never change.
 
 A collection filled before this change (random ids) needs no manual cleanup: the first upload of each document removes its legacy points as part of the replace, so the seed job's first start on an existing volume leaves one copy of each note, not two. Documents that are never uploaded again keep their legacy points.

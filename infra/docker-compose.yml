@@ -54,7 +54,7 @@ services:
     # No healthcheck: the qdrant image ships no HTTP client (curl/wget/bash/nc
     # are all absent), so an in-container HTTP probe is impossible. Nothing in
     # this compose file depends_on qdrant health; readiness is gated at the app
-    # layer (and via k8s readiness probes in Phase 2).
+    # layer.
 
   langfuse:
     image: langfuse/langfuse:2
@@ -132,7 +132,6 @@ services:
 
   # Math verifier MCP server — SSE transport on port 8090.
   # The Agent Service connects to http://math-verifier:8090 via the verify-math Skill.
-  # In k8s Phase 2, runs as a sidecar to the agent pod (cluster-internal, no external exposure).
   math-verifier:
     build:
       context: ..

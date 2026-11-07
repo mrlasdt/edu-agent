@@ -2,6 +2,8 @@
 
 Long-form deep-dive for ADR-0009.
 
+> Status (2026-11-07): the Kubernetes choices below were never built. `infra/k8s/` and the deploy workflow were removed unapplied; Docker Compose is the one supported deploy path (see the implementation status in ADR-0009). The text is kept as the original reasoning.
+
 ## Sub-decisions
 
 ### Development workflow — trunk-based vs feature branches
