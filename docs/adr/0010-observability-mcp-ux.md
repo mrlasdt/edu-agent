@@ -6,7 +6,7 @@
 
 **Latency:** all main-agent turns stream first tokens. Orchestrator + retrieval run before the stream; style critic and citation checker run post-generation and gate final emission. Target TTFT: <2s for Quant Tutor, <4s for AW Solve.
 
-**Web UX:** Vite + React + AI SDK. Session starts with a subject picker (Quant / AW). Mode switch is a visible button in the input bar. Citations render as inline `[N]` with a collapsible Sources panel. Upload is a drag-and-drop overlay. Style opt-in is a preferences-panel toggle, visible only after ≥2 essays uploaded.
+**Web UX:** Vite + React with hand-written CSS (no AI SDK, no Tailwind). Session starts with a subject picker (Quant / AW). Mode switch is a visible button in the input bar. Citations render as inline `[N]` with a collapsible Sources panel. Upload is a drag-and-drop overlay. Style opt-in is a preferences-panel toggle, visible only after ≥2 essays uploaded.
 
 ## Status
 

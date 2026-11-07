@@ -1,6 +1,6 @@
 # Deployment pipeline
 
-The agent ships via a trunk-based development workflow on GitHub Actions, targeting Kubernetes as the production runtime, with **Phase 1 running entirely on localhost** (Docker Compose) to enable rapid iteration before cloud infrastructure is provisioned. The frontend is a lightweight React app (Vite + React + AI SDK streaming) — no Next.js. Prompts live in Git as versioned files. Environments are dev (localhost), staging (k8s cluster, non-prod), and prod (k8s cluster). Canary deploys route 5% of traffic by `candidate_id` hash; auto-rollback fires on error-rate or eval-metric regression. Database migrations are forward-only in staging/prod via Alembic.
+The agent ships via a trunk-based development workflow on GitHub Actions, targeting Kubernetes as the production runtime, with **Phase 1 running entirely on localhost** (Docker Compose) to enable rapid iteration before cloud infrastructure is provisioned. The frontend is a lightweight React app (Vite + React with hand-written CSS; the chat stream is read with `fetch`, no UI framework or AI SDK) — no Next.js. Prompts live in Git as versioned files. Environments are dev (localhost), staging (k8s cluster, non-prod), and prod (k8s cluster). Canary deploys route 5% of traffic by `candidate_id` hash; auto-rollback fires on error-rate or eval-metric regression. Database migrations are forward-only in staging/prod via Alembic.
 
 ## Status
 
