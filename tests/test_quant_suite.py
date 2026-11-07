@@ -435,8 +435,8 @@ async def test_pass_hat_k_is_not_compared_across_different_k(tmp_path: Path):
 
 def test_model_flag_pins_one_model_and_names_its_key():
     assert cli.provider_chain("free", "openrouter/x/y:free") == ["openrouter/x/y:free"]
-    assert cli.required_keys("free", "llm", "openrouter/x/y:free") == ["OPENROUTER_API_KEY"]
-    assert cli.required_keys("free", "llm", "openai/gpt-4o-mini") == ["OPENAI_API_KEY"]
+    assert cli.required_keys("free", "openrouter/x/y:free") == ["OPENROUTER_API_KEY"]
+    assert cli.required_keys("free", "openai/gpt-4o-mini") == ["OPENAI_API_KEY"]
 
 
 def test_dry_run_counts_quant_calls_per_sample(
