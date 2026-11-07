@@ -1,9 +1,9 @@
 """
 Spend accounting for the metered real-model calls: eval runs and the IELTS mock.
 
-The ledger is a JSON file (default `.eval-ledger/ledger.json`, gitignored) that
-accumulates the cost of every call. Every call is checked against the cumulative
-ceiling *before* it is made, using a worst-case projection, so a run aborts
+The ledger is an append-only JSON-lines log (default `.eval-ledger/ledger.jsonl`, gitignored)
+that accumulates the cost of every call, summed on read. Every call is checked against the
+cumulative ceiling *before* it is made, using a worst-case projection, so a run aborts
 instead of overshooting. Free models (`:free`, `openrouter/free`) cost zero.
 
 The ceiling is the owner's AI spend cap for the IELTS mock and the evals (5 USD), which share
@@ -13,7 +13,9 @@ not counted against it; they are measured, uncapped, in the per-turn log (`share
 """
 from __future__ import annotations
 
+import fcntl
 import json
+import math
 import os
 import time
 from dataclasses import dataclass
@@ -23,7 +25,7 @@ from typing import Any
 from shared.src.shared.config import get_settings
 
 DEFAULT_CEILING_USD = 5.0
-DEFAULT_LEDGER_PATH = Path(".eval-ledger/ledger.json")
+DEFAULT_LEDGER_PATH = Path(".eval-ledger/ledger.jsonl")
 
 # USD per 1M tokens (input, output). Unknown paid models fall back to a deliberately
 # pessimistic price so the guard errs on the side of aborting.
@@ -43,6 +45,13 @@ _UNKNOWN_PRICE = (10.0, 30.0)
 
 class BudgetExceededError(RuntimeError):
     """Raised before a call that could push cumulative spend over the ceiling."""
+
+
+class UnreadableLedgerError(BudgetExceededError):
+    """The old single-JSON ledger cannot be read, so spend is unknown and no call may be made.
+
+    A budget stop, so callers that already stop on `BudgetExceededError` stop on this too.
+    """
 
 
 def _bare(model: str) -> str:
@@ -68,25 +77,115 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+def _locations(path: Path) -> tuple[Path, Path | None]:
+    """(the JSON-lines log, the legacy single-JSON file it replaces or None) for a configured path.
+
+    The ledger used to be one JSON file, `ledger.json`. Configured paths ending in `.json` (an
+    old `AI_LEDGER_PATH`, a test fixture) keep working: the log is the sibling `.jsonl` and the
+    configured file is the legacy ledger to migrate. A path ending in `.jsonl` is the log itself.
+    """
+    if path.suffix == ".json":
+        return path.with_suffix(".jsonl"), path
+    if path.suffix == ".jsonl":
+        return path, path.with_suffix(".json")
+    return path, None
+
+
 @dataclass
 class Ledger:
+    """
+    Cumulative spend, kept as an append-only JSON-lines log: one line per paid call, summed on read.
+
+    Each `record` is one `O_APPEND` write of one short line, so any number of processes (the
+    IELTS mock and the evals share one ledger) can record at once without a lock and without
+    losing a line. A torn or foreign line is skipped on read, never fatal, so a damaged ledger
+    cannot turn a budget check into an unrelated error.
+
+    The cap is a soft cap. `ensure_capacity` reads the total and `record` appends later, with no
+    lock across the two, so calls in flight at the same moment (in this process or others) can
+    each pass the check and together overshoot the ceiling by what they cost. Callers that start
+    several calls at once add their own in-flight projection (see the IELTS completer).
+    """
+
     path: Path = DEFAULT_LEDGER_PATH
     ceiling_usd: float = DEFAULT_CEILING_USD
 
-    def _load(self) -> dict[str, Any]:
-        if not self.path.exists():
-            return {"entries": []}
-        data: dict[str, Any] = json.loads(self.path.read_text())
-        return data
+    def __post_init__(self) -> None:
+        self.path = Path(self.path)
+        self._log, self._legacy = _locations(self.path)
+
+    def _lock_path(self) -> Path:
+        return self._log.with_name(self._log.name + ".lock")
+
+    def _migrate_legacy(self) -> None:
+        """One time: fold an old single-JSON ledger into the log so recorded spend is not lost.
+
+        Serialised across processes with a file lock. The migrated lines are written first and
+        the old file is renamed to `<name>.migrated` after, so a crash in between is repaired on
+        the next call: the log already holds `migrated` lines, so only the rename is repeated.
+        A legacy file that cannot be parsed (a ledger the old writer corrupted) is left untouched
+        and raises `UnreadableLedgerError`: its spend is unknown, so it is never counted as zero.
+        Repairing or removing the file lets the ledger work again.
+        """
+        legacy = self._legacy
+        if legacy is None or not legacy.exists():
+            return
+        self._log.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock_path().open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if not legacy.exists():  # another process finished the migration while we waited
+                return
+            try:
+                data = json.loads(legacy.read_text(encoding="utf-8"))
+                entries = [e for e in data["entries"] if _cost_of(e) is not None]
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                raise UnreadableLedgerError(
+                    f"spend ledger {legacy} cannot be read ({type(exc).__name__}), so spend so "
+                    "far is unknown and no paid call is allowed. Repair the file or remove it."
+                ) from exc
+            if not any(e.get("migrated") for e in self._read_log()):
+                lines = "".join(
+                    json.dumps({**e, "migrated": True}, separators=(",", ":")) + "\n"
+                    for e in entries
+                )
+                self._append(lines or json.dumps({"migrated": True}) + "\n")
+            os.replace(legacy, legacy.with_name(legacy.name + ".migrated"))
+
+    def _read_log(self) -> list[dict[str, Any]]:
+        try:
+            text = self._log.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return []
+        records: list[dict[str, Any]] = []
+        for line in text.splitlines():
+            try:
+                value = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(value, dict):
+                records.append(value)
+        return records
+
+    def _append(self, text: str) -> None:
+        self._log.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(self._log, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+        try:
+            os.write(fd, text.encode("utf-8"))
+        finally:
+            os.close(fd)
 
     def spent(self) -> float:
-        return float(sum(e["cost_usd"] for e in self._load()["entries"]))
+        self._migrate_legacy()
+        return sum(c for c in map(_cost_of, self._read_log()) if c is not None)
 
     def remaining(self) -> float:
         return max(0.0, self.ceiling_usd - self.spent())
 
     def ensure_capacity(self, projected_usd: float) -> None:
-        """Abort when spent + projected would exceed the ceiling (free calls always pass)."""
+        """Abort when spent + projected would exceed the ceiling (free calls always pass).
+
+        A soft cap: see the class docstring for why concurrent callers can overshoot.
+        """
         if projected_usd <= 0:
             return
         spent = self.spent()
@@ -99,14 +198,22 @@ class Ledger:
     def record(self, run_id: str, model: str, cost_usd: float) -> None:
         if cost_usd <= 0:
             return
-        data = self._load()
-        data["entries"].append(
-            {"ts": time.time(), "run_id": run_id, "model": model, "cost_usd": cost_usd}
+        self._migrate_legacy()
+        line = json.dumps(
+            {"ts": time.time(), "run_id": run_id, "model": model, "cost_usd": cost_usd},
+            separators=(",", ":"),
         )
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=2))
-        os.replace(tmp, self.path)
+        self._append(line + "\n")
+
+
+def _cost_of(entry: Any) -> float | None:
+    """The entry's cost, or None for a line that is not a usable spend record."""
+    if not isinstance(entry, dict):
+        return None
+    cost = entry.get("cost_usd")
+    if isinstance(cost, bool) or not isinstance(cost, int | float) or not math.isfinite(cost):
+        return None
+    return float(cost)
 
 
 def spend_ledger(path: str | Path | None = None, ceiling_usd: float | None = None) -> Ledger:

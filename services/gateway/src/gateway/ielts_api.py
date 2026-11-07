@@ -31,7 +31,12 @@ from services.gateway.src.gateway.ielts_store import (
     AttemptStateError,
     AttemptStore,
 )
-from shared.src.shared.budget import BudgetExceededError, Ledger, spend_ledger
+from shared.src.shared.budget import (
+    BudgetExceededError,
+    Ledger,
+    UnreadableLedgerError,
+    spend_ledger,
+)
 from shared.src.shared.config import get_settings
 
 _log = logging.getLogger(__name__)
@@ -154,7 +159,13 @@ def _load(store: AttemptStore, attempt_id: str) -> Attempt:
 
 
 def _budget(ledger: Ledger) -> BudgetOut:
-    spent, remaining = ledger.spent(), ledger.remaining()
+    try:
+        spent, remaining = ledger.spent(), ledger.remaining()
+    except UnreadableLedgerError as exc:
+        return BudgetOut(
+            cap_usd=ledger.ceiling_usd, spent_usd=0.0, remaining_usd=0.0,
+            exhausted=True, message=str(exc),
+        )
     exhausted = remaining < MOCK_RESERVE_USD
     return BudgetOut(
         cap_usd=ledger.ceiling_usd, spent_usd=spent, remaining_usd=remaining,
@@ -163,15 +174,23 @@ def _budget(ledger: Ledger) -> BudgetOut:
 
 
 def cap_message(ledger: Ledger) -> str:
+    try:
+        spent = ledger.spent()
+    except UnreadableLedgerError as exc:
+        return str(exc)
     return (
-        f"The AI spend cap of ${ledger.ceiling_usd:.2f} is used up (${ledger.spent():.2f} spent), "
+        f"The AI spend cap of ${ledger.ceiling_usd:.2f} is used up (${spent:.2f} spent), "
         "so no new mock can be marked. Earlier attempts and saved essays stay available. "
         "Raise AI_SPEND_CAP_USD to continue."
     )
 
 
 def _require_budget(ledger: Ledger) -> None:
-    if ledger.remaining() < MOCK_RESERVE_USD:
+    try:
+        remaining = ledger.remaining()
+    except UnreadableLedgerError as exc:
+        raise HTTPException(402, str(exc)) from exc
+    if remaining < MOCK_RESERVE_USD:
         raise HTTPException(402, cap_message(ledger))
 
 
