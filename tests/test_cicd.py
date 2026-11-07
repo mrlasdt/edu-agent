@@ -6,10 +6,12 @@ Behaviors under test:
   2. ci.yml runs the offline eval on every change (no path gate)
   3. No Kubernetes manifests or cluster deploy workflow (Docker Compose is the one deploy path)
   4. Each FastAPI service exposes GET /healthz → 200
-  5. Dockerfiles exist for all services
+  5. One parametrized Dockerfile, one dependency group per service, a pinned uv
 """
 
+import re
 import shlex
+import tomllib
 from pathlib import Path
 
 import yaml
@@ -129,14 +131,67 @@ def test_ingestion_healthz():
     assert response.status_code == 200
 
 
-# ── 5. Dockerfiles ────────────────────────────────────────────────────────────
+# ── 5. One Dockerfile, one dependency group per service ──────────────────────
+
+SERVICES = ["gateway", "agent", "corpus", "ingestion", "math_verifier"]
 
 
-def test_dockerfiles_exist_for_all_services():
-    services = ["gateway", "agent", "corpus", "ingestion", "math_verifier"]
-    for svc in services:
-        df = ROOT / "services" / svc / "Dockerfile"
-        assert df.exists(), f"Missing Dockerfile for {svc}"
+def _compose_service_args() -> dict[str, str]:
+    """Compose service name -> the SERVICE build arg of every service built from the Dockerfile."""
+    compose = yaml.safe_load((ROOT / "infra/docker-compose.yml").read_text())
+    return {
+        name: service["build"]["args"]["SERVICE"]
+        for name, service in compose["services"].items()
+        if "build" in service and service["build"]["dockerfile"] == "infra/Dockerfile"
+    }
+
+
+def test_one_dockerfile_builds_every_python_service():
+    assert (ROOT / "infra/Dockerfile").is_file()
+    assert not list((ROOT / "services").glob("*/Dockerfile")), "per-service Dockerfiles are gone"
+    assert sorted(set(_compose_service_args().values())) == sorted(SERVICES)
+
+
+def test_every_service_has_a_dependency_group_and_an_assemble_entry():
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    groups = pyproject["dependency-groups"]
+    assemble = (ROOT / "infra/assemble-service.sh").read_text()
+    for service in SERVICES:
+        assert service.replace("_", "-") in groups, service
+        assert re.search(rf"^  {service}\)", assemble, re.MULTILINE), service
+
+
+def test_runtime_dependencies_live_in_service_groups_only():
+    """
+    `dependencies` stays empty so an image never installs what its service does not import,
+    and the eval-only packages sit in `dev` only.
+    """
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    assert pyproject["project"]["dependencies"] == []
+    assert pyproject["tool"]["uv"]["default-groups"] == ["dev"]
+    for name, group in pyproject["dependency-groups"].items():
+        if name == "dev":
+            continue
+        packages = " ".join(entry for entry in group if isinstance(entry, str))
+        for eval_only in ("langgraph", "python-dotenv", "pytest", "numpy"):
+            assert eval_only not in packages, f"{eval_only} in the {name} group"
+
+
+def test_the_dockerfile_pins_the_same_uv_as_ci():
+    dockerfile = (ROOT / "infra/Dockerfile").read_text()
+    (docker_version,) = re.findall(r"^ARG UV_VERSION=(\d+\.\d+\.\d+)$", dockerfile, re.MULTILINE)
+    action = yaml.safe_load((ROOT / ".github/actions/setup-python/action.yml").read_text())
+    ci_versions = {step["with"]["version"] for step in action["runs"]["steps"] if "with" in step}
+    assert ci_versions == {docker_version}
+    assert ":latest" not in dockerfile
+
+
+def test_ci_checks_every_image_imports_with_only_its_group():
+    ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    script = "\n".join(str(step.get("run", "")) for step in ci["jobs"]["compose-smoke"]["steps"])
+    assert "infra/import_smoke.py" in script
+    for service in ["gateway", "agent", "corpus", "ingestion", "math-verifier"]:
+        assert service in script, service
 
 
 def _steps(workflow: dict) -> list[tuple[str, dict]]:
