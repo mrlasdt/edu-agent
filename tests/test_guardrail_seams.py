@@ -27,6 +27,7 @@ import pytest
 import respx
 
 from services.gateway.src.gateway.guardrails.input import (
+    CompletenessVerdict,
     ModerationUnavailableError,
     _call_moderation_api,
     check_completeness,
@@ -36,6 +37,7 @@ from services.gateway.src.gateway.guardrails.output import check_answer_leak
 from shared.src.shared.config import Settings
 from shared.src.shared.llm_router import use_router
 from shared.src.shared.models import Message, MessageRole, Mode, Session
+from shared.src.shared.structured import StructuredOutputError
 from tests.llm_fakes import SERVER_ERROR, ScriptedRouter, calls, mock_router
 
 _INPUT = "services.gateway.src.gateway.guardrails.input"
@@ -233,8 +235,6 @@ def _session() -> Session:
         ('{"complete": false, "clarification": "Which problem?"}', (False, "Which problem?")),
         ('{"complete": true, "clarification": ""}', (True, "")),
         ('{"complete": false}', (False, "")),
-        ("not json at all", (True, "")),  # unparseable reply fails open
-        ('{"clarification": "Which problem?"}', (True, "Which problem?")),  # no verdict: complete
     ],
 )
 async def test_completeness_reply_is_parsed_from_the_model_reply(reply, expected):
@@ -245,7 +245,19 @@ async def test_completeness_reply_is_parsed_from_the_model_reply(reply, expected
 
 
 @pytest.mark.asyncio
-async def test_completeness_check_sends_the_history_and_asks_for_json():
+@pytest.mark.parametrize(
+    "reply",
+    ["not json at all", '{"clarification": "Which problem?"}'],
+    ids=["not-json", "no-verdict"],
+)
+async def test_a_reply_that_is_not_a_verdict_is_an_error_not_complete(reply):
+    router = mock_router({_MODEL: reply})
+    with use_router(router), pytest.raises(StructuredOutputError):
+        await check_completeness("solve this", _session(), "t-bad")
+
+
+@pytest.mark.asyncio
+async def test_completeness_check_sends_the_history_and_asks_for_a_verdict():
     seen: list[dict[str, Any]] = []
 
     async def behave(**kwargs: Any) -> Any:
@@ -263,7 +275,7 @@ async def test_completeness_check_sends_the_history_and_asks_for_json():
     assert request["model"] == _MODEL
     assert request["temperature"] == 0
     assert request["stream"] is False
-    assert request["response_format"] == {"type": "json_object"}
+    assert request["response_format"] is CompletenessVerdict  # the schema itself
     assert [m["role"] for m in request["messages"]] == ["system", "user", "assistant", "user"]
     assert "GRE QUANT" in request["messages"][0]["content"]
     assert request["messages"][-1]["content"] == "why did we subtract 3?"
