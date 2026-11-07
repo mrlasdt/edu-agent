@@ -241,17 +241,37 @@ def make_client() -> httpx.Client:
     )
 
 
+class RobotsUnavailableError(RuntimeError):
+    """robots.txt could not be read, so RFC 9309 says to treat the whole site as disallowed."""
+
+
 def fetch_robots(client: httpx.Client) -> Callable[[str], bool]:
-    """Fetch robots.txt once and return its verdict per URL; unreachable or missing allows."""
-    parser = RobotFileParser()
+    """Fetch robots.txt once and return its verdict per URL.
+
+    RFC 9309 section 2.3.1.4: a robots.txt that is unreachable (5xx or a network error) means
+    complete disallow, so this raises RobotsUnavailableError and the import aborts. Section
+    2.3.1.3: 4xx means no restrictions, so a missing file (404) allows everything. 401 and 403
+    are the one 4xx exception kept on purpose: the RFC only says a crawler MAY go ahead there,
+    and an access-controlled robots.txt is a stronger signal than an absent one, so stay out
+    (the stdlib RobotFileParser.read does the same).
+    """
+    url = f"{BASE}/robots.txt"
     try:
-        resp = client.get(f"{BASE}/robots.txt")
-    except httpx.HTTPError:
-        return lambda url: True
-    if resp.status_code in (401, 403):
-        return lambda url: False
+        resp = client.get(url)
+    except httpx.HTTPError as exc:
+        raise RobotsUnavailableError(
+            f"cannot reach {url} ({exc.__class__.__name__}: {exc}); robots.txt is unreachable, "
+            "so RFC 9309 treats the whole site as disallowed. Nothing was fetched; retry later."
+        ) from exc
+    if resp.status_code >= 500 or resp.status_code in (401, 403):
+        raise RobotsUnavailableError(
+            f"{url} answered HTTP {resp.status_code}; robots.txt is unavailable, so the whole "
+            "site is treated as disallowed (RFC 9309 section 2.3.1.4). Nothing was fetched; "
+            "retry later."
+        )
     if resp.status_code >= 400:
         return lambda url: True
+    parser = RobotFileParser()
     parser.parse(resp.text.splitlines())
     return lambda url: parser.can_fetch(USER_AGENT, url)
 

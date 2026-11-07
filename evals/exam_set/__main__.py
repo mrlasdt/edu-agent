@@ -103,8 +103,12 @@ def main(argv: list[str] | None = None) -> int:
                           "count": record.count, "tier": record.label_tier,
                           "bands": record.counts_by_overall_band, "stats": stats.__dict__}))
     elif args.cmd == "import-ieltsbuddy":
-        with ieltsbuddy.make_client() as client:
-            record, buddy_stats = ieltsbuddy.import_ieltsbuddy(directory, client)
+        try:
+            with ieltsbuddy.make_client() as client:
+                record, buddy_stats = ieltsbuddy.import_ieltsbuddy(directory, client)
+        except ieltsbuddy.RobotsUnavailableError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
         print(json.dumps({"source": record.source_id, "file": str(directory / record.file),
                           "count": record.count, "tier": record.label_tier,
                           "bands": record.counts_by_overall_band,
