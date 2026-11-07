@@ -154,3 +154,23 @@ def test_free_eval_chain_starts_with_the_product_default(monkeypatch):
     chain = cli.provider_chain("free")
     assert chain[0] == "openrouter/recursive/flint-v1.0:free"
     assert len(chain) == len(set(chain))
+
+
+def test_pinning_a_model_works_from_any_directory(tmp_path, monkeypatch):
+    from evals.agent_eval.runner import write_model_config
+
+    monkeypatch.chdir(tmp_path)
+    pinned = load_model_config(write_model_config("openai/gpt-4o-mini"))
+    assert {pinned.litellm_model(role) for role in pinned.roles} == {"openai/gpt-4o-mini"}
+
+
+def test_pinning_a_model_starts_from_the_configured_model_config(tmp_path, monkeypatch):
+    from evals.agent_eval.runner import write_model_config
+    from shared.src.shared.config import clear_settings_caches
+
+    custom = tmp_path / "custom.yaml"
+    custom.write_text(yaml.safe_dump({"roles": {"only_role": {"provider": "p", "model": "m"}}}))
+    monkeypatch.setenv("MODEL_CONFIG_PATH", str(custom))
+    clear_settings_caches()
+    pinned = load_model_config(write_model_config("openai/gpt-4o-mini"))
+    assert list(pinned.roles) == ["only_role"]

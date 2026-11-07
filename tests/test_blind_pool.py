@@ -214,3 +214,16 @@ def test_reimporting_a_pool_updates_its_scores_instead_of_skipping_them(
                  "--blind-dir", str(pool)]) == 0
     assert json.loads(capsys.readouterr().out)["skipped_duplicates"] == 0
     assert imported_bands(tmp_path) == {teacher(1).response: 6.5}
+
+
+def test_the_default_blind_dir_is_inside_the_gateways_ielts_data_dir(tmp_path, monkeypatch):
+    from services.gateway.src.gateway.settings import GatewaySettings
+    from shared.src.shared.config import PROJECT_ROOT
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("IELTS_DATA_DIR", raising=False)
+    assert blind_pool.default_blind_dir() == PROJECT_ROOT / "ielts-local" / "blind"
+    assert blind_pool.default_blind_dir().parent == Path(GatewaySettings().ielts_data_dir)
+
+    monkeypatch.setenv("IELTS_DATA_DIR", str(tmp_path / "elsewhere"))
+    assert blind_pool.default_blind_dir() == tmp_path / "elsewhere" / "blind"

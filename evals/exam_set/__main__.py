@@ -65,12 +65,12 @@ def main(argv: list[str] | None = None) -> int:
                          "imported from an earlier pool are skipped on import, so a second "
                          "pool toward n=60 needs more --drafts, e.g. --drafts 30 --teacher 0")
     bp.add_argument("--model", default="openai/gpt-4.1-mini")
-    bp.add_argument("--blind-dir", default=str(blind_pool.BLIND_DIR))
+    bp.add_argument("--blind-dir", default=str(blind_pool.default_blind_dir()))
     bp.add_argument("--ledger", default=None, help="spend ledger (default AI_LEDGER_PATH)")
     bp.add_argument("--ceiling", type=float, default=None,
                     help="spend cap in USD (default AI_SPEND_CAP_USD)")
     isb = sub.add_parser("import-blind-scores")
-    isb.add_argument("--blind-dir", default=str(blind_pool.BLIND_DIR))
+    isb.add_argument("--blind-dir", default=str(blind_pool.default_blind_dir()))
     sub.add_parser("manifest")
     sub.add_parser("summary")
     args = p.parse_args(argv)
