@@ -9,6 +9,9 @@ Settings are per service, and paths do not depend on the working directory.
 from __future__ import annotations
 
 import importlib
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -69,6 +72,30 @@ def test_math_verifier_starts_without_any_other_settings(monkeypatch):
         monkeypatch.undo()
         settings.get_settings.cache_clear()
         importlib.reload(server)
+
+
+def test_math_verifier_imports_with_only_its_shipped_dependencies():
+    """The image has no shared/config.py or pyyaml: block them and import the server."""
+    script = (
+        "import sys\n"
+        "BLOCKED = ('shared.src.shared.config', 'yaml')\n"
+        "class Block:\n"
+        "    def find_spec(self, name, path=None, target=None):\n"
+        "        if name in BLOCKED:\n"
+        "            raise ImportError(f'{name} is not in the math-verifier image')\n"
+        "sys.meta_path.insert(0, Block())\n"
+        "from services.math_verifier.src.math_verifier import server\n"
+        "assert not any(m in sys.modules for m in BLOCKED)\n"
+        "print(server.mcp.settings.host, server.mcp.settings.port)\n"
+    )
+    env = {k: v for k, v in os.environ.items() if not k.startswith("MATH_VERIFIER_")}
+    env.update(FOREIGN_GARBAGE)
+    env["MATH_VERIFIER_PORT"] = "8123"
+    result = subprocess.run(
+        [sys.executable, "-c", script], cwd=REPO_ROOT, env=env, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.split() == ["127.0.0.1", "8123"]
 
 
 def test_load_model_config_works_from_another_working_directory(tmp_path, monkeypatch):
