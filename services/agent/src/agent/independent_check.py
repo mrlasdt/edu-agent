@@ -17,7 +17,7 @@ The limit is ADR-0012's: only questions whose answer is a number the solver can 
 checked. "agrees" means two routes (the working, and the model's equation run by a solver) reached
 the same number. It does not mean the problem was read correctly: a model that misreads the
 problem the same way twice agrees with itself. Every function here is pure or goes through the
-verify-math skill; the model call lives in `QuantAgent._formalize`.
+verify-math capability; the model call lives in `QuantAgent._formalize`.
 """
 from __future__ import annotations
 
@@ -95,7 +95,7 @@ def _display(computed: str) -> str:
 
 
 async def compare(
-    skill: VerifyMath, expression: str | None, claimed: str
+    verify_math: VerifyMath, expression: str | None, claimed: str
 ) -> IndependentCheck:
     """
     Compute `expression` with the solver and compare it with the `claimed` answer. Never raises.
@@ -108,23 +108,23 @@ async def compare(
     claimed = _THOUSANDS.sub(lambda m: m.group().replace(",", ""), claimed)
     if not is_number_list(claimed):
         return IndependentCheck(NOT_CHECKABLE, reason="the answer is not a number")
-    result = await skill.verify(expression=expression, expected=claimed)
+    result = await verify_math.verify(expression=expression, expected=claimed)
     if result.error:
         return IndependentCheck(NOT_CHECKABLE, reason=f"solver: {result.error}")
     if result.verified:
         return IndependentCheck(AGREES)
     if not is_number_list(result.computed):
         return IndependentCheck(NOT_CHECKABLE, reason="the solver did not compute a number")
-    if await _is_rounding_of(skill, expression, claimed):
+    if await _is_rounding_of(verify_math, expression, claimed):
         return IndependentCheck(AGREES)
-    if "=" in expression and await _is_some_of_the_roots(skill, result.computed, claimed):
+    if "=" in expression and await _is_some_of_the_roots(verify_math, result.computed, claimed):
         return IndependentCheck(
             NOT_CHECKABLE, reason="the answer is some of the roots; the question may restrict them"
         )
     return IndependentCheck(DISAGREES, solver=_display(result.computed))
 
 
-async def _is_rounding_of(skill: VerifyMath, expression: str, claimed: str) -> bool:
+async def _is_rounding_of(verify_math: VerifyMath, expression: str, claimed: str) -> bool:
     """
     A decimal answer that is the right value rounded to its own number of places ("3.3" for
     10/3) agrees. Asked of the same solver as whole numbers, which compare exactly: is
@@ -136,14 +136,14 @@ async def _is_rounding_of(skill: VerifyMath, expression: str, claimed: str) -> b
     if match is None or "=" in expression:
         return False
     scale = 10 ** len(match.group(1))
-    rounded = await skill.verify(
+    rounded = await verify_math.verify(
         expression=f"floor(({expression}) * {scale} + 1/2)",
         expected=str(int(text.replace(".", ""))),
     )
     return rounded.verified and not rounded.error
 
 
-async def _is_some_of_the_roots(skill: VerifyMath, computed: str, claimed: str) -> bool:
+async def _is_some_of_the_roots(verify_math: VerifyMath, computed: str, claimed: str) -> bool:
     """
     True when every claimed value is one of the solver's roots and some root is left over
     ("2" against "-2, 2"): the question may ask for the positive root, so this is no disagreement.
@@ -154,7 +154,7 @@ async def _is_some_of_the_roots(skill: VerifyMath, computed: str, claimed: str) 
     matched: set[int] = set()
     for value in wanted:
         for index, root in enumerate(roots):
-            check = await skill.verify(expression=value, expected=root)
+            check = await verify_math.verify(expression=value, expected=root)
             if check.verified and not check.error:
                 matched.add(index)
                 break

@@ -3,7 +3,7 @@ Deterministic verifier tools for generated Quant items.
 
 Every tool is a pure check returning a CheckResult; the pipeline runs them as a tool-use
 step and feeds failures back to the generator. The solver check recomputes the key through
-the same verify-math skill the Quant agent uses (HTTP to the math-verifier in production,
+the same verify-math capability the Quant agent uses (HTTP to the math-verifier in production,
 the in-process sandbox in evals), so the generator never grades its own answer.
 """
 from __future__ import annotations
@@ -93,11 +93,11 @@ def structure_check(item: QuestionItem) -> CheckResult:
 # ── solver ───────────────────────────────────────────────────────────────────
 
 
-async def solve_check(item: QuestionItem, skill: VerifyMath) -> CheckResult:
+async def solve_check(item: QuestionItem, verify_math: VerifyMath) -> CheckResult:
     """Recompute the key independently and compare it with the item's claimed answer."""
     if item.question_type == QuestionType.quantitative_comparison:
-        return await _solve_qc(item, skill)
-    result = await skill.verify(expression=item.expression, expected=item.answer)
+        return await _solve_qc(item, verify_math)
+    result = await verify_math.verify(expression=item.expression, expected=item.answer)
     if result.error:
         return CheckResult(name="solver", passed=False, detail=f"cannot solve: {result.error}")
     if not result.verified:
@@ -124,10 +124,10 @@ def _qc_signs(diff: sp.Expr) -> set[int] | None:
     return signs or None
 
 
-async def _solve_qc(item: QuestionItem, skill: VerifyMath) -> CheckResult:
+async def _solve_qc(item: QuestionItem, verify_math: VerifyMath) -> CheckResult:
     diff_expr = f"({item.quantity_a}) - ({item.quantity_b})"
-    # The skill returns what it computed whether or not `expected` matches.
-    computed = await skill.verify(expression=diff_expr, expected="0")
+    # The capability returns what it computed whether or not `expected` matches.
+    computed = await verify_math.verify(expression=diff_expr, expected="0")
     diff = _parse(computed.computed) if computed.computed else _parse(diff_expr)
     if diff is None:
         return CheckResult(name="solver", passed=False, detail="cannot parse the quantities")
@@ -148,7 +148,7 @@ async def _solve_qc(item: QuestionItem, skill: VerifyMath) -> CheckResult:
     return CheckResult(name="solver", passed=True, detail=f"comparison gives {correct}")
 
 
-async def distractor_check(item: QuestionItem, skill: VerifyMath) -> CheckResult:
+async def distractor_check(item: QuestionItem, verify_math: VerifyMath) -> CheckResult:
     """Multiple choice only: the keyed options are exactly the solution values."""
     if item.question_type not in (
         QuestionType.multiple_choice_single,
@@ -176,7 +176,7 @@ async def distractor_check(item: QuestionItem, skill: VerifyMath) -> CheckResult
         problems.append("a single-answer question must key exactly one value")
     if item.question_type == QuestionType.multiple_choice_multiple and len(answers) < 2:
         problems.append("a select-all question must key at least two values")
-    solved = await skill.verify(expression=item.expression, expected=item.answer)
+    solved = await verify_math.verify(expression=item.expression, expected=item.answer)
     solution_set = _parse_values(solved.computed.strip("[]")) if solved.computed else None
     if solution_set:
         for i, v in enumerate(values):
@@ -198,10 +198,10 @@ def leak_check(item: QuestionItem) -> CheckResult:
     return CheckResult(name="leak", passed=not problems, detail="; ".join(problems))
 
 
-async def run_checks(item: QuestionItem, skill: VerifyMath) -> list[CheckResult]:
+async def run_checks(item: QuestionItem, verify_math: VerifyMath) -> list[CheckResult]:
     """All deterministic tools, in order. The solver only runs on a structurally sound item."""
     results = [structure_check(item), leak_check(item)]
     if results[0].passed:
-        results.append(await solve_check(item, skill))
-        results.append(await distractor_check(item, skill))
+        results.append(await solve_check(item, verify_math))
+        results.append(await distractor_check(item, verify_math))
     return results

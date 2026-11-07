@@ -1,12 +1,12 @@
 """
-One source for the math tools' contract, and skills that reach the real routes.
+One source for the math tools' contract, and the clients that reach the real routes.
 
 Behaviors under test:
   1. the agent's tool specs and the verifier's tools come from one module, so a changed
      parameter is one edit (the two used to be hand-copied and could drift)
   2. every tool function takes exactly the arguments its spec lists, required or optional
-  3. both skills take an `httpx` client, so a test drives the real FastAPI/Starlette routes
-     through `httpx.ASGITransport` instead of subclassing a skill and skipping its `__init__`
+  3. both clients take an `httpx` client, so a test drives the real FastAPI/Starlette routes
+     through `httpx.ASGITransport` instead of subclassing a client and skipping its `__init__`
 """
 
 import inspect
@@ -56,18 +56,18 @@ def test_every_tool_function_takes_the_arguments_its_spec_lists() -> None:
 # ── 3. a client reaches the real routes ──────────────────────────────────────
 
 
-async def test_the_verify_skill_reaches_the_real_route(client: httpx.AsyncClient) -> None:
-    skill = VerifyMath(client=client)
-    right = await skill.verify("x**2 - 5*x + 6 = 0", "x=2 or x=3")
-    wrong = await skill.verify("x**2 - 5*x + 6 = 0", "x=1")
+async def test_the_verify_math_reaches_the_real_route(client: httpx.AsyncClient) -> None:
+    verify_math = VerifyMath(client=client)
+    right = await verify_math.verify("x**2 - 5*x + 6 = 0", "x=2 or x=3")
+    wrong = await verify_math.verify("x**2 - 5*x + 6 = 0", "x=1")
     assert right.verified is True and right.error is None
     assert wrong.verified is False
 
 
-async def test_the_math_tools_skill_reaches_the_real_route(client: httpx.AsyncClient) -> None:
-    skill = MathTools(client=client)
-    assert (await skill.call("math_solve", {"equation": "2x + 3 = 11"}))["roots"] == ["4"]
-    assert (await skill.call("math_compare", {"quantity_a": "3^2", "quantity_b": "2^3"}))[
+async def test_the_math_tools_reach_the_real_route(client: httpx.AsyncClient) -> None:
+    tools = MathTools(client=client)
+    assert (await tools.call("math_solve", {"equation": "2x + 3 = 11"}))["roots"] == ["4"]
+    assert (await tools.call("math_compare", {"quantity_a": "3^2", "quantity_b": "2^3"}))[
         "verdict"
     ] == "A"
 

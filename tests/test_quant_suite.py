@@ -66,10 +66,10 @@ async def test_every_solve_items_ground_truth_agrees_with_its_expression():
 
 
 async def test_every_hostile_string_is_rejected_by_the_real_verifier():
-    skill = runner.in_process_verify_skill()
+    verify_math = runner.in_process_verify_math()
     for item in ITEMS:
         if item["kind"] == "security":
-            row = await quant_suite.run_security_case(item, skill)
+            row = await quant_suite.run_security_case(item, verify_math)
             assert row.passed, (item["id"], row.checks)
 
 
@@ -231,18 +231,18 @@ async def _run(
     transport = MeteredTransport(
         Ledger(tmp_path / "ledger.json", 5.0), "t", fake_model=_fake(behave)
     )
-    skill = runner.in_process_verify_skill()
+    verify_math = runner.in_process_verify_math()
     config = runner.write_model_config("offline/fake")
 
     def factory(notes: list[str]) -> QuantAgent:
         return runner.build_quant_agent(
-            model_config_path=config, verify_skill=skill,
-            corpus_skill=quant_suite.NotesSkill(notes),
+            model_config_path=config, verify_math=verify_math,
+            retrieve_corpus=quant_suite.NotesCorpus(notes),
         )
 
     with transport.installed(), quant_suite.collecting_turns() as collector:
         return await quant_suite.run_quant_suite(
-            [_item(i) for i in ids], agent_factory=factory, verify_skill=skill,
+            [_item(i) for i in ids], agent_factory=factory, verify_math=verify_math,
             samples=samples, collector=collector,
         )
 

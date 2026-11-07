@@ -112,18 +112,18 @@ class QuantSuite:
         """The suite on the backend's model: real agent, rule graders, `--samples` attempts."""
         args = ctx.args
         config = runner.write_model_config(ctx.backend.model)
-        skill = runner.in_process_verify_skill()
+        verify_math = runner.in_process_verify_math()
 
         def factory(notes: list[str]) -> QuantAgent:
             return runner.build_quant_agent(
-                model_config_path=config, verify_skill=skill,
-                corpus_skill=quant_suite.NotesSkill(notes),
+                model_config_path=config, verify_math=verify_math,
+                retrieve_corpus=quant_suite.NotesCorpus(notes),
                 math_tools_enabled=args.math_tools == "on",
             )
 
         with quant_suite.collecting_turns() as collector:
             return await quant_suite.run_quant_suite(
-                selected_quant_items(args), agent_factory=factory, verify_skill=skill,
+                selected_quant_items(args), agent_factory=factory, verify_math=verify_math,
                 samples=args.samples, collector=collector, run_prefix=ctx.run_id,
             )
 
@@ -153,7 +153,7 @@ class QuantJudgeSuite:
     async def run(self, ctx: RunContext) -> QuantJudgeResult:
         agent = runner.build_quant_agent(
             model_config_path=runner.write_model_config(ctx.backend.model),
-            corpus_skill=quant_suite.NotesSkill([]),
+            retrieve_corpus=quant_suite.NotesCorpus([]),
             math_tools_enabled=ctx.args.math_tools == "on",
         )
         solve_items = self._solve_items()
@@ -213,16 +213,18 @@ class GenerationSuite:
     async def run(self, ctx: RunContext) -> GenerationResult:
         """Baseline vs LangGraph pipeline, both routed to the backend's model, same requests."""
         config = runner.write_model_config(ctx.backend.model)
-        skill = runner.in_process_verify_skill()
+        verify_math = runner.in_process_verify_math()
         requests = [
             GenerationRequest.model_validate(i)
             for i in runner.select_items("quant_generation", ctx.args.max_items, SEED)
         ]
         targets: dict[str, generation.Target] = {
             "baseline": build_baseline(config),
-            "pipeline": build_pipeline(skill, config),
+            "pipeline": build_pipeline(verify_math, config),
         }
-        return await generation.run_generation(requests, targets, ctx.judge, skill, ctx.transport)
+        return await generation.run_generation(
+            requests, targets, ctx.judge, verify_math, ctx.transport
+        )
 
     def metrics(self, result: GenerationResult) -> dict[str, float]:
         out: dict[str, float] = {}

@@ -68,7 +68,7 @@ class Model:
 
 
 class FakeMath:
-    """The math service as a canned HTTP answer, reached through the skill's real client path.
+    """The math service as a canned HTTP answer, reached through the client's real client path.
 
     `result` is what the service replies, an exception it raises (a service that is down), or a
     function of the call's arguments.
@@ -77,7 +77,7 @@ class FakeMath:
     def __init__(self, result: Any) -> None:
         self.result = result
         self.posts: list[tuple[str, dict[str, Any]]] = []
-        self.skill = MathTools(
+        self.math_tools = MathTools(
             server_url="http://math.test",
             client=httpx.AsyncClient(transport=httpx.MockTransport(self._handle)),
         )
@@ -94,9 +94,9 @@ class FakeMath:
 def agent(math: FakeMath, enabled: bool = True) -> QuantAgent:
     return QuantAgent(
         model_config_path="config/model_config.dev.yaml",
-        math_tools_skill=math.skill,
+        math_tools=math.math_tools,
         math_tools_enabled=enabled,
-        verify_math_skill=AsyncMock(),
+        verify_math=AsyncMock(),
     )
 
 
@@ -300,10 +300,10 @@ def test_every_tool_has_a_schema_the_service_accepts() -> None:
         assert len(fn["description"]) > 200  # written to brief a colleague, not to label a field
 
 
-async def test_the_skill_turns_a_failed_post_into_an_error_result() -> None:
-    skill = FakeMath(ConnectionError("down")).skill
-    assert await skill.call("math_evaluate", {"expression": "1"}) == {"error": UNAVAILABLE}
-    not_a_dict = FakeMath(["x"]).skill
+async def test_the_math_tools_turn_a_failed_post_into_an_error_result() -> None:
+    math_tools = FakeMath(ConnectionError("down")).math_tools
+    assert await math_tools.call("math_evaluate", {"expression": "1"}) == {"error": UNAVAILABLE}
+    not_a_dict = FakeMath(["x"]).math_tools
     assert await not_a_dict.call("math_evaluate", {"expression": "1"}) == {"error": UNAVAILABLE}
 
 

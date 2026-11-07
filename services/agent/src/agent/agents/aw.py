@@ -100,12 +100,12 @@ class AWAgent(BaseAgent):
     def __init__(
         self,
         model_config_path: str | None = None,
-        retrieve_corpus_skill: RetrieveCorpus | None = None,
-        match_style_skill: MatchStudentStyle | None = None,
+        retrieve_corpus: RetrieveCorpus | None = None,
+        match_student_style: MatchStudentStyle | None = None,
     ) -> None:
         self._model_config = load_model_config(model_config_path)
-        self._retrieve_skill = retrieve_corpus_skill or RetrieveCorpus()
-        self._match_style_skill = match_style_skill or MatchStudentStyle()
+        self._retrieve_corpus = retrieve_corpus or RetrieveCorpus()
+        self._match_student_style = match_student_style or MatchStudentStyle()
         self._model_config_path = model_config_path
 
     async def run(
@@ -290,7 +290,7 @@ class AWAgent(BaseAgent):
     # ── seams ─────────────────────────────────────────────────────────────────
 
     async def _retrieve(self, session: Session, message: str) -> list[CorpusChunk]:
-        return await self._retrieve_skill.retrieve(
+        return await self._retrieve_corpus.retrieve(
             query=message,
             candidate_id=session.candidate_id,
             school_id="",
@@ -309,7 +309,7 @@ class AWAgent(BaseAgent):
     async def _get_personal_style_exemplars(self, session: Session) -> list[str]:
         if not session.personal_style_enabled:
             return []
-        return await self._match_style_skill.get_exemplars(
+        return await self._match_student_style.get_exemplars(
             candidate_id=session.candidate_id,
             test_type=session.test_type,
         )

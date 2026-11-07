@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from evals.agent_eval.runner import in_process_verify_skill
+from evals.agent_eval.runner import in_process_verify_math
 from services.agent.src.agent import independent_check as ic
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.capabilities.verify_math import (
@@ -28,8 +28,8 @@ from tests.agent_events import reply_of
 
 
 @pytest.fixture
-def skill() -> VerifyMath:
-    return in_process_verify_skill()
+def verify_math() -> VerifyMath:
+    return in_process_verify_math()
 
 
 # ── reading the model's reply ────────────────────────────────────────────────
@@ -68,69 +68,69 @@ def test_is_number_list(text: str, ok: bool) -> None:
 # ── comparing the claimed answer with the solver's ───────────────────────────
 
 
-async def test_agrees_when_the_solver_gets_the_claimed_values(skill) -> None:
-    check = await ic.compare(skill, "x^2 - 5x + 6 = 0", "3, 2")
+async def test_agrees_when_the_solver_gets_the_claimed_values(verify_math) -> None:
+    check = await ic.compare(verify_math, "x^2 - 5x + 6 = 0", "3, 2")
     assert check == ic.IndependentCheck(ic.AGREES)
 
 
-async def test_disagrees_and_names_what_the_solver_computed(skill) -> None:
-    check = await ic.compare(skill, "x^2 - 5x + 6 = 0", "2, 4")
+async def test_disagrees_and_names_what_the_solver_computed(verify_math) -> None:
+    check = await ic.compare(verify_math, "x^2 - 5x + 6 = 0", "2, 4")
     assert (check.verdict, check.solver) == (ic.DISAGREES, "2, 3")
     assert check.event().public() == {"verdict": "disagrees", "solver": "2, 3"}
 
 
-async def test_a_single_wrong_value_disagrees(skill) -> None:
-    check = await ic.compare(skill, "17 * 23 * 19", "7430")
+async def test_a_single_wrong_value_disagrees(verify_math) -> None:
+    check = await ic.compare(verify_math, "17 * 23 * 19", "7430")
     assert (check.verdict, check.solver) == (ic.DISAGREES, "7429")
 
 
-async def test_a_decimal_that_is_the_right_value_rounded_agrees(skill) -> None:
-    assert (await ic.compare(skill, "10/3", "3.3")).verdict == ic.AGREES
-    assert (await ic.compare(skill, "10/3", "3.33")).verdict == ic.AGREES
-    assert (await ic.compare(skill, "10/3", "3.4")).verdict == ic.DISAGREES
+async def test_a_decimal_that_is_the_right_value_rounded_agrees(verify_math) -> None:
+    assert (await ic.compare(verify_math, "10/3", "3.3")).verdict == ic.AGREES
+    assert (await ic.compare(verify_math, "10/3", "3.33")).verdict == ic.AGREES
+    assert (await ic.compare(verify_math, "10/3", "3.4")).verdict == ic.DISAGREES
 
 
-async def test_a_rounded_decimal_for_an_equation_is_not_given_the_benefit(skill) -> None:
-    assert (await ic.compare(skill, "3x = 10", "3.3")).verdict == ic.DISAGREES
+async def test_a_rounded_decimal_for_an_equation_is_not_given_the_benefit(verify_math) -> None:
+    assert (await ic.compare(verify_math, "3x = 10", "3.3")).verdict == ic.DISAGREES
 
 
 @pytest.mark.parametrize("claimed", ["1,200", "1200", "1,200.0"])
-async def test_a_thousands_separator_is_not_a_list(skill, claimed: str) -> None:
-    assert (await ic.compare(skill, "6*200", claimed)).verdict == ic.AGREES
+async def test_a_thousands_separator_is_not_a_list(verify_math, claimed: str) -> None:
+    assert (await ic.compare(verify_math, "6*200", claimed)).verdict == ic.AGREES
 
 
-async def test_a_wrong_answer_with_a_thousands_separator_still_disagrees(skill) -> None:
-    check = await ic.compare(skill, "6*200", "1,300")
+async def test_a_wrong_answer_with_a_thousands_separator_still_disagrees(verify_math) -> None:
+    check = await ic.compare(verify_math, "6*200", "1,300")
     assert (check.verdict, check.solver) == (ic.DISAGREES, "1200")
 
 
-async def test_a_comma_list_without_digit_groups_stays_a_list(skill) -> None:
-    assert (await ic.compare(skill, "x^2 - 5x + 6 = 0", "2, 3")).verdict == ic.AGREES
-    assert (await ic.compare(skill, "x^2 - 5x + 6 = 0", "2,3")).verdict == ic.AGREES
+async def test_a_comma_list_without_digit_groups_stays_a_list(verify_math) -> None:
+    assert (await ic.compare(verify_math, "x^2 - 5x + 6 = 0", "2, 3")).verdict == ic.AGREES
+    assert (await ic.compare(verify_math, "x^2 - 5x + 6 = 0", "2,3")).verdict == ic.AGREES
 
 
 @pytest.mark.parametrize("claimed", ["2", "-2", "x = 2", "sqrt(4)"])
 async def test_one_root_of_several_is_not_checkable_not_a_disagreement(
-    skill, claimed: str
+    verify_math, claimed: str
 ) -> None:
-    check = await ic.compare(skill, "x^2 = 4", claimed)
+    check = await ic.compare(verify_math, "x^2 = 4", claimed)
     assert check.verdict == ic.NOT_CHECKABLE
     assert check.reason
 
 
-async def test_a_subset_of_three_roots_is_not_checkable(skill) -> None:
-    check = await ic.compare(skill, "(x - 1)*(x - 2)*(x - 3) = 0", "1, 3")
+async def test_a_subset_of_three_roots_is_not_checkable(verify_math) -> None:
+    check = await ic.compare(verify_math, "(x - 1)*(x - 2)*(x - 3) = 0", "1, 3")
     assert check.verdict == ic.NOT_CHECKABLE
 
 
 @pytest.mark.parametrize("claimed", ["3", "2, 3", "3, 2, 5", "4, 5"])
-async def test_a_claimed_value_outside_the_roots_disagrees(skill, claimed: str) -> None:
-    check = await ic.compare(skill, "x^2 = 4", claimed)
+async def test_a_claimed_value_outside_the_roots_disagrees(verify_math, claimed: str) -> None:
+    check = await ic.compare(verify_math, "x^2 = 4", claimed)
     assert (check.verdict, check.solver) == (ic.DISAGREES, "-2, 2")
 
 
-async def test_a_wrong_single_value_against_a_single_root_disagrees(skill) -> None:
-    check = await ic.compare(skill, "3x = 12", "5")
+async def test_a_wrong_single_value_against_a_single_root_disagrees(verify_math) -> None:
+    check = await ic.compare(verify_math, "3x = 12", "5")
     assert (check.verdict, check.solver) == (ic.DISAGREES, "4")
 
 
@@ -147,9 +147,9 @@ async def test_a_wrong_single_value_against_a_single_root_disagrees(skill) -> No
     ],
 )
 async def test_not_checkable_is_never_a_verdict_on_the_answer(
-    skill, expression: str | None, claimed: str, why: str
+    verify_math, expression: str | None, claimed: str, why: str
 ) -> None:
-    check = await ic.compare(skill, expression, claimed)
+    check = await ic.compare(verify_math, expression, claimed)
     assert check.verdict == ic.NOT_CHECKABLE, why
     assert check.reason
 
@@ -202,7 +202,7 @@ async def _solve(
     monkeypatch.setattr("shared.src.shared.turn_meter.default_turn_log", lambda: log)
     agent = QuantAgent(
         model_config_path="config/model_config.dev.yaml",
-        verify_math_skill=in_process_verify_skill(),
+        verify_math=in_process_verify_math(),
     )
     session = Session(candidate_id="c", test_type="gre", section="quant", mode=Mode.solve)
     out = [o async for o in agent.run(session, PROBLEM, trace_id="t-1")]

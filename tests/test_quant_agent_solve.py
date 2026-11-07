@@ -2,7 +2,7 @@
 Tests for QuantAgent Solve mode — verifier integration, retry, escalation, degradation.
 
 Behaviors under test (from issue 05 acceptance criteria):
-  1. Solve turn calls verify-math skill; verified answer emitted normally
+  1. Solve turn calls verify-math capability; verified answer emitted normally
   2. On verifier disagreement: agent retries (once) with disagreement as context
   3. After 2 retries still failing: escalates to escalation model
   4. After escalation failure: degrades gracefully with a failed Verified event

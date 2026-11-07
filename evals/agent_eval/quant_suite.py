@@ -73,7 +73,7 @@ BASELINE_SCHEMA = "eval-baseline/1"
 AgentFactory = Callable[[list[str]], QuantAgent]
 
 
-class NotesSkill(RetrieveCorpus):
+class NotesCorpus(RetrieveCorpus):
     """Serves an item's own reference notes in place of the corpus service (none: no notes)."""
 
     def __init__(self, notes: list[str]) -> None:
@@ -230,10 +230,10 @@ async def run_attempt(
     return _row(item, attempt, checks, transcript, usage)
 
 
-async def run_security_case(item: dict[str, Any], skill: VerifyMath) -> QuantAttempt:
+async def run_security_case(item: dict[str, Any], verify_math: VerifyMath) -> QuantAttempt:
     """Hostile text as a model's final answer, through the verifier the solve turn uses."""
     text = item.get("hostile") or item["hostile_repeat"][0] * item["hostile_repeat"][1]
-    result = await skill.verify(expression=text, expected="1")
+    result = await verify_math.verify(expression=text, expected="1")
     checks = {
         "rejected": not result.verified and result.computed == "" and bool(result.error),
         "process_id_not_returned": str(os.getpid()) not in result.computed,
@@ -505,7 +505,7 @@ async def run_quant_suite(
     items: list[dict[str, Any]],
     *,
     agent_factory: AgentFactory,
-    verify_skill: VerifyMath,
+    verify_math: VerifyMath,
     samples: int,
     collector: TurnCollector,
     run_prefix: str = "eval",
@@ -524,7 +524,7 @@ async def run_quant_suite(
     model_items = [i for i in items if i["kind"] in MODEL_KINDS]
     jobs = [guarded(i, a) for i in model_items for a in range(samples)]
     done = [r for r in await gather_limited(jobs) if r is not None]
-    security = [await run_security_case(i, verify_skill) for i in items if i["kind"] == "security"]
+    security = [await run_security_case(i, verify_math) for i in items if i["kind"] == "security"]
     total = len(jobs) + len(security)
     suite = summarise([*done, *security], samples, len(dropped), total)
     if any(i["kind"] == "solve" for i in items):

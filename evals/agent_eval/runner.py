@@ -83,34 +83,34 @@ def _in_process_client() -> httpx.AsyncClient:
     )
 
 
-def in_process_verify_skill() -> VerifyMath:
-    """The product's verify-math skill, reaching the real verifier routes in this process."""
+def in_process_verify_math() -> VerifyMath:
+    """The product's verify-math capability, reaching the real verifier routes in this process."""
     return VerifyMath(client=_in_process_client())
 
 
 def in_process_math_tools() -> MathTools:
-    """The product's math-tools skill, reaching the real verifier routes in this process."""
+    """The product's math-tools tool set, reaching the real verifier routes in this process."""
     return MathTools(client=_in_process_client())
 
 
 def build_quant_agent(
     *,
     model_config_path: str,
-    corpus_skill: RetrieveCorpus,
+    retrieve_corpus: RetrieveCorpus,
     math_tools_enabled: bool = False,
-    verify_skill: VerifyMath | None = None,
+    verify_math: VerifyMath | None = None,
 ) -> QuantAgent:
     """
     The one way an eval builds the real QuantAgent: the verifier and the math tools reach the
-    real routes in this process, and `corpus_skill` is passed explicitly. It has no default on
+    real routes in this process, and `retrieve_corpus` is passed explicitly. It has no default on
     purpose: the agent's own default calls the corpus service, so an eval that forgot it would
     score differently depending on whether the docker stack happens to be running.
     """
     return QuantAgent(
         model_config_path=model_config_path,
-        verify_math_skill=verify_skill or in_process_verify_skill(),
-        retrieve_corpus_skill=corpus_skill,
-        math_tools_skill=in_process_math_tools(),
+        verify_math=verify_math or in_process_verify_math(),
+        retrieve_corpus=retrieve_corpus,
+        math_tools=in_process_math_tools(),
         math_tools_enabled=math_tools_enabled,
     )
 

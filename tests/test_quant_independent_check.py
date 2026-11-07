@@ -40,7 +40,7 @@ COMPARISONS = [i["id"] for i in SOLVE_ITEMS if i["question_type"] == "quantitati
 def _agent() -> QuantAgent:
     return QuantAgent(
         model_config_path="config/model_config.dev.yaml",
-        verify_math_skill=runner.in_process_verify_skill(),
+        verify_math=runner.in_process_verify_math(),
     )
 
 

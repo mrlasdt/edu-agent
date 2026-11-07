@@ -11,7 +11,7 @@ Accepted. Implemented for GRE Quant; no HTTP endpoint or UI yet.
 - **A. One prompt, emit whatever comes back (the baseline).** Cheapest, and kept in code (`SingleCallGenerator`) as the "before" for evals. Rejected as the product path: it ships wrong keys, leaked answers and unparseable replies unchecked.
 - **B. Single call plus deterministic verification, no loop.** Catches defects but turns every defect into a lost item.
 - **C. Planner, expert routing, tools and a bounded revise loop (chosen).** Feeding the failed checks back to the generator recovers most defective first attempts at the cost of extra calls. Expert prompts are narrower than one all-types prompt, and the planner can pick the type when the request does not.
-- **D. LLM-only verification (judge the key).** Rejected as the gate: a model grading its own key is the failure mode we want to remove. The solver recomputes the key with sympy through the existing verify-math skill; the LLM critic only judges wording, and only after the tools pass.
+- **D. LLM-only verification (judge the key).** Rejected as the gate: a model grading its own key is the failure mode we want to remove. The solver recomputes the key with sympy through the existing verify-math capability; the LLM critic only judges wording, and only after the tools pass.
 - **E. Escalate to a stronger model on the last attempt (as `QuantAgent` does).** Deferred. It needs a priced escalation role and a measured benefit; the bounded loop plus review queue is the v1 failure path.
 
 ## Consequences

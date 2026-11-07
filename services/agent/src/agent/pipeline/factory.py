@@ -10,14 +10,14 @@ _PROMPTS = ("planner", "numeric_expert", "choice_expert", "comparison_expert", "
 
 
 def build_pipeline(
-    verify_skill: VerifyMath | None = None,
+    verify_math: VerifyMath | None = None,
     model_config_path: str | None = None,
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
 ) -> QuestionPipeline:
     completer = LiteLLMCompleter(model_config_path)
     return QuestionPipeline(
         completer,
-        verify_skill or VerifyMath(),
+        verify_math or VerifyMath(),
         max_attempts=max_attempts,
         prompt_versions={name: completer.prompt_version(name) for name in _PROMPTS},
     )

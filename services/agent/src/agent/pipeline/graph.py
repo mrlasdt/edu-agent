@@ -12,7 +12,7 @@ LangGraph question-generation pipeline.
 - generate:  the expert writes one structured item. On a retry it also sees the failed
              checks and its previous attempt.
 - verify:    deterministic tools (structure, leak, sympy solver, distractors) via the
-             verify-math skill. The generator never grades its own key.
+             verify-math capability. The generator never grades its own key.
 - critic:    an LLM pass for ambiguity and answer leaks, run only on items that already
              pass the deterministic tools.
 - revise:    turns failed checks into feedback. After `max_attempts` the item is escalated
@@ -119,12 +119,12 @@ class QuestionPipeline:
     def __init__(
         self,
         completer: Completer,
-        verify_skill: VerifyMath,
+        verify_math: VerifyMath,
         max_attempts: int = DEFAULT_MAX_ATTEMPTS,
         prompt_versions: dict[str, str] | None = None,
     ) -> None:
         self._llm = completer
-        self._skill = verify_skill
+        self._verify_math = verify_math
         self._max_attempts = max_attempts
         self._versions = prompt_versions or {}
         self._graph = self._build()
@@ -299,7 +299,7 @@ class QuestionPipeline:
     async def _verify(self, state: PipelineState) -> dict[str, Any]:
         item = state["item"]
         start = time.perf_counter()
-        checks = state["checks"] if item is None else await run_checks(item, self._skill)
+        checks = state["checks"] if item is None else await run_checks(item, self._verify_math)
         return {
             "checks": checks,
             "trace": [

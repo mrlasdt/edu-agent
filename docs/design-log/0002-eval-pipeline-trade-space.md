@@ -27,7 +27,7 @@ Long-form deep-dive of the sub-decisions captured in ADR-0006. Sub-decisions are
 
 ### Quant judge
 
-**Chosen:** Deterministic comparison to ground truth via the sympy verifier (same verifier used in the agent's verify-math Skill).
+**Chosen:** Deterministic comparison to ground truth via the sympy verifier (same verifier used in the agent's verify-math capability).
 
 **Rejected:**
 - *LLM judge for Quant* — pure overhead. Quant correctness is symbolic; LLM adds noise.
@@ -88,7 +88,7 @@ Long-form deep-dive of the sub-decisions captured in ADR-0006. Sub-decisions are
 
 ### Per-PR eval cost optimisation
 
-**Chosen:** path-based CI gating (eval runs only on PRs that touch prompts/agents/skills/evals/model-configs) + 10% sample (~15 Quant + 3 AW) + Haiku judge for the PR run.
+**Chosen:** path-based CI gating (eval runs only on PRs that touch prompts/agents/capabilities/tools/evals/model-configs) + 10% sample (~15 Quant + 3 AW) + Haiku judge for the PR run.
 
 **Rejected:**
 - *Run full eval on every PR* — wasteful; most PRs don't change behaviour-relevant code.
@@ -99,7 +99,7 @@ Long-form deep-dive of the sub-decisions captured in ADR-0006. Sub-decisions are
 
 ### Online telemetry
 
-**Chosen:** structured per-turn logs with trace IDs. Fields: input, mode, agent, skills invoked, retry count, escalation events, output, judge scores (if applicable), latency, cost.
+**Chosen:** structured per-turn logs with trace IDs. Fields: input, mode, agent, capabilities and tools invoked, retry count, escalation events, output, judge scores (if applicable), latency, cost.
 
 **Rejected:**
 - *Free-text logging* — useless for analytics.

@@ -54,15 +54,15 @@ def _item_text(item: QuestionItem) -> str:
     return f"{item.stem}\n{choices}\nKeyed answer: {item.answer}".strip()
 
 
-async def _audit(item: QuestionItem, skill: VerifyMath) -> list[str]:
-    return [c.name for c in await run_checks(item, skill) if not c.passed]
+async def _audit(item: QuestionItem, verify_math: VerifyMath) -> list[str]:
+    return [c.name for c in await run_checks(item, verify_math) if not c.passed]
 
 
 async def _run_one(
     name: str,
     target: Target,
     request: GenerationRequest,
-    skill: VerifyMath,
+    verify_math: VerifyMath,
     judge: Judge,
     judge_errors: list[str],
 ) -> GenerationRow:
@@ -71,7 +71,7 @@ async def _run_one(
     defects: list[str] = []
     judge_ok: bool | None = None
     if result.item is not None:
-        defects = await _audit(result.item, skill)
+        defects = await _audit(result.item, verify_math)
         verdict = await ask_yes_no(
             judge,
             JudgeQuestion(
@@ -154,7 +154,7 @@ async def run_generation(
     requests: list[GenerationRequest],
     targets: dict[str, Target],
     judge: Judge,
-    skill: VerifyMath,
+    verify_math: VerifyMath,
     transport: MeteredTransport,
     queue: HumanReviewQueue | None = None,
 ) -> GenerationResult:
@@ -165,7 +165,7 @@ async def run_generation(
     work = [(n, t, r) for n, t in targets.items() for r in requests]
     out = await gather_limited(
         [
-            guarded(_run_one(n, t, r, skill, judge, judge_errors), unavailable)
+            guarded(_run_one(n, t, r, verify_math, judge, judge_errors), unavailable)
             for n, t, r in work
         ]
     )

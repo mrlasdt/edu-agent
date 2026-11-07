@@ -88,8 +88,8 @@ class _ToolTurn:
     several times; the calls of all attempts are kept).
     """
 
-    def __init__(self, skill: MathTools) -> None:
-        self._skill = skill
+    def __init__(self, math_tools: MathTools) -> None:
+        self._math_tools = math_tools
         self.calls: list[ToolCallRecord] = []
         self.rounds = 0
         self.out_of_budget = False
@@ -108,7 +108,7 @@ class _ToolTurn:
             model=model,
             messages=messages,
             tools=MATH_TOOL_SPECS,
-            execute=self._skill.call,
+            execute=self._math_tools.call,
             temperature=temperature,
             **(obs_meta or {}),
         )
@@ -226,18 +226,18 @@ class QuantAgent(BaseAgent):
     def __init__(
         self,
         model_config_path: str | None = None,
-        verify_math_skill: VerifyMath | None = None,
-        retrieve_corpus_skill: RetrieveCorpus | None = None,
-        math_tools_skill: MathTools | None = None,
+        verify_math: VerifyMath | None = None,
+        retrieve_corpus: RetrieveCorpus | None = None,
+        math_tools: MathTools | None = None,
         math_tools_enabled: bool | None = None,
     ) -> None:
         self._model_config = load_model_config(model_config_path)
         self._math_tools_enabled = (
             get_settings().math_tools_enabled if math_tools_enabled is None else math_tools_enabled
         )
-        self._math_tools_skill = math_tools_skill
-        self._retrieve_skill = retrieve_corpus_skill or RetrieveCorpus()
-        self._verify_skill = verify_math_skill or VerifyMath()
+        self._math_tools = math_tools
+        self._retrieve_corpus = retrieve_corpus or RetrieveCorpus()
+        self._verify_math = verify_math or VerifyMath()
 
     # ── public interface ──────────────────────────────────────────────────────
 
@@ -261,7 +261,7 @@ class QuantAgent(BaseAgent):
         reported = f"math_tools-{version}" if self._math_tools_enabled else version
         obs_meta = build_llm_metadata(trace_id=trace_id, prompt_version=reported)
         meter = TurnMeter(trace_id, "agent", "quant_agent", mode, reported)
-        tools = _ToolTurn(self._math_tools_skill or MathTools()) if (
+        tools = _ToolTurn(self._math_tools or MathTools()) if (
             self._math_tools_enabled
         ) else None
         try:
@@ -430,7 +430,7 @@ class QuantAgent(BaseAgent):
         corpus costs the turn its grounding, not the answer.
         """
         try:
-            return await self._retrieve_skill.retrieve(
+            return await self._retrieve_corpus.retrieve(
                 query=message,
                 candidate_id=session.candidate_id,
                 school_id="",
@@ -457,7 +457,7 @@ class QuantAgent(BaseAgent):
         answer passes. `check_independently` is the check that does not come from the answer
         itself. This seam is patched in tests.
         """
-        return await self._verify_skill.verify(
+        return await self._verify_math.verify(
             expression=claimed_answer,
             expected=claimed_answer,
         )
@@ -501,4 +501,4 @@ class QuantAgent(BaseAgent):
         self, expression: str | None, claimed_answer: str
     ) -> IndependentCheck:
         """Compute `expression` with the solver and compare it with the claimed answer."""
-        return await independent_check.compare(self._verify_skill, expression, claimed_answer)
+        return await independent_check.compare(self._verify_math, expression, claimed_answer)
