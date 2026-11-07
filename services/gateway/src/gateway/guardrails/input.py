@@ -15,7 +15,8 @@ from services.gateway.src.gateway.guardrails.supportive import (
     is_self_harm_reason,
 )
 from services.gateway.src.gateway.guardrails.verdict import Verdict
-from shared.src.shared.config import get_settings, load_model_config
+from services.gateway.src.gateway.settings import get_settings
+from shared.src.shared.config import load_model_config
 from shared.src.shared.models import MessageRole, Session
 from shared.src.shared.observability import build_llm_metadata
 from shared.src.shared.structured import parse_structured, response_format_for

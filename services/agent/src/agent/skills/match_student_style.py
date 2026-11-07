@@ -11,7 +11,7 @@ from typing import Any
 
 import httpx
 
-from shared.src.shared.config import get_settings
+from services.agent.src.agent.settings import get_settings
 
 _MIN_ESSAYS = 2
 

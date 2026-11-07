@@ -22,7 +22,8 @@ from qdrant_client import AsyncQdrantClient, models
 
 from services.ingestion.src.ingestion.chunker import chunk_text
 from services.ingestion.src.ingestion.parser import is_allowed, parse_bytes
-from shared.src.shared.config import ADMIN_KEY_HEADER, get_settings
+from services.ingestion.src.ingestion.settings import get_settings
+from shared.src.shared.config import ADMIN_KEY_HEADER
 from shared.src.shared.corpus import ChunkPayload, Tier
 from shared.src.shared.embedder import embed_texts
 from shared.src.shared.sparse import encode_document
@@ -232,8 +233,9 @@ async def run_ingestion_pipeline(
     if not chunks:
         return {"chunks_indexed": 0}
 
-    vectors = await embed_texts([c["text"] for c in chunks])
-    client = get_qdrant_client()
+    settings = get_settings()
+    vectors = await embed_texts([c["text"] for c in chunks], url=settings.tei_embedder_url)
+    client = get_qdrant_client(settings.qdrant_url)
     try:
         await ensure_collection(client, dim=len(vectors[0]))
         points = [

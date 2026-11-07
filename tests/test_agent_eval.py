@@ -35,7 +35,7 @@ from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport
 from evals.judges.quant_judge import grade_quant_item
 from evals.loader import load_golden_set
 from services.agent.src.agent.answers import normalize_answer
-from shared.src.shared.config import Settings
+from shared.src.shared.config import SpendSettings
 from tests.eval_result_fakes import aw_result, eval_report
 from tests.llm_fakes import (
     RATE_LIMITED,
@@ -317,8 +317,8 @@ def test_the_eval_cli_defaults_to_the_configured_spend_cap_and_ledger(
 ):
     ledger = tmp_path / "shared.json"
     Ledger(ledger, 10.0).record("mock", "gpt-4.1-mini", 6.0)
-    settings = Settings(ai_spend_cap_usd=10.0, ai_ledger_path=str(ledger))
-    monkeypatch.setattr("shared.src.shared.budget.get_settings", lambda: settings)
+    settings = SpendSettings(ai_spend_cap_usd=10.0, ai_ledger_path=str(ledger))
+    monkeypatch.setattr("shared.src.shared.budget.get_spend_settings", lambda: settings)
     assert cli.main(["--out-dir", str(tmp_path / "runs")]) == 0
     plan = json.loads(capsys.readouterr().out)
     assert plan["ledger_ceiling_usd"] == 10.0 and plan["ledger_spent_usd"] == 6.0

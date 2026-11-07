@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from shared.src.shared.budget import estimate_cost, estimate_tokens
-from shared.src.shared.config import get_settings
+from shared.src.shared.config import get_turn_log_settings
 from shared.src.shared.llm_router import answered_model, get_router
 
 _log = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ class TurnLog:
 
 def default_turn_log() -> TurnLog | None:
     """The log at `TURN_LOG_PATH`; an empty path switches measurement off."""
-    path = get_settings().turn_log_path.strip()
+    path = get_turn_log_settings().turn_log_path.strip()
     return TurnLog(path) if path else None
 
 

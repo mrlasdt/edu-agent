@@ -15,16 +15,15 @@ from __future__ import annotations
 
 import re
 from collections.abc import Awaitable
-from pathlib import Path
 from typing import Any, Protocol
 
 from shared.src.shared.budget import BudgetExceededError, Ledger, spend_ledger
-from shared.src.shared.config import get_settings, load_model_config
+from shared.src.shared.config import PROJECT_ROOT, get_llm_settings, load_model_config
 from shared.src.shared.guarded_completion import InFlight, failure_reason, guarded_acompletion
 from shared.src.shared.llm_router import Completions, configured_chain, get_router
 from shared.src.shared.observability import build_llm_metadata
 
-PROMPT_ROOT = Path("prompts")
+PROMPT_ROOT = PROJECT_ROOT / "prompts"
 GRADER_ROLE = "ielts_grader"
 FEEDBACK_ROLE = "ielts_feedback"
 
@@ -46,15 +45,16 @@ def load_prompt(agent: str, mode: str, version: str) -> str:
 
 
 def prompt_version(role: str) -> str:
-    return load_model_config(get_settings().model_config_path).prompt_version(role, "writing_t2")
+    config = load_model_config(get_llm_settings().model_config_path)
+    return config.prompt_version(role, "writing_t2")
 
 
 def role_temperature(role: str) -> float:
-    return load_model_config(get_settings().model_config_path).role(role).temperature
+    return load_model_config(get_llm_settings().model_config_path).role(role).temperature
 
 
 def role_model(role: str) -> str:
-    return load_model_config(get_settings().model_config_path).litellm_model(role)
+    return load_model_config(get_llm_settings().model_config_path).litellm_model(role)
 
 
 class LiteLLMCompleter:

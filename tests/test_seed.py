@@ -20,7 +20,8 @@ import pytest
 from services.ingestion.src.ingestion import seed
 from services.ingestion.src.ingestion.chunker import chunk_text
 from services.ingestion.src.ingestion.parser import is_allowed, parse_bytes
-from shared.src.shared.config import ADMIN_KEY_HEADER, get_settings
+from services.ingestion.src.ingestion.settings import get_settings
+from shared.src.shared.config import ADMIN_KEY_HEADER
 
 ADMIN_KEY = "seed-test-key"
 

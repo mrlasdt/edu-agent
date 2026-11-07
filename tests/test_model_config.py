@@ -10,28 +10,28 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from shared.src.shared.config import Settings, load_model_config
+from shared.src.shared.config import LlmSettings, anchor, load_model_config
 
 FREE = "config/model_config.free.yaml"
 DEV = "config/model_config.dev.yaml"
-_SETTINGS = "shared.src.shared.config.get_settings"
+_SETTINGS = "shared.src.shared.config.get_llm_settings"
 
 
 def test_without_a_path_the_configured_one_is_used():
-    with patch(_SETTINGS, return_value=Settings(model_config_path=FREE)):
+    with patch(_SETTINGS, return_value=LlmSettings(model_config_path=FREE)):
         cfg = load_model_config()
     assert cfg.role("orchestrator").provider == "openrouter"
     assert cfg.litellm_model("quant_agent").startswith("openrouter/")
 
 
 def test_default_path_is_the_dev_config():
-    with patch(_SETTINGS, return_value=Settings(model_config_path=DEV)):
+    with patch(_SETTINGS, return_value=LlmSettings(model_config_path=DEV)):
         cfg = load_model_config()
     assert cfg.role("orchestrator").provider == "openai"
 
 
 def test_an_explicit_path_wins_over_the_setting():
-    with patch(_SETTINGS, return_value=Settings(model_config_path=FREE)):
+    with patch(_SETTINGS, return_value=LlmSettings(model_config_path=FREE)):
         cfg = load_model_config(DEV)
     assert cfg.role("orchestrator").provider == "openai"
 
@@ -141,18 +141,16 @@ def test_pinning_one_model_for_an_eval_drops_the_role_fallbacks():
 
 
 def test_default_config_is_the_free_one(monkeypatch):
-    from shared.src.shared.config import Settings
-
     monkeypatch.delenv("MODEL_CONFIG_PATH", raising=False)
-    assert Settings(_env_file=None).model_config_path == FREE
+    assert LlmSettings(_env_file=None).model_config_path == str(anchor(FREE))
 
 
 def test_free_eval_chain_starts_with_the_product_default(monkeypatch):
     from evals.agent_eval import cli
-    from shared.src.shared.config import get_settings
+    from shared.src.shared.config import clear_settings_caches
 
     monkeypatch.setenv("MODEL_CONFIG_PATH", FREE)
-    get_settings.cache_clear()
+    clear_settings_caches()
     chain = cli.provider_chain("free")
     assert chain[0] == "openrouter/recursive/flint-v1.0:free"
     assert len(chain) == len(set(chain))

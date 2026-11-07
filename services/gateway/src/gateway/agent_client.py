@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from shared.src.shared.config import get_settings
+from services.gateway.src.gateway.settings import get_settings
 
 
 class AgentClient:

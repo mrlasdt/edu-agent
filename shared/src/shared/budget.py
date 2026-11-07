@@ -22,10 +22,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from shared.src.shared.config import get_settings
+from shared.src.shared.config import DEFAULT_AI_LEDGER_PATH, anchor, get_spend_settings
 
 DEFAULT_CEILING_USD = 5.0
-DEFAULT_LEDGER_PATH = Path(".eval-ledger/ledger.jsonl")
+DEFAULT_LEDGER_PATH = anchor(DEFAULT_AI_LEDGER_PATH)
 
 # USD per 1M tokens (input, output). Unknown paid models fall back to a deliberately
 # pessimistic price so the guard errs on the side of aborting.
@@ -217,7 +217,7 @@ def _cost_of(entry: Any) -> float | None:
 
 def spend_ledger(path: str | Path | None = None, ceiling_usd: float | None = None) -> Ledger:
     """The shared spend ledger at the configured path and cap, unless overridden."""
-    settings = get_settings()
+    settings = get_spend_settings()
     return Ledger(
         Path(path or settings.ai_ledger_path),
         settings.ai_spend_cap_usd if ceiling_usd is None else ceiling_usd,

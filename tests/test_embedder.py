@@ -37,4 +37,4 @@ async def test_embed_texts_batches_over_the_cap():
 
 
 async def test_embed_texts_empty_input_makes_no_call():
-    assert await embed_texts([]) == []
+    assert await embed_texts([], url="http://tei") == []

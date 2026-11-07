@@ -2,20 +2,19 @@ from __future__ import annotations
 
 import re
 from collections.abc import AsyncGenerator, AsyncIterator
-from pathlib import Path
 from typing import Any
 
 from services.agent.src.agent.base import BaseAgent
 from services.agent.src.agent.skills.match_student_style import MatchStudentStyleSkill
 from services.agent.src.agent.skills.retrieve_corpus import RetrieveCorpusSkill
-from shared.src.shared.config import load_model_config
+from shared.src.shared.config import PROJECT_ROOT, load_model_config
 from shared.src.shared.critics.citation_checker import check_citations, strip_uncited_claims
 from shared.src.shared.critics.style_critic import run_style_critic
 from shared.src.shared.models import MessageRole, Mode, Session
 from shared.src.shared.observability import build_llm_metadata
 from shared.src.shared.turn_meter import TurnMeter
 
-_PROMPT_ROOT = Path("prompts/aw_agent")
+_PROMPT_ROOT = PROJECT_ROOT / "prompts" / "aw_agent"
 
 _ARGUMENT_KEYWORDS = re.compile(
     r"\b(the following|the argument|critique|examine the|stated and/or unstated|"

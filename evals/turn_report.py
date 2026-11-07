@@ -31,7 +31,8 @@ from shared.src.shared.budget import estimate_cost
 from shared.src.shared.config import (
     DEFAULT_FEEDBACK_LOG_PATH,
     DEFAULT_TURN_LOG_PATH,
-    get_settings,
+    anchor,
+    get_feedback_settings,
 )
 from shared.src.shared.feedback import latest_votes
 from shared.src.shared.turn_meter import TurnLog
@@ -325,7 +326,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    path = Path(args.log or get_settings().turn_log_path or DEFAULT_TURN_LOG_PATH)
+    path = Path(
+        args.log or get_feedback_settings().turn_log_path or anchor(DEFAULT_TURN_LOG_PATH)
+    )
     turns = merge_turns(TurnLog(path).read())
     if args.last is not None:
         turns = turns[-args.last :] if args.last > 0 else []
@@ -339,8 +342,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.feedback:
         fb_path = Path(
             args.feedback_log
-            or get_settings().feedback_log_path
-            or DEFAULT_FEEDBACK_LOG_PATH
+            or get_feedback_settings().feedback_log_path
+            or anchor(DEFAULT_FEEDBACK_LOG_PATH)
         )
         fb = summarise_feedback(turns, TurnLog(fb_path).read())
         if args.last is not None:

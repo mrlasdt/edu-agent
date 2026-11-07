@@ -22,7 +22,8 @@ import httpx
 from mcp.server.fastmcp import FastMCP
 
 from mcp_servers.launch import bind_host, run
-from shared.src.shared.config import ADMIN_KEY_HEADER, get_settings
+from mcp_servers.settings import get_settings
+from shared.src.shared.config import ADMIN_KEY_HEADER
 
 mcp = FastMCP(
     "gre-tutor-admin",

@@ -24,14 +24,14 @@ def local_feedback_files(tmp_path, monkeypatch):
     Feedback votes and the opt-in text capture are local files. Point them at temp paths and
     pin capture off, whatever the developer's `.env` says; tests that need capture turn it on.
     """
-    from shared.src.shared.config import get_settings
+    from shared.src.shared.config import clear_settings_caches
 
     monkeypatch.setenv("FEEDBACK_LOG_PATH", str(tmp_path / "turn-log" / "feedback.jsonl"))
     monkeypatch.setenv("TURN_CAPTURE_PATH", str(tmp_path / "turn-log" / "capture.jsonl"))
     monkeypatch.setenv("TURN_CAPTURE_TEXT", "0")
-    get_settings.cache_clear()
+    clear_settings_caches()
     yield
-    get_settings.cache_clear()
+    clear_settings_caches()
 
 
 @pytest.fixture(autouse=True)
@@ -40,12 +40,12 @@ def dev_model_config(monkeypatch):
     Tests assert on the dev model config (OpenAI roles). A developer's .env or shell may set
     MODEL_CONFIG_PATH (for example to config/model_config.free.yaml), so pin it here.
     """
-    from shared.src.shared.config import get_settings
+    from shared.src.shared.config import clear_settings_caches
 
     monkeypatch.setenv("MODEL_CONFIG_PATH", "config/model_config.dev.yaml")
-    get_settings.cache_clear()
+    clear_settings_caches()
     yield
-    get_settings.cache_clear()
+    clear_settings_caches()
 
 
 @pytest.fixture(autouse=True)
@@ -125,7 +125,7 @@ def math_tools_off_whatever_the_environment_says(monkeypatch: pytest.MonkeyPatch
     one streamed model reply. A developer's `.env` with MATH_TOOLS_ENABLED=true must not change
     that. Tests of the tool path build their agent with `math_tools_enabled=True`.
     """
-    from shared.src.shared.config import get_settings
+    from services.agent.src.agent.settings import get_settings
 
     monkeypatch.setattr(get_settings(), "math_tools_enabled", False)
 
