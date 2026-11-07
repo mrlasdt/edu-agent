@@ -1,4 +1,4 @@
-import type { IndependentCheck, Message } from "../types";
+import type { IndependentCheck, Message, ReplyStatus } from "../types";
 import { ESSAY_DISCLAIMER } from "../types";
 import { renderMarkdown } from "../markdown";
 
@@ -63,14 +63,25 @@ function IndependentCheckNote({ check }: { check: IndependentCheck }) {
   );
 }
 
+const STATUS_TEXT: Record<Exclude<ReplyStatus, "streaming" | "failed">, string> = {
+  thinking: "thinking...",
+  stopped: "Stopped",
+  empty: "No response received",
+};
+
+function statusLine({ status, error }: Message): string | undefined {
+  if (!status || status === "streaming") return undefined;
+  return status === "failed" ? (error ?? "Something went wrong") : STATUS_TEXT[status];
+}
+
 export function MessageBubble({ message, onCitationClick, onFeedback, onRegenerate }: Props) {
   const isAgent = message.role === "agent";
 
   return (
     <div className={`message-bubble message-bubble--${message.role}`}>
-      {message.status && (
+      {statusLine(message) && (
         <p className="status-line" role="status">
-          {message.status}
+          {statusLine(message)}
         </p>
       )}
       <div className="message-content">

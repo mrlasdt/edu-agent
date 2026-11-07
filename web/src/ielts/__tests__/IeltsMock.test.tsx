@@ -179,4 +179,15 @@ describe("IeltsMock", () => {
     await settle();
     expect(screen.getByRole("alert")).toHaveTextContent("Cannot reach the server");
   });
+  it("shows a failed Start once, not in two places", async () => {
+    api.createAttempt.mockResolvedValue(attempt({ status: "created", remaining_s: null, started_at: null }));
+    api.startAttempt.mockRejectedValue(new ApiError(402, "Marking budget exhausted"));
+    render(<IeltsMock />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: /Question number 3/ }));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Start the 40 minutes" }));
+    await settle();
+    expect(screen.getAllByRole("alert").map((e) => e.textContent)).toEqual(["Marking budget exhausted"]);
+  });
 });

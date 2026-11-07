@@ -306,3 +306,25 @@ describe("App essay disclaimer", () => {
     expect(content?.textContent).not.toContain("\x1e");
   });
 });
+
+describe("App network failure", () => {
+  it("tells the learner the server cannot be reached, not the browser's raw message", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    const user = await openQuant();
+    await send(user, "hello");
+    expect(await screen.findByText("Cannot reach the server")).toBeInTheDocument();
+    expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
+  });
+
+  it("shows the gateway's own reason when it refuses a turn", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ detail: "Too many requests, wait a minute" }), { status: 429 })
+      )
+    );
+    const user = await openQuant();
+    await send(user, "hello");
+    expect(await screen.findByText("Too many requests, wait a minute")).toBeInTheDocument();
+  });
+});

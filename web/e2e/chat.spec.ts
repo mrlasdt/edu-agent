@@ -65,7 +65,7 @@ test("failed and empty turns are not replayed as history", async ({ page }) => {
 
   await input.fill("first");
   await send.click();
-  await expect(page.getByText("Chat request failed (500)")).toBeVisible();
+  await expect(page.getByText("Request failed (500)")).toBeVisible();
 
   await input.fill("second");
   await send.click();
