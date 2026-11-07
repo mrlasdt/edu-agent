@@ -1,7 +1,20 @@
-import { ApiError, request, requestJson } from "../request";
+import { ApiError, request, requestJson as fetchJson } from "../request";
+import type { RequestOptions } from "../request";
 import type { Attempt, Budget, Report, WritingPrompt } from "./types";
 
 export { ApiError };
+
+export const ATTEMPT_NOT_FOUND = "This attempt could not be found. Choose another question to start again.";
+
+/** `requestJson`, with the gateway's terse 404 ("attempt not found") put in words a learner can act on. */
+async function requestJson<T>(path: string, options?: RequestOptions): Promise<T> {
+  try {
+    return await fetchJson<T>(path, options);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) throw new ApiError(404, ATTEMPT_NOT_FOUND);
+    throw err;
+  }
+}
 
 export const getBudget = (signal?: AbortSignal) => requestJson<Budget>("/ielts/budget", { signal });
 export const listPrompts = (signal?: AbortSignal) =>
