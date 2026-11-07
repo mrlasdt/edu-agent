@@ -456,8 +456,33 @@ async def test_pass_hat_k_is_not_compared_across_different_k(tmp_path: Path):
 
 def test_model_flag_pins_one_model_and_names_its_key():
     assert cli.provider_chain("free", "openrouter/x/y:free") == ["openrouter/x/y:free"]
-    assert cli.required_keys("free", "openrouter/x/y:free") == ["OPENROUTER_API_KEY"]
-    assert cli.required_keys("free", "openai/gpt-4o-mini") == ["OPENAI_API_KEY"]
+
+
+def _live_argv(tmp_path: Path, *extra: str) -> list[str]:
+    return ["--mode", "live", "--suite", "quant", "--no-cache", "--ledger", str(tmp_path / "l"),
+            "--out-dir", str(tmp_path), *extra]
+
+
+@pytest.mark.parametrize(
+    ("model", "other_key", "needed"),
+    [
+        ("gemini/gemma-4-26b-a4b-it", "OPENROUTER_API_KEY", "GEMINI_API_KEY"),
+        ("openai/gpt-4o-mini", "OPENROUTER_API_KEY", "OPENAI_API_KEY"),
+        ("openrouter/x/y:free", "OPENAI_API_KEY", "OPENROUTER_API_KEY"),
+    ],
+)
+def test_a_live_run_asks_for_the_key_the_pinned_model_really_needs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, block_network: None,
+    model: str, other_key: str, needed: str,
+):
+    """A key for some other provider is set, so a model must be refused by the name of its own
+    key before any call is made (a `gemini/...` model used to be checked against
+    OPENROUTER_API_KEY, so a run with only that key set went on to call Google unauthenticated)."""
+    for key in ("OPENROUTER_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv(other_key, "set")
+    with pytest.raises(SystemExit, match=needed):
+        cli.main(_live_argv(tmp_path, "--model", model))
 
 
 def test_dry_run_counts_quant_calls_per_sample(

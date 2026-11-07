@@ -163,7 +163,7 @@ class _SolveChecks:
     async def passes(self, full_text: str, claimed: str) -> bool:
         """Whether the answer survives both checks; `last` holds the independent verdict."""
         with self._meter.phase("verify"):
-            well_formed = await self._agent._verify(full_text, claimed)
+            well_formed = await self._agent.verify_well_formed(full_text, claimed)
         if not well_formed.verified:
             self.last = IndependentCheck(
                 independent_check.NOT_CHECKABLE, reason="the answer is not well-formed"
@@ -176,7 +176,7 @@ class _SolveChecks:
                 self._session, self._message, self._meter
             )
         with self._meter.phase("independent_check"):
-            self.last = await self._agent._independent_check(self._expression, claimed)
+            self.last = await self._agent.check_independently(self._expression, claimed)
         self._record()
         return self.last.verdict != independent_check.DISAGREES
 
@@ -380,7 +380,7 @@ class QuantAgent(BaseAgent):
                     **(obs_meta or {}),
                 )
                 tokens, full_text = await _collect_stream(response)
-            prev_answer = self._extract_final_answer(full_text)
+            prev_answer = self.extract_final_answer(full_text)
 
             if await checks.passes(full_text, prev_answer or ""):
                 for token in tokens:
@@ -413,7 +413,7 @@ class QuantAgent(BaseAgent):
                 temperature=escalation_temperature,
             )
             tokens, full_text = await _collect_stream(response)
-        prev_answer = self._extract_final_answer(full_text)
+        prev_answer = self.extract_final_answer(full_text)
         passed = await checks.passes(full_text, prev_answer or "")
         for token in tokens:
             yield token
@@ -440,7 +440,7 @@ class QuantAgent(BaseAgent):
             _log.warning("corpus retrieval failed; answering without notes", exc_info=True)
             return []
 
-    def _extract_final_answer(self, text: str) -> str | None:
+    def extract_final_answer(self, text: str) -> str | None:
         """
         Extract the final answer from the model's output text, reduced to a bare value list.
         Looks for '**Answer: <value>**' from the Solve prompt format, then an 'Answer:' line,
@@ -449,11 +449,11 @@ class QuantAgent(BaseAgent):
         raw = extract_final_answer(text)
         return normalize_answer(raw) if raw else None
 
-    async def _verify(self, full_text: str, claimed_answer: str) -> VerifyMathResult:
+    async def verify_well_formed(self, full_text: str, claimed_answer: str) -> VerifyMathResult:
         """
         Call the verify-math Skill with the claimed answer as both `expression` and `expected`.
         That only shows the answer is well-formed (parses and evaluates); a wrong but parseable
-        answer passes. `_independent_check` is the check that does not come from the answer
+        answer passes. `check_independently` is the check that does not come from the answer
         itself. This seam is patched in tests.
         """
         return await self._verify_skill.verify(
@@ -496,7 +496,7 @@ class QuantAgent(BaseAgent):
         _log.info("independent check expression: %r", expression)
         return expression
 
-    async def _independent_check(
+    async def check_independently(
         self, expression: str | None, claimed_answer: str
     ) -> IndependentCheck:
         """Compute `expression` with the solver and compare it with the claimed answer."""

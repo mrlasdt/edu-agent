@@ -144,7 +144,7 @@ async def test_solve_with_tools_is_verified_and_reports_the_calls() -> None:
     with (
         patch("litellm.acompletion", new=model),
         patch.object(
-            a, "_verify", new_callable=AsyncMock,
+            a, "verify_well_formed", new_callable=AsyncMock,
             return_value=VerifyMathResult(verified=True, computed="-8"),
         ),
     ):
@@ -163,7 +163,7 @@ async def test_a_turn_without_tool_calls_yields_no_trace() -> None:
     with (
         patch("litellm.acompletion", new=Model(text_reply("Easy.\n**Answer: 4**"))),
         patch.object(
-            a, "_verify", new_callable=AsyncMock,
+            a, "verify_well_formed", new_callable=AsyncMock,
             return_value=VerifyMathResult(verified=True, computed="4"),
         ),
     ):
@@ -232,7 +232,7 @@ async def test_solve_retries_keep_calling_tools_and_keep_the_calls_of_every_atte
     with (
         patch("litellm.acompletion", new=model),
         patch.object(
-            a, "_verify", new_callable=AsyncMock,
+            a, "verify_well_formed", new_callable=AsyncMock,
             return_value=VerifyMathResult(verified=False, computed=""),
         ),
     ):

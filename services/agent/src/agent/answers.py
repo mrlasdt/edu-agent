@@ -26,12 +26,13 @@ def extract_final_answer(text: str) -> str | None:
         return str(bold[-1]).strip()
     lines = _ANSWER_LINE.findall(text)
     if lines:
-        return _strip_markup(str(lines[-1])) or None
+        return strip_markup(str(lines[-1])) or None
     nonblank = [ln.strip() for ln in text.splitlines() if ln.strip()]
     return nonblank[-1] if nonblank else None
 
 
-def _strip_markup(text: str) -> str:
+def strip_markup(text: str) -> str:
+    """Drop the LaTeX and markdown wrapped around an answer: `$\\frac{3}{4}$` becomes `(3)/(4)`."""
     out = _FRAC.sub(r"(\1)/(\2)", text)
     out = re.sub(r"\\[()\[\]]|\$|\\boxed\{|\\text\{([^}]*)\}", r"\1", out)
     out = out.replace("{", "").replace("}", "").replace("**", "")
@@ -46,7 +47,7 @@ def normalize_answer(raw: str) -> str:
     "is"/"are", but only when that tail contains a digit, so a verdict like
     "Quantity A is greater" is left intact. "and"/"or" between values become commas.
     """
-    out = _strip_markup(raw)
+    out = strip_markup(raw)
     tail = _PROSE_TAIL.search(out) if re.search(r"[A-Za-z]{3,}", out) else None
     if tail:
         value = tail.group(1)

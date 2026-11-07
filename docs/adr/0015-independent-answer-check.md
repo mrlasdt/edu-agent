@@ -1,6 +1,6 @@
 # Quant solve turns check the answer independently: the model writes the equation, a solver computes it
 
-A Quant solve turn used to check the final answer by sending it to the math verifier as both the expression and the expected value (`QuantAgent._verify`). That shows the answer parses and evaluates. It cannot show the answer is right: the offline eval's `wrong_but_verified` measured it, and 16 of 16 seeded wrong answers passed. The check was relabelled "well-formed" and the turn record said `verified_independent: false`. This ADR is the check that is independent.
+A Quant solve turn used to check the final answer by sending it to the math verifier as both the expression and the expected value (`QuantAgent.verify_well_formed`, formerly `_verify`). That shows the answer parses and evaluates. It cannot show the answer is right: the offline eval's `wrong_but_verified` measured it, and 16 of 16 seeded wrong answers passed. The check was relabelled "well-formed" and the turn record said `verified_independent: false`. This ADR is the check that is independent.
 
 ## Status
 

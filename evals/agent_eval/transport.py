@@ -23,8 +23,18 @@ import json
 import time
 from collections.abc import AsyncIterator, Callable, Coroutine, Iterator
 from dataclasses import dataclass
-from types import SimpleNamespace
 from typing import Any
+
+from litellm import ModelResponse, ModelResponseStream
+from litellm.types.utils import (
+    ChatCompletionMessageToolCall,
+    Choices,
+    Delta,
+    Function,
+    Message,
+    StreamingChoices,
+    Usage,
+)
 
 from evals.agent_eval.budget import Ledger, estimate_tokens
 from evals.agent_eval.cache import ResponseCache, cache_key
@@ -85,16 +95,20 @@ class AllModelsFailedError(RuntimeError):
     pass
 
 
-def _chunk(content: str) -> Any:
-    return SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=content))])
-
-
-def _usage_chunk(prompt_tokens: int, completion_tokens: int) -> Any:
-    """The closing usage-only chunk a provider sends when `include_usage` is requested."""
-    return SimpleNamespace(
-        choices=[],
-        usage=SimpleNamespace(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens),
+def _usage(prompt_tokens: int, completion_tokens: int) -> Usage:
+    return Usage(
+        prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
+        total_tokens=prompt_tokens + completion_tokens,
     )
+
+
+def _chunk(content: str) -> ModelResponseStream:
+    return ModelResponseStream(choices=[StreamingChoices(delta=Delta(content=content))])
+
+
+def _usage_chunk(prompt_tokens: int, completion_tokens: int) -> ModelResponseStream:
+    """The closing usage-only chunk a provider sends when `include_usage` is requested."""
+    return ModelResponseStream(choices=[], usage=_usage(prompt_tokens, completion_tokens))
 
 
 class _ReplayStream:
@@ -102,36 +116,36 @@ class _ReplayStream:
         self._text = text
         self._usage = usage
 
-    def __aiter__(self) -> AsyncIterator[Any]:
+    def __aiter__(self) -> AsyncIterator[ModelResponseStream]:
         return self._gen()
 
-    async def _gen(self) -> AsyncIterator[Any]:
+    async def _gen(self) -> AsyncIterator[ModelResponseStream]:
         yield _chunk(self._text)
         if self._usage is not None:
             yield _usage_chunk(*self._usage)
-
-
-def _tool_call(call_id: str, name: str, arguments: str) -> Any:
-    return SimpleNamespace(
-        id=call_id, type="function", function=SimpleNamespace(name=name, arguments=arguments)
-    )
 
 
 def _response(
     text: str,
     tool_calls: list[dict[str, str]] | None = None,
     usage: tuple[int, int] | None = None,
-) -> Any:
-    """A non-streamed reply: text and/or the tool calls a model asked for, in litellm's shape."""
-    message = SimpleNamespace(
+) -> ModelResponse:
+    """A non-streamed reply: text and/or the tool calls a model asked for, as litellm builds it."""
+    message = Message(
         content=text or None,
-        tool_calls=[_tool_call(c["id"], c["name"], c["arguments"]) for c in tool_calls]
+        tool_calls=[
+            ChatCompletionMessageToolCall(
+                id=c["id"], type="function",
+                function=Function(name=c["name"], arguments=c["arguments"]),
+            )
+            for c in tool_calls
+        ]
         if tool_calls
         else None,
     )
-    reply = SimpleNamespace(choices=[SimpleNamespace(message=message)])
+    reply = ModelResponse(choices=[Choices(message=message)])
     if usage is not None:
-        reply.usage = SimpleNamespace(prompt_tokens=usage[0], completion_tokens=usage[1])
+        reply.usage = _usage(*usage)
     return reply
 
 

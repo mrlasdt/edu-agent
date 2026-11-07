@@ -284,7 +284,7 @@ async def test_quant_solve_with_retry_and_escalation_counts_every_call(turn_log)
         patch("litellm.acompletion", side_effect=known_usage_stream(500, 100)),
         patch.object(
             agent,
-            "_verify",
+            "verify_well_formed",
             new_callable=AsyncMock,
             return_value=VerifyMathResult(verified=False, computed="[2,3]"),
         ),
@@ -304,7 +304,7 @@ async def test_quant_solve_record_says_when_the_answer_was_not_independently_che
         patch("litellm.acompletion", side_effect=known_usage_stream(50, 10)),
         patch.object(
             agent,
-            "_verify",
+            "verify_well_formed",
             new_callable=AsyncMock,
             return_value=VerifyMathResult(verified=True, computed="[2,3]"),
         ),
