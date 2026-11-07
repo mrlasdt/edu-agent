@@ -69,10 +69,10 @@ class LiteLLMCompleter:
     reply is not an error to the Router, so it is handled here: the call continues on the models
     after the one that answered.
 
-    Spend is checked against the cap before the call, once, at the dearest model of the chain the
-    Router will actually run (`configured_chain`; worst case: the whole prompt plus `max_tokens`
-    of output, plus whatever concurrent calls have reserved), so no fallback can take the call
-    past the cap; the reported usage is recorded after it.
+    Spend is checked against the cap before every call to the Router, at the dearest model of the
+    chain still ahead (`configured_chain`, the one the Router will actually run; worst case: the
+    whole prompt plus `max_tokens` of output, plus whatever concurrent calls have reserved), so no
+    fallback can take the call past the cap; the reported usage is recorded after each call.
     `BudgetExceededError` is not wrapped: it is not a model outage.
     """
 
@@ -94,18 +94,11 @@ class LiteLLMCompleter:
         trace_id: str = "", prompt_version: str = "",
     ) -> str:
         chain = configured_chain(self.router, role_model(role))
-        ledger = self.ledger
         prompt_tokens = estimate_tokens("\n".join(m["content"] for m in messages))
-        projected = max(estimate_cost(m, prompt_tokens, max_tokens) for m in chain)
-        ledger.ensure_capacity(self._reserved + projected)  # raises BudgetExceededError
-        self._reserved += projected
-        try:
-            return await self._complete(
-                chain, messages, temperature=temperature, max_tokens=max_tokens,
-                trace_id=trace_id, prompt_version=prompt_version, prompt_tokens=prompt_tokens,
-            )
-        finally:
-            self._reserved -= projected
+        return await self._complete(
+            chain, messages, temperature=temperature, max_tokens=max_tokens,
+            trace_id=trace_id, prompt_version=prompt_version, prompt_tokens=prompt_tokens,
+        )
 
     async def _complete(
         self, chain: list[str], messages: list[dict[str, str]], *, temperature: float,
@@ -118,9 +111,12 @@ class LiteLLMCompleter:
         start = 0
         while start < len(chain):
             model = chain[start]
+            projected = max(estimate_cost(m, prompt_tokens, max_tokens) for m in chain[start:])
+            self.ledger.ensure_capacity(self._reserved + projected)  # raises BudgetExceededError
             # The Router already holds the configured fallbacks for the first model; after an
             # empty reply the rest of the chain is passed for the model we resume from.
             resume = {"fallbacks": [{model: chain[start + 1:]}]} if start else {}
+            self._reserved += projected
             try:
                 response = await self.router.acompletion(
                     model=model, messages=messages, temperature=temperature,
@@ -131,6 +127,8 @@ class LiteLLMCompleter:
                 reason = _SECRET.sub("[redacted]", " ".join(str(exc).split()))[:120]
                 errors.append(f"{' > '.join(chain[start:])}: {type(exc).__name__}: {reason}")
                 break
+            finally:
+                self._reserved -= projected
             answered = answered_model(response, model)
             usage = getattr(response, "usage", None)
             self.ledger.record(

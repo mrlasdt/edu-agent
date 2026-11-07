@@ -179,3 +179,23 @@ async def test_the_cap_is_checked_against_the_chain_the_router_will_run(
             llm.GRADER_ROLE, MESSAGES, temperature=0, max_tokens=2000
         )
     assert calls(router) == {}
+
+
+async def test_a_paid_call_after_an_empty_reply_is_checked_against_the_cap_again(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """The empty first reply costs money; the next paid model must not run past the cap."""
+    from shared.src.shared.budget import BudgetExceededError, estimate_cost, estimate_tokens
+
+    first, second = "openai/gpt-4.1-mini", "openai/gpt-4o"
+    monkeypatch.setattr(llm, "role_model", lambda role: first)
+    router = mock_router({first: "  ", second: "paid reply"}, {first: [second]})
+    worst_case = estimate_cost(second, estimate_tokens(MESSAGES[0]["content"]), 2000)
+    ledger = Ledger(tmp_path / "l.json", ceiling_usd=1.0 + worst_case)
+    ledger.record("earlier", "gpt-4.1-mini", 1.0)
+    with pytest.raises(BudgetExceededError):
+        await LiteLLMCompleter(ledger, router=router)(
+            llm.GRADER_ROLE, MESSAGES, temperature=0, max_tokens=2000
+        )
+    assert calls(router) == {first: 1}
+    assert ledger.spent() > 1.0  # the empty reply was paid for and recorded
