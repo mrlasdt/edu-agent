@@ -253,12 +253,16 @@ async def chat(req: ChatRequest) -> StreamingResponse:
             ):
                 tail += LLM_LEAK_NOTICE
                 flags.append("answer_leak_flagged")
+            answer_meta: dict[str, Any] = {}
             verified = trailer.meta.get("math_verified")
             if isinstance(verified, bool):
-                answer_meta: dict[str, Any] = {"math_verified": verified}
+                answer_meta["math_verified"] = verified
                 check = independent_check_trailer(trailer.meta.get("independent_check"))
                 if check:
                     answer_meta["independent_check"] = check
+            if trailer.meta.get("disclaimer") == "essay":
+                answer_meta["disclaimer"] = "essay"  # the web app words the notice itself
+            if answer_meta:
                 tail += encode(answer_meta)
             if tail:
                 yield tail.encode("utf-8")

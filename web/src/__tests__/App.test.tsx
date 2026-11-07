@@ -286,3 +286,23 @@ describe("App feedback", () => {
     );
   });
 });
+
+describe("App essay disclaimer", () => {
+  it("shows the notice once and no stray rule or underscore above it", async () => {
+    // The gateway's real reply for a sample essay: the essay text, then the trailer (see
+    // tests/test_chat_endpoint.py); the web app's own copy of the sentence is not in the stream.
+    stubGateway('A sample essay about technology.\x1e{"disclaimer":"essay"}');
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+    await user.click(screen.getByRole("button", { name: "AW" }));
+    await send(user, "Write an essay");
+
+    const notice = await screen.findByTestId("essay-disclaimer");
+    expect(notice).toHaveTextContent(/study purposes only/i);
+    const content = container.querySelector(".message-bubble--agent .message-content");
+    expect(content?.querySelector("hr")).toBeNull();
+    expect(content?.textContent).not.toContain("_");
+    expect(content?.textContent).not.toContain("---");
+    expect(content?.textContent).not.toContain("\x1e");
+  });
+});

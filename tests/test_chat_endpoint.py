@@ -421,3 +421,15 @@ def test_an_invalid_independent_check_is_dropped_and_a_long_solver_value_is_clip
            + "9" * 500 + '"}}'
     text = _chat(["Fine.", long], body={"mode": "solve"}).text
     assert text.endswith('"}}') and len(text) < 200
+
+
+def test_the_essay_disclaimer_flag_is_passed_on_to_the_web_app():
+    resp = _chat(["A sample essay.", '\x1e{"disclaimer":"essay"}'],
+                 body={"section": "aw", "mode": "solve"})
+    assert resp.text == 'A sample essay.\x1e{"disclaimer":"essay"}'
+
+
+def test_an_unknown_disclaimer_value_is_dropped():
+    for junk in ('\x1e{"disclaimer":"<b>x</b>"}', '\x1e{"disclaimer":true}'):
+        resp = _chat(["A sample essay.", junk], body={"section": "aw", "mode": "solve"})
+        assert resp.text == "A sample essay."

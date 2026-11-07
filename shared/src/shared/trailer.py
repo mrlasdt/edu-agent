@@ -1,12 +1,12 @@
 """
 A one-line metadata trailer at the end of a plain-text answer stream.
 
-The agent service and the gateway stream the answer as `text/plain`, and a reply's metadata (so
-far, whether the math verifier accepted the final answer, and what the independent check of it
-said) is only known once it is written, too late for a response header. It travels as the last
-bytes of the stream instead: the record separator character, then a JSON object. Each hop peels
-it off before the text reaches a guardrail and the gateway re-emits it, validated, for the web
-app.
+The agent service and the gateway stream the answer as `text/plain`, and a reply's metadata
+(whether the math verifier accepted the final answer, what the independent check of it said, and
+whether it is a sample essay the web app must label) is only known once it is written, too late
+for a response header. It travels as the last bytes of the stream instead: the record separator
+character, then a JSON object. Each hop peels it off before the text reaches a guardrail and the
+gateway re-emits it, validated, for the web app.
 """
 from __future__ import annotations
 
