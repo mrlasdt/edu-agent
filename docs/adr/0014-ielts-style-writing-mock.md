@@ -77,7 +77,7 @@ The default config moved to free OpenRouter models, which moved the IELTS roles 
 - Moving the grader into `services/agent` means the eval harness, the API and tests share one implementation; a prompt change invalidates the recorded result and the gate file must be re-measured.
 - As first measured, free models were fine for development of the plumbing and unusable for the band (the 2026-11-06 amendment found two Gemma models that pass the development gate): reasoning models need a large completion cap (a 300-token cap returned empty replies) and the free router returned unusable replies for 2 of 19 essays.
 - gpt-4o-mini was tried first for the feedback writer and flagged correct text as errors; the verbatim-span checks catch invented quotes but not wrong judgements, so the writer is gpt-4.1-mini and every error quote is capped at 10 words.
-- Runtime spend is metered (see "AI spend cap" under "Owner decisions" above). The ledger is a local JSON file for one user; a hosted version needs a shared store and per-user caps.
+- Runtime spend is metered (see "AI spend cap" under "Owner decisions" above). The ledger is a local JSON-lines file for one user; a hosted version needs a shared store and per-user caps.
 - Test-retest is measured on three samples of one model, so it shows stability, not accuracy.
 - The prompts are original to the repo and the rubric paraphrases the public criteria; it does not reproduce the official band descriptors.
 

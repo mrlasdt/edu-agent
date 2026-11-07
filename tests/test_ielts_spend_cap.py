@@ -27,7 +27,7 @@ MESSAGES = [{"role": "system", "content": "s" * 400}, {"role": "user", "content"
 def test_the_default_cap_is_five_dollars_everywhere():
     assert DEFAULT_CEILING_USD == 5.0
     assert Settings().ai_spend_cap_usd == 5.0
-    assert Settings().ai_ledger_path == ".eval-ledger/ledger.json"
+    assert Settings().ai_ledger_path == ".eval-ledger/ledger.jsonl"
 
 
 # ── the completer meters itself ──────────────────────────────────────────────
