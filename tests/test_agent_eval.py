@@ -12,7 +12,7 @@ import pytest
 from evals.agent_eval import cli
 from evals.agent_eval.budget import BudgetExceededError, Ledger, estimate_cost, is_free
 from evals.agent_eval.cache import ResponseCache
-from evals.agent_eval.judges import JevJudge, JudgeError, JudgeQuestion, LLMJudge
+from evals.agent_eval.judges import JudgeError, JudgeQuestion, LLMJudge
 from evals.agent_eval.probes import (
     clean_answer,
     leaks_by_rule,
@@ -166,6 +166,19 @@ async def test_the_default_transport_builds_a_router_with_the_chain_it_was_given
     assert router.cooldown_time == EVAL_POLICY.cooldown_time
 
 
+async def test_configured_chain_through_a_transport_is_the_chain_the_router_will_run(
+    tmp_path: Path,
+):
+    """The transport is what `get_router()` returns during an eval, so the chain the production
+    completer budgets against must be the real one, not just `[model]`."""
+    from shared.src.shared.llm_router import configured_chain
+
+    own = MeteredTransport(Ledger(tmp_path / "l.json", 20.0), "run", fallbacks=[PAID])
+    assert configured_chain(own, FREE) == [FREE, PAID]
+    wrapped = _transport(tmp_path, mock_router({FREE: "ok", PAID: "ok"}, {FREE: [PAID]}))
+    assert configured_chain(wrapped, FREE) == [FREE, PAID]
+
+
 # ── judges ───────────────────────────────────────────────────────────────────
 
 
@@ -242,42 +255,6 @@ async def test_llm_judge_retries_an_empty_reply_once(monkeypatch: pytest.MonkeyP
     with pytest.raises(JudgeError):  # a second empty reply is still an error, with no third call
         await judge.yes_no(q)
     assert calls == 6
-
-
-async def test_jev_judge_maps_choice_and_score(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    sent: list[dict[str, Any]] = []
-    bodies = iter(
-        [
-            {"answers": {"q": {"type": "choice", "choice": "yes", "probabilities": {"yes": 0.9}}},
-             "usage": {"input_tokens": 10, "output_tokens": 1, "cost": 0.001}},
-            {"answers": {"q": {"type": "score", "score": 1.99}},
-             "usage": {"input_tokens": 10, "output_tokens": 1, "cost": 0.001}},
-        ]
-    )
-
-    class FakeClient:
-        async def __aenter__(self) -> "FakeClient":
-            return self
-
-        async def __aexit__(self, *a: Any) -> None:
-            return None
-
-        async def post(self, url: str, headers: Any, json: Any) -> Any:
-            sent.append(json)
-            body = next(bodies)
-            return SimpleNamespace(raise_for_status=lambda: None, json=lambda: body)
-
-    monkeypatch.setattr("evals.agent_eval.judges.httpx.AsyncClient", lambda **kw: FakeClient())
-    t = MeteredTransport(Ledger(tmp_path / "l.json", 20.0), "r")
-    judge = JevJudge("k", t)
-    verdict = await judge.yes_no(JudgeQuestion("is it?", "state"))
-    assert verdict.answer is True and verdict.p_yes == 0.9
-    # jev's 0-based expected index 1.99 is level 2.99 on the 1-based scale
-    level = await judge.score(JudgeQuestion("rate", "state"), ["lo", "mid", "hi"])
-    assert level == pytest.approx(2.99)
-    assert sent[0]["questions"]["q"]["type"] == "choice"
-    assert sent[1]["questions"]["q"]["type"] == "score"
-    assert t.spent_this_run == pytest.approx(0.002)
 
 
 # ── cli ──────────────────────────────────────────────────────────────────────

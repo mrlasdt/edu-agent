@@ -49,7 +49,7 @@ from evals.agent_eval.budget import (
     spend_ledger,
 )
 from evals.agent_eval.cache import DEFAULT_CACHE_DIR, ResponseCache
-from evals.agent_eval.judges import HeuristicJudge, JevJudge, Judge, JudgeQuestion, LLMJudge
+from evals.agent_eval.judges import HeuristicJudge, Judge, JudgeQuestion, LLMJudge
 from evals.agent_eval.transport import AllModelsFailedError, FakeToolCalls, MeteredTransport
 from evals.exam_set.schema import ExamItem
 from evals.loader import load_exam_items, load_golden_set, sample_golden_set
@@ -96,18 +96,16 @@ def provider_chain(provider: str, model: str | None = None) -> list[str]:
     return [*free_chain(), OPENAI_MODEL]  # "free+openai": free first, OpenAI as the fallback
 
 
-def required_keys(provider: str, judge: str, model: str | None = None) -> list[str]:
+def required_keys(provider: str, model: str | None = None) -> list[str]:
     if model:
-        keys = [
+        return [
             {"openrouter": "OPENROUTER_API_KEY", "openai": "OPENAI_API_KEY"}.get(
                 model.partition("/")[0], "OPENROUTER_API_KEY"
             )
         ]
-    else:
-        keys = {"free": ["OPENROUTER_API_KEY"], "openai": ["OPENAI_API_KEY"]}.get(
-            provider, ["OPENROUTER_API_KEY", "OPENAI_API_KEY"]
-        )
-    return keys + (["OPENROUTER_API_KEY"] if judge == "jev" else [])
+    return {"free": ["OPENROUTER_API_KEY"], "openai": ["OPENAI_API_KEY"]}.get(
+        provider, ["OPENROUTER_API_KEY", "OPENAI_API_KEY"]
+    )
 
 
 def _offline_model(model: str, messages: list[dict[str, Any]]) -> str | FakeToolCalls:
@@ -232,7 +230,7 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
     offline = args.mode == "offline"
     if not offline:
-        needed = required_keys(args.provider, args.judge, args.model)
+        needed = required_keys(args.provider, args.model)
         missing = [k for k in needed if not os.environ.get(k)]
         if missing:
             raise SystemExit(f"missing environment keys (names only): {', '.join(missing)}")
@@ -250,8 +248,6 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     judge: Judge
     if offline:
         judge = _offline_judge()
-    elif args.judge == "jev":
-        judge = JevJudge(os.environ["OPENROUTER_API_KEY"], transport)
     else:
         judge = LLMJudge(args.judge_model or chain[0])
 
@@ -474,7 +470,7 @@ def main(argv: list[str] | None = None) -> int:
                    help="pin one litellm model string for every role (no fallbacks), e.g. "
                         "openrouter/<id>:free; overrides --provider")
     p.add_argument("--provider", choices=["free", "free+openai", "openai"], default="free")
-    p.add_argument("--judge", choices=["llm", "jev"], default="llm")
+    p.add_argument("--judge", choices=["llm"], default="llm")
     p.add_argument("--judge-model", default=None, help="litellm model string for the llm judge")
     p.add_argument("--ielts-tier", default="best",
                    choices=["best", "examiner", "teacher_graded", "captain_blind",

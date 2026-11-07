@@ -20,19 +20,23 @@ import asyncio
 import contextlib
 import contextvars
 import json
-import re
 import time
 from collections.abc import AsyncIterator, Callable, Coroutine, Iterator
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
 
-from evals.agent_eval.budget import Ledger, estimate_cost, estimate_tokens
+from evals.agent_eval.budget import Ledger, estimate_tokens
 from evals.agent_eval.cache import ResponseCache, cache_key
+from shared.src.shared.budget import BudgetExceededError
+from shared.src.shared.guarded_completion import (
+    failure_reason,
+    guarded_acompletion,
+    prompt_text,
+)
 from shared.src.shared.llm_router import (
     EVAL_POLICY,
     Completions,
-    answered_model,
     build_router,
     configured_chain,
     use_router,
@@ -58,14 +62,6 @@ current_slot: contextvars.ContextVar[int] = contextvars.ContextVar("eval_cache_s
 DEFAULT_MAX_TOKENS = 800
 _MOCK_PROVIDER_MODEL = "openai/offline-fake"  # any provider litellm knows; mock_response answers
 _DROPPED_KWARGS = ("stream_options", "max_tokens", "cache_slot")
-_REASON_MAX_CHARS = 200
-_SECRET = re.compile(r"(sk-[\w-]{8,}|Bearer\s+\S+)", re.I)
-
-
-def failure_reason(exc: BaseException) -> str:
-    """One-line, redacted, bounded description of a provider failure."""
-    text = _SECRET.sub("[redacted]", " ".join(str(exc).split()))
-    return f"{type(exc).__name__}: {text[:_REASON_MAX_CHARS]}"
 
 
 @dataclass
@@ -151,10 +147,6 @@ def _tool_calls_of(message: Any) -> list[dict[str, str]]:
     ]
 
 
-def _text_of(messages: list[dict[str, Any]]) -> str:
-    return "\n".join(str(m.get("content", "")) for m in messages)
-
-
 class MeteredTransport:
     """
     `router` is the LiteLLM Router the calls go through. Without one, each model asked for gets a
@@ -174,7 +166,7 @@ class MeteredTransport:
     ) -> None:
         self.ledger = ledger
         self.run_id = run_id
-        self.fallbacks = fallbacks or []
+        self.fallback_models = fallbacks or []
         self.fake_model = fake_model
         self.max_tokens = max_tokens
         self.cache = cache
@@ -184,12 +176,16 @@ class MeteredTransport:
         self._router = router
         self._routers: dict[str, Completions] = {}
 
+    def chain_for(self, model: str) -> list[str]:
+        """`model` and the fallbacks behind it: what `configured_chain` reads from a router."""
+        return configured_chain(self.router_for(model), model)
+
     def router_for(self, model: str) -> Completions:
         """The Router that serves `model`, with its fallbacks."""
         if self._router is not None:
             return self._router
         if model not in self._routers:
-            tail = [m for m in self.fallbacks if m != model]
+            tail = [m for m in self.fallback_models if m != model]
             # Offline, whatever the fake model is called, the deployment behind it is litellm's
             # mock provider: no key, no network.
             offline = {m: {"model": _MOCK_PROVIDER_MODEL} for m in [model, *tail]}
@@ -227,37 +223,29 @@ class MeteredTransport:
                 counts = (int(cached[0]), int(cached[1])) if cached else None
                 return _response(str(hit["text"]), hit.get("tool_calls"), counts)
             return self._wrap(str(hit["text"]), stream, usage)
-        # Worst case over the whole fallback chain, checked before the Router is called: a
-        # BudgetExceededError ends the call, and no fallback can take it past the cap.
-        prompt_tokens = estimate_tokens(_text_of(messages))
-        chain = configured_chain(router, model)
-        self.ledger.ensure_capacity(
-            max(estimate_cost(m, prompt_tokens, self.max_tokens) for m in chain)
-        )
-        start = time.perf_counter()
+        # The budget check over the whole fallback chain, the Router call and the ledger entry
+        # are `guarded_acompletion`, the same call the shipped IELTS completer makes.
         try:
-            response = await router.acompletion(
-                model=model,
-                messages=messages,
-                stream=False,
-                max_tokens=max_tokens,
+            call = await guarded_acompletion(
+                router, model, messages, self.ledger, self.run_id, max_tokens=max_tokens,
                 **{k: v for k, v in kw.items() if k not in _DROPPED_KWARGS},
             )
+        except BudgetExceededError:
+            raise
         except Exception as exc:  # noqa: BLE001 - the Router has already tried the whole chain
             kind = "rate_limit" if "RateLimit" in type(exc).__name__ else "error"
             self._fail(model, exc, kind)
+            chain = configured_chain(router, model)
             raise AllModelsFailedError(f"{' > '.join(chain)}: {failure_reason(exc)}") from exc
-        latency = time.perf_counter() - start
-        answered = answered_model(response, model)
-        if answered != model:
-            self.failures.append(FailureRecord(model, f"answered by {answered}", "fallback"))
-        message = response.choices[0].message
-        text = str(message.content or "")
-        tool_calls = _tool_calls_of(message)
-        usage = getattr(response, "usage", None)
-        p_tok = int(getattr(usage, "prompt_tokens", 0) or prompt_tokens)
-        c_tok = int(getattr(usage, "completion_tokens", 0) or estimate_tokens(text))
-        self._record(answered, p_tok, c_tok, latency)
+        if call.answered != model:
+            self.failures.append(FailureRecord(model, f"answered by {call.answered}", "fallback"))
+        text = call.text
+        tool_calls = _tool_calls_of(call.message)
+        p_tok, c_tok = call.prompt_tokens, call.completion_tokens
+        self.spent_this_run += call.cost_usd
+        self.records.append(CallRecord(
+            current_tag.get(), call.answered, p_tok, c_tok, call.cost_usd, call.latency_s
+        ))
         if self.cache and (text or tool_calls):  # an empty reply is no answer
             self.cache.put(key, {"text": text, "usage": [p_tok, c_tok], "tool_calls": tool_calls})
         if tool_calls or kw.get("tools"):
@@ -288,7 +276,7 @@ class MeteredTransport:
         message = response.choices[0].message
         text = str(message.content or "")
         calls = _tool_calls_of(message)
-        p_tok = estimate_tokens(_text_of(messages))
+        p_tok = estimate_tokens(prompt_text(messages))
         c_tok = estimate_tokens(text if not calls else json.dumps([c["name"] for c in calls]))
         self.records.append(
             CallRecord(current_tag.get(), model, p_tok, c_tok, 0.0, time.perf_counter() - start)
@@ -307,22 +295,6 @@ class MeteredTransport:
             entry = out.setdefault(f"{f.model} [{f.kind}]", {"count": 0, "example": f.reason})
             entry["count"] += 1
         return out
-
-    def _record(self, model: str, p_tok: int, c_tok: int, latency: float) -> None:
-        cost = estimate_cost(model, p_tok, c_tok)
-        self.spent_this_run += cost
-        self.ledger.record(self.run_id, model, cost)
-        self.records.append(CallRecord(current_tag.get(), model, p_tok, c_tok, cost, latency))
-
-    def record_external(
-        self, tag: str, model: str, p_tok: int, c_tok: int, cost: float, latency: float
-    ) -> None:
-        """Record a call made outside litellm (the jev decisions endpoint)."""
-        if cost <= 0:
-            cost = estimate_cost(model, p_tok, c_tok)
-        self.spent_this_run += cost
-        self.ledger.record(self.run_id, model, cost)
-        self.records.append(CallRecord(tag, model, p_tok, c_tok, cost, latency))
 
     @staticmethod
     def _wrap(text: str, stream: bool, usage: tuple[int, int] | None = None) -> Any:

@@ -30,8 +30,8 @@ Streaming falls back too, as long as the failure comes before the first token (l
 resumes a stream that breaks midway, on the fallback).
 
 The spend cap is not the Router's job: callers check it before the call, against the dearest model
-in the chain, so a fallback can never take a call past the cap (see `LiteLLMCompleter` and
-`evals.agent_eval.transport.MeteredTransport`).
+in the chain, so a fallback can never take a call past the cap (`shared.guarded_completion`, used
+by `LiteLLMCompleter` and `evals.agent_eval.transport.MeteredTransport`).
 """
 from __future__ import annotations
 
@@ -181,7 +181,15 @@ def build_router(
 
 
 def configured_chain(router: Completions, model: str) -> list[str]:
-    """`model` followed by the fallbacks `router` is configured to try after it, in order."""
+    """
+    `model` followed by the fallbacks `router` is configured to try after it, in order.
+
+    A router that wraps others (the eval transport) answers for itself through `chain_for(model)`;
+    a Router lists them in `fallbacks` as `{model: [backups]}` entries.
+    """
+    chain_for = getattr(router, "chain_for", None)
+    if callable(chain_for):
+        return list(chain_for(model))
     for entry in getattr(router, "fallbacks", None) or []:
         if isinstance(entry, dict) and model in entry:
             return [model, *entry[model]]

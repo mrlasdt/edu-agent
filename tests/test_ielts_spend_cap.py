@@ -142,7 +142,7 @@ async def test_a_provider_failure_still_releases_its_reservation(
     completer = completer_on(ledger, boom)
     with pytest.raises(llm.ModelUnavailableError):
         await completer(llm.GRADER_ROLE, MESSAGES, temperature=0, max_tokens=500)
-    assert completer._reserved == 0 and ledger.spent() == 0
+    assert completer._inflight.usd == 0 and ledger.spent() == 0
 
 
 # ── the API refuses once the cap is used up ──────────────────────────────────

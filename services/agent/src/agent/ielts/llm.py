@@ -6,9 +6,10 @@ the role's model from the model config through the LiteLLM Router (`shared.llm_r
 owns the retries, the fallback order and the cooldowns; the eval harness passes its own that calls
 the same `get_router()` so the metered transport (budget ledger, cache) sits underneath unchanged.
 
-The production completer meters itself in the same budget ledger: a call that could take total
-spend over the cap is refused before it is made (`BudgetExceededError`), and the cost of every
-paid call is recorded after it.
+The production completer meters itself in the same budget ledger through `guarded_acompletion`
+(`shared.guarded_completion`, the call the eval transport makes too): a call that could take
+total spend over the cap is refused before it is made (`BudgetExceededError`), and the cost of
+every paid call is recorded after it.
 """
 from __future__ import annotations
 
@@ -17,20 +18,15 @@ from collections.abc import Awaitable
 from pathlib import Path
 from typing import Any, Protocol
 
-from shared.src.shared.budget import Ledger, estimate_cost, estimate_tokens, spend_ledger
+from shared.src.shared.budget import BudgetExceededError, Ledger, spend_ledger
 from shared.src.shared.config import get_settings, load_model_config
-from shared.src.shared.llm_router import (
-    Completions,
-    answered_model,
-    configured_chain,
-    get_router,
-)
+from shared.src.shared.guarded_completion import InFlight, failure_reason, guarded_acompletion
+from shared.src.shared.llm_router import Completions, configured_chain, get_router
 from shared.src.shared.observability import build_llm_metadata
 
 PROMPT_ROOT = Path("prompts")
 GRADER_ROLE = "ielts_grader"
 FEEDBACK_ROLE = "ielts_feedback"
-_SECRET = re.compile(r"(sk-[\w-]{8,}|Bearer\s+\S+)", re.I)
 
 
 class ModelUnavailableError(RuntimeError):
@@ -79,7 +75,8 @@ class LiteLLMCompleter:
     def __init__(self, ledger: Ledger | None = None, router: Completions | None = None) -> None:
         self._ledger = ledger
         self._router = router
-        self._reserved = 0.0  # worst-case cost of calls in flight, so concurrent samples add up
+        # worst-case cost of calls in flight, so concurrent samples add up
+        self._inflight = InFlight()
 
     @property
     def ledger(self) -> Ledger:
@@ -93,54 +90,30 @@ class LiteLLMCompleter:
         self, role: str, messages: list[dict[str, str]], *, temperature: float, max_tokens: int,
         trace_id: str = "", prompt_version: str = "",
     ) -> str:
-        chain = configured_chain(self.router, role_model(role))
-        prompt_tokens = estimate_tokens("\n".join(m["content"] for m in messages))
-        return await self._complete(
-            chain, messages, temperature=temperature, max_tokens=max_tokens,
-            trace_id=trace_id, prompt_version=prompt_version, prompt_tokens=prompt_tokens,
-        )
-
-    async def _complete(
-        self, chain: list[str], messages: list[dict[str, str]], *, temperature: float,
-        max_tokens: int, trace_id: str, prompt_version: str, prompt_tokens: int,
-    ) -> str:
         extra: dict[str, Any] = (
             build_llm_metadata(trace_id, prompt_version or "v1") if trace_id else {}
         )
+        run_id = f"ielts-mock-{trace_id or 'untraced'}"
+        chain = configured_chain(self.router, role_model(role))
         errors: list[str] = []
         start = 0
         while start < len(chain):
             model = chain[start]
-            projected = max(estimate_cost(m, prompt_tokens, max_tokens) for m in chain[start:])
-            self.ledger.ensure_capacity(self._reserved + projected)  # raises BudgetExceededError
             # The Router already holds the configured fallbacks for the first model; after an
             # empty reply the rest of the chain is passed for the model we resume from.
-            resume = {"fallbacks": [{model: chain[start + 1:]}]} if start else {}
-            self._reserved += projected
+            resume = {"fallbacks": chain[start + 1:]} if start else {}
             try:
-                response = await self.router.acompletion(
-                    model=model, messages=messages, temperature=temperature,
-                    max_tokens=max_tokens, stream=False, **resume, **extra,
+                call = await guarded_acompletion(
+                    self.router, model, messages, self.ledger, run_id, max_tokens=max_tokens,
+                    temperature=temperature, inflight=self._inflight, **resume, **extra,
                 )
-                text = str(response.choices[0].message.content or "")
+            except BudgetExceededError:
+                raise
             except Exception as exc:  # noqa: BLE001 - the Router has already tried the whole chain
-                reason = _SECRET.sub("[redacted]", " ".join(str(exc).split()))[:120]
-                errors.append(f"{' > '.join(chain[start:])}: {type(exc).__name__}: {reason}")
+                errors.append(f"{' > '.join(chain[start:])}: {failure_reason(exc, 120)}")
                 break
-            finally:
-                self._reserved -= projected
-            answered = answered_model(response, model)
-            usage = getattr(response, "usage", None)
-            self.ledger.record(
-                f"ielts-mock-{trace_id or 'untraced'}", answered,
-                estimate_cost(
-                    answered,
-                    int(getattr(usage, "prompt_tokens", 0) or prompt_tokens),
-                    int(getattr(usage, "completion_tokens", 0) or estimate_tokens(text)),
-                ),
-            )
-            if text.strip():
-                return text
-            errors.append(f"{answered}: empty reply")
-            start = chain.index(answered) + 1 if answered in chain else start + 1
+            if call.text.strip():
+                return call.text
+            errors.append(f"{call.answered}: empty reply")
+            start = chain.index(call.answered) + 1 if call.answered in chain else start + 1
         raise ModelUnavailableError("; ".join(errors))
