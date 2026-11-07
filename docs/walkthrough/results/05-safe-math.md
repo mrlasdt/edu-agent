@@ -40,6 +40,6 @@ A real equation on the same server still verifies:
 `test_a_solve_turn_whose_final_answer_is_hostile_degrades_and_still_answers` (in
 `tests/test_math_verifier_untrusted_input.py`) runs a solve turn whose model reply ends in
 `**Answer: __import__("os").getpid()**`. The learner still receives the reply text, with
-`{"verifier_fail": True}` metadata, and the process id appears nowhere.
+a failed `Verified` event (`passed=False`), and the process id appears nowhere.
 
 Reproduce the "after" numbers: `uv run pytest tests/test_math_verifier_untrusted_input.py -q`
