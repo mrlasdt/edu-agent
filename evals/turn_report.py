@@ -28,7 +28,11 @@ from pathlib import Path
 from typing import Any
 
 from shared.src.shared.budget import estimate_cost
-from shared.src.shared.config import get_settings
+from shared.src.shared.config import (
+    DEFAULT_FEEDBACK_LOG_PATH,
+    DEFAULT_TURN_LOG_PATH,
+    get_settings,
+)
 from shared.src.shared.feedback import latest_votes
 from shared.src.shared.turn_meter import TurnLog
 from shared.src.shared.turn_outcome import Outcome
@@ -321,7 +325,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    path = Path(args.log or get_settings().turn_log_path or ".turn-log/turns.jsonl")
+    path = Path(args.log or get_settings().turn_log_path or DEFAULT_TURN_LOG_PATH)
     turns = merge_turns(TurnLog(path).read())
     if args.last is not None:
         turns = turns[-args.last :] if args.last > 0 else []
@@ -334,7 +338,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     fb: dict[str, Any] | None = None
     if args.feedback:
         fb_path = Path(
-            args.feedback_log or get_settings().feedback_log_path or ".turn-log/feedback.jsonl"
+            args.feedback_log
+            or get_settings().feedback_log_path
+            or DEFAULT_FEEDBACK_LOG_PATH
         )
         fb = summarise_feedback(turns, TurnLog(fb_path).read())
         if args.last is not None:

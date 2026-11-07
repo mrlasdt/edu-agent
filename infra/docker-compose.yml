@@ -1,7 +1,7 @@
 # Reusable fragments for the four FastAPI app services (gateway/agent/corpus/
 # ingestion). They share inter-service URLs (container DNS, which override any
 # localhost values from ../.env) and bind-mount host source read-only so
-# `uvicorn --reload` picks up edits with no image rebuild.
+# `uvicorn --reload` (UVICORN_RELOAD in x-app-env) picks up edits with no image rebuild.
 x-env-file: &env-file
   - ../.env
 x-app-env: &app-env
@@ -10,6 +10,11 @@ x-app-env: &app-env
   # guest advertises sve2. Masking OpenSSL's ARM capability detection disables
   # those code paths. No-op on x86; only disables crypto accel on real arm64.
   OPENSSL_armcap: "0"
+  # uvicorn reads these as its own options (UVICORN_<OPTION>), so each service keeps the
+  # `uvicorn <app> --host --port` CMD of its Dockerfile and only adds auto-reload here
+  # (several reload dirs are separated by ":", not by spaces).
+  UVICORN_RELOAD: "true"
+  UVICORN_RELOAD_DIRS: /app/services:/app/shared
   CORPUS_SERVICE_URL: http://corpus:8001
   AGENT_SERVICE_URL: http://agent:8002
   INGESTION_SERVICE_URL: http://ingestion:8003
@@ -169,7 +174,6 @@ services:
     depends_on:
       qdrant:
         condition: service_started
-    command: ["uvicorn", "services.corpus.src.corpus.main:app", "--host", "0.0.0.0", "--port", "8001", "--reload", "--reload-dir", "/app/services", "--reload-dir", "/app/shared"]
 
   ingestion:
     build:
@@ -183,7 +187,6 @@ services:
     depends_on:
       qdrant:
         condition: service_started
-    command: ["uvicorn", "services.ingestion.src.ingestion.main:app", "--host", "0.0.0.0", "--port", "8003", "--reload", "--reload-dir", "/app/services", "--reload-dir", "/app/shared"]
 
   agent:
     build:
@@ -206,7 +209,6 @@ services:
         condition: service_healthy
       math-verifier:
         condition: service_healthy
-    command: ["uvicorn", "services.agent.src.agent.main:app", "--host", "0.0.0.0", "--port", "8002", "--reload", "--reload-dir", "/app/services", "--reload-dir", "/app/shared"]
 
   # One-shot job: ingests seed/gre-quant/*.txt into the global corpus on every start
   # (ingestion replaces a note already indexed, never duplicates it). `docker compose up`
@@ -254,7 +256,6 @@ services:
         condition: service_healthy
       corpus:
         condition: service_healthy
-    command: ["uvicorn", "services.gateway.src.gateway.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/services", "--reload-dir", "/app/shared"]
 
   # Static React build behind nginx, which proxies /chat to the gateway with
   # buffering off so the answer streams token by token, and /ielts/ (JSON) to the gateway.

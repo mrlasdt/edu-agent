@@ -1,0 +1,33 @@
+# Active prompt version per (agent, mode), shared by every model config (model_config.dev.yaml,
+# model_config.free.yaml, and any config an eval writes with write_model_config): a config that
+# has no `prompts:` section of its own gets this file (shared.config.load_model_config).
+# Loaded by the agents at turn time and reported to Langfuse so quality/cost can be attributed to
+# a specific version.
+# To roll a prompt forward or A/B it: add prompts/<agent>/<mode>/vN.md and point here.
+quant_agent:
+  tutor: v3  # v2 plus: cite the reference note as [N], never as "your notes"
+  # v2 was v1 plus "plain-text math": the web app typesets x^2 and => but not LaTeX
+  solve: v2
+  # The independent answer check's model call: the problem as an <expr> tag, without the answer
+  formalize: v1
+# The Quant agent's prompts when the math tools are on (MATH_TOOLS_ENABLED): the same prompts as
+# above plus a "Math tools" section (prompts/quant_agent_math_tools/<mode>/<version>.md).
+quant_agent_math_tools:
+  tutor: v1  # tutor v3 plus: compute privately with the tools, never state a tool result
+  solve: v1  # solve v2 plus: use the tools for every calculation, quote their values
+aw_agent:
+  tutor: v1
+  solve: v1
+# IELTS mock (prompts/<agent>/writing_t2/<version>.md)
+ielts_grader:
+  writing_t2: v1
+ielts_feedback:
+  writing_t2: v2  # v1 plus: both spelling conventions are correct; style is not an error
+# Question pipeline roles (prompts/question_pipeline/<role>/<version>.md)
+question_pipeline:
+  planner: v1
+  numeric_expert: v1
+  choice_expert: v1
+  comparison_expert: v1
+  critic: v1
+  baseline: v1

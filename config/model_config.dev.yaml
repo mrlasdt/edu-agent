@@ -3,71 +3,74 @@
 # Every role runs on gpt-4o-mini to keep spend low (a tutoring turn costs a fraction of
 # a cent); a production setup would tier this (e.g. gpt-4o main, o1 math escalation).
 # Each role specifies provider, model, and generation params.
-# To swap a role to Anthropic: change provider to "anthropic" and model to e.g. "claude-sonnet-4-6".
+# To swap every default role to Anthropic: change provider to "anthropic" and model to e.g.
+# "claude-sonnet-4-6" in the `default` anchor below (one edit); to swap one role, give it its own
+# provider and model next to its temperature.
 # LiteLLM resolves provider+model at runtime.
+# The prompt versions are not here: they are shared by every config in config/prompt_pins.yaml.
+
+# The (provider, model) pairs the roles share. A role takes one with `<<: *name` and adds its own
+# temperature (and any other key, which wins over the anchor's).
+models:
+  default: &default
+    provider: openai
+    model: gpt-4o-mini
+  # The IELTS roles run on gpt-4.1-mini, see the note on them below.
+  ielts: &ielts
+    provider: openai
+    model: gpt-4.1-mini
 
 roles:
   # Orchestrator — lightweight classify/enrich step before every turn
   orchestrator:
-    provider: openai
-    model: gpt-4o-mini
+    <<: *default
     temperature: 0
 
   # Main agents
   quant_agent:
-    provider: openai
-    model: gpt-4o-mini
+    <<: *default
     temperature: 0.2
 
   aw_agent:
-    provider: openai
-    model: gpt-4o-mini
+    <<: *default
     temperature: 0.5
 
   # Math verifier retry — same model as quant_agent
   math_retry:
-    provider: openai
-    model: gpt-4o-mini
+    <<: *default
     temperature: 0.2
 
   # Math verifier escalation — ~1% of Quant turns; point at a reasoning-tier model when cost allows
   math_escalation:
-    provider: openai
-    model: gpt-4o-mini
+    <<: *default
     temperature: 1  # above math_retry so the last attempt is not a repeat of the failed ones
 
   # Post-generation critics
   style_critic:
-    provider: openai
-    model: gpt-4o-mini
+    <<: *default
     temperature: 0
 
   # AW eval judges
   aw_judge_nightly:
-    provider: openai
-    model: gpt-4o-mini
+    <<: *default
     temperature: 0
 
   aw_judge_pr:
-    provider: openai
-    model: gpt-4o-mini
+    <<: *default
     temperature: 0
 
   # Question-generation pipeline (LangGraph): planner and critic are cheap, the generator
   # experts are the main tier. Evals reroute every role to one model with write_model_config.
   question_planner:
-    provider: openai
-    model: gpt-4o-mini
+    <<: *default
     temperature: 0
 
   question_generator:
-    provider: openai
-    model: gpt-4o-mini
+    <<: *default
     temperature: 0.4
 
   question_critic:
-    provider: openai
-    model: gpt-4o-mini
+    <<: *default
     temperature: 0
 
   # IELTS Writing mock: rubric grader (sampled three times, median per criterion) and the
@@ -76,49 +79,14 @@ roles:
   # feedback. A mock costs a few cents. Change the model here (or point MODEL_CONFIG_PATH at
   # another config) to mark with a different one.
   ielts_grader:
-    provider: openai
-    model: gpt-4.1-mini
+    <<: *ielts
     temperature: 0.3
 
   ielts_feedback:
-    provider: openai
-    model: gpt-4.1-mini
+    <<: *ielts
     temperature: 0.3
 
   # Background jobs
   style_extractor:
-    provider: openai
-    model: gpt-4o-mini
+    <<: *default
     temperature: 0
-
-# Active prompt version per (agent, mode). Loaded by the agents at turn time and
-# reported to Langfuse so quality/cost can be attributed to a specific version.
-# To roll a prompt forward or A/B it: add prompts/<agent>/<mode>/vN.md and point here.
-prompts:
-  quant_agent:
-    tutor: v3  # v2 plus: cite the reference note as [N], never as "your notes"
-    # v2 was v1 plus "plain-text math": the web app typesets x^2 and => but not LaTeX
-    solve: v2
-    # The independent answer check's model call: the problem as an <expr> tag, without the answer
-    formalize: v1
-  # The Quant agent's prompts when the math tools are on (MATH_TOOLS_ENABLED): the same prompts as
-  # above plus a "Math tools" section (prompts/quant_agent_math_tools/<mode>/<version>.md).
-  quant_agent_math_tools:
-    tutor: v1  # tutor v3 plus: compute privately with the tools, never state a tool result
-    solve: v1  # solve v2 plus: use the tools for every calculation, quote their values
-  aw_agent:
-    tutor: v1
-    solve: v1
-  # IELTS mock (prompts/<agent>/writing_t2/<version>.md)
-  ielts_grader:
-    writing_t2: v1
-  ielts_feedback:
-    writing_t2: v2  # v1 plus: both spelling conventions are correct; style is not an error
-  # Question pipeline roles (prompts/question_pipeline/<role>/<version>.md)
-  question_pipeline:
-    planner: v1
-    numeric_expert: v1
-    choice_expert: v1
-    comparison_expert: v1
-    critic: v1
-    baseline: v1

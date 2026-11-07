@@ -45,6 +45,7 @@ from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.skills.math_tools import MathToolsSkill
 from services.agent.src.agent.skills.verify_math import VerifyMathSkill
 from services.math_verifier.src.math_verifier.server import mcp as math_verifier_mcp
+from shared.src.shared.config import DEFAULT_MODEL_CONFIG_PATH
 from shared.src.shared.models import Mode, Session
 
 AW_SCALE = [
@@ -79,7 +80,7 @@ def in_process_math_tools() -> MathToolsSkill:
     return MathToolsSkill(client=_in_process_client())
 
 
-def write_model_config(model: str, base_path: str = "config/model_config.free.yaml") -> str:
+def write_model_config(model: str, base_path: str = DEFAULT_MODEL_CONFIG_PATH) -> str:
     """A model config identical to the default one but with every role routed to `model`."""
     raw = yaml.safe_load(Path(base_path).read_text())
     provider, _, name = model.partition("/")

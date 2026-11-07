@@ -27,7 +27,11 @@ from pathlib import Path
 from typing import Any
 
 from evals.turn_report import merge_turns
-from shared.src.shared.config import get_settings
+from shared.src.shared.config import (
+    DEFAULT_FEEDBACK_LOG_PATH,
+    DEFAULT_TURN_LOG_PATH,
+    get_settings,
+)
 from shared.src.shared.feedback import latest_votes
 from shared.src.shared.turn_meter import TurnLog
 
@@ -113,9 +117,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     settings = get_settings()
-    turn_records = TurnLog(args.log or settings.turn_log_path or ".turn-log/turns.jsonl").read()
+    turn_records = TurnLog(args.log or settings.turn_log_path or DEFAULT_TURN_LOG_PATH).read()
     turn = next((t for t in merge_turns(turn_records) if t["trace_id"] == args.trace_id), None)
-    feedback_path = args.feedback_log or settings.feedback_log_path or ".turn-log/feedback.jsonl"
+    feedback_path = args.feedback_log or settings.feedback_log_path or DEFAULT_FEEDBACK_LOG_PATH
     vote = latest_votes(TurnLog(feedback_path).read()).get(args.trace_id)
     if turn is None and vote is None:
         print(

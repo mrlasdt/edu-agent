@@ -9,73 +9,74 @@
 # max_tokens. It is a reasoning model: it spends hidden thinking tokens before the visible answer,
 # which is why the gateway's guardrail token caps sit well above the visible answer size.
 # Free models are rate limited and come and go: google/gemma-4-31b-it:free (same capabilities)
-# answered 429 for the whole proof run, so check the live list and swap the model on every
-# line below (ids that end in :free) if this one is gone. Same prompt versions as
-# model_config.dev.yaml. Free models are slow and say little about quality or latency; use this
-# config for development and demos.
+# answered 429 for the whole proof run, so check the live list and swap the model in the
+# `default` anchor below (ids that end in :free) if this one is gone. Free models are slow and
+# say little about quality or latency; use this config for development and demos.
+# The prompt versions are not here: they are shared by every config in config/prompt_pins.yaml.
+
+# The (provider, model) pairs the roles share. A role takes one with `<<: *name` and adds its own
+# temperature (and any other key, which wins over the anchor's).
+models:
+  default: &default
+    provider: openrouter
+    model: recursive/flint-v1.0:free
+  # The IELTS roles, see the note on them below.
+  ielts: &ielts
+    provider: gemini
+    model: gemma-4-26b-a4b-it
+    fallbacks: [openrouter/google/gemma-4-26b-a4b-it:free, openrouter/google/gemma-4-31b-it:free]
 
 roles:
   # Orchestrator - lightweight classify/enrich step before every turn
   orchestrator:
-    provider: openrouter
-    model: recursive/flint-v1.0:free
+    <<: *default
     temperature: 0
 
   # Main agents
   quant_agent:
-    provider: openrouter
-    model: recursive/flint-v1.0:free
+    <<: *default
     temperature: 0.2
 
   aw_agent:
-    provider: openrouter
-    model: recursive/flint-v1.0:free
+    <<: *default
     temperature: 0.5
 
   # Math verifier retry - same model as quant_agent
   math_retry:
-    provider: openrouter
-    model: recursive/flint-v1.0:free
+    <<: *default
     temperature: 0.2
 
   # Math verifier escalation (~1% of Quant turns)
   math_escalation:
-    provider: openrouter
-    model: recursive/flint-v1.0:free
+    <<: *default
     temperature: 1  # above math_retry so the last attempt is not a repeat of the failed ones
 
   # Post-generation critics
   style_critic:
-    provider: openrouter
-    model: recursive/flint-v1.0:free
+    <<: *default
     temperature: 0
 
   # AW eval judges
   aw_judge_nightly:
-    provider: openrouter
-    model: recursive/flint-v1.0:free
+    <<: *default
     temperature: 0
 
   aw_judge_pr:
-    provider: openrouter
-    model: recursive/flint-v1.0:free
+    <<: *default
     temperature: 0
 
   # Question-generation pipeline (LangGraph): planner and critic are cheap, the generator
   # experts are the main tier. Evals reroute every role to one model with write_model_config.
   question_planner:
-    provider: openrouter
-    model: recursive/flint-v1.0:free
+    <<: *default
     temperature: 0
 
   question_generator:
-    provider: openrouter
-    model: recursive/flint-v1.0:free
+    <<: *default
     temperature: 0.4
 
   question_critic:
-    provider: openrouter
-    model: recursive/flint-v1.0:free
+    <<: *default
     temperature: 0
 
   # IELTS Writing mock: rubric grader and examiner-style feedback writer. These two roles are
@@ -86,51 +87,14 @@ roles:
   # fallbacks in order: the same 26b and then 31b on OpenRouter's free tier (gemma-4-31b-it
   # passed the same gate).
   ielts_grader:
-    provider: gemini
-    model: gemma-4-26b-a4b-it
+    <<: *ielts
     temperature: 0.3
-    fallbacks: [openrouter/google/gemma-4-26b-a4b-it:free, openrouter/google/gemma-4-31b-it:free]
 
   ielts_feedback:
-    provider: gemini
-    model: gemma-4-26b-a4b-it
+    <<: *ielts
     temperature: 0.3
-    fallbacks: [openrouter/google/gemma-4-26b-a4b-it:free, openrouter/google/gemma-4-31b-it:free]
 
   # Background jobs
   style_extractor:
-    provider: openrouter
-    model: recursive/flint-v1.0:free
+    <<: *default
     temperature: 0
-
-# Active prompt version per (agent, mode). Loaded by the agents at turn time and
-# reported to Langfuse so quality/cost can be attributed to a specific version.
-# To roll a prompt forward or A/B it: add prompts/<agent>/<mode>/vN.md and point here.
-prompts:
-  quant_agent:
-    tutor: v3  # v2 plus: cite the reference note as [N], never as "your notes"
-    # v2 was v1 plus "plain-text math": the web app typesets x^2 and => but not LaTeX
-    solve: v2
-    # The independent answer check's model call: the problem as an <expr> tag, without the answer
-    formalize: v1
-  # The Quant agent's prompts when the math tools are on (MATH_TOOLS_ENABLED): the same prompts as
-  # above plus a "Math tools" section (prompts/quant_agent_math_tools/<mode>/<version>.md).
-  quant_agent_math_tools:
-    tutor: v1  # tutor v3 plus: compute privately with the tools, never state a tool result
-    solve: v1  # solve v2 plus: use the tools for every calculation, quote their values
-  aw_agent:
-    tutor: v1
-    solve: v1
-  # IELTS mock (prompts/<agent>/writing_t2/<version>.md)
-  ielts_grader:
-    writing_t2: v1
-  ielts_feedback:
-    writing_t2: v2  # v1 plus: both spelling conventions are correct; style is not an error
-  # Question pipeline roles (prompts/question_pipeline/<role>/<version>.md)
-  question_pipeline:
-    planner: v1
-    numeric_expert: v1
-    choice_expert: v1
-    comparison_expert: v1
-    critic: v1
-    baseline: v1

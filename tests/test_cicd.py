@@ -9,6 +9,8 @@ Behaviors under test:
   5. Dockerfiles exist for all services
 """
 
+import json
+import re
 import shlex
 from pathlib import Path
 
@@ -158,3 +160,24 @@ def test_ci_runs_only_the_offline_quant_suite():
         referenced = repr(step.get("env", {})) + repr(step.get("with", {})) + step.get("run", "")
         assert "OPENAI_API_KEY" not in referenced
         assert "OPENROUTER_API_KEY" not in referenced
+
+
+def test_compose_app_services_run_the_dockerfile_cmd_and_reload_through_uvicorn_env():
+    """
+    The four FastAPI services take their `uvicorn <app> --host --port` from the Dockerfile CMD;
+    compose adds only auto-reload, as the UVICORN_* env uvicorn reads for its own options.
+    """
+    compose = yaml.safe_load((ROOT / "infra/docker-compose.yml").read_text())
+    ports = {"gateway": 8000, "corpus": 8001, "agent": 8002, "ingestion": 8003}
+    for svc, port in ports.items():
+        service = compose["services"][svc]
+        assert "command" not in service, svc
+        assert service["environment"]["UVICORN_RELOAD"] == "true", svc
+        assert service["environment"]["UVICORN_RELOAD_DIRS"] == "/app/services:/app/shared", svc
+        assert f"{port}:{port}" in service["ports"], svc
+        dockerfile = (ROOT / "services" / svc / "Dockerfile").read_text()
+        cmd = re.search(r"^CMD (\[.*\])$", dockerfile, re.M)
+        assert cmd, svc
+        argv = json.loads(cmd.group(1))
+        assert argv[0] == "uvicorn", svc
+        assert argv[argv.index("--port") + 1] == str(port), svc

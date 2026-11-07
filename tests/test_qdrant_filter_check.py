@@ -1,12 +1,16 @@
 """The filter-recall check's own logic: corpus shape, ground truth, report."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
+import yaml
 from qdrant_client import QdrantClient, models
 
 from evals.qdrant_filter_check import (
     PROFILES,
+    QDRANT_IMAGE,
     TEST_TYPES,
     Caller,
     Measurement,
@@ -105,3 +109,9 @@ def test_percentile_and_table():
     table = format_table([row])
     assert "| global-heavy | no-index (default hnsw_ef) | none |" in table
     assert "1.23" in table
+
+
+def test_the_compose_qdrant_image_is_the_one_the_filter_check_runs():
+    compose_file = Path(__file__).parent.parent / "infra/docker-compose.yml"
+    compose = yaml.safe_load(compose_file.read_text())
+    assert compose["services"]["qdrant"]["image"] == QDRANT_IMAGE
