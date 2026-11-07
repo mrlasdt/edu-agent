@@ -11,7 +11,8 @@ x-app-env: &app-env
   # those code paths. No-op on x86; only disables crypto accel on real arm64.
   OPENSSL_armcap: "0"
   # uvicorn reads these as its own options (UVICORN_<OPTION>), so each service keeps the
-  # `uvicorn <app> --host --port` CMD of its Dockerfile and only adds auto-reload here
+  # `uvicorn <app> --host --port` command its image's `serve` script runs (infra/assemble-service.sh)
+  # and only adds auto-reload here
   # (several reload dirs are separated by ":", not by spaces).
   UVICORN_RELOAD: "true"
   UVICORN_RELOAD_DIRS: /app/services:/app/shared
@@ -158,9 +159,10 @@ services:
       retries: 10
 
   # ── Application services ────────────────────────────────────────────────────
-  # Built from the one infra/Dockerfile (build arg SERVICE picks the dependency group). Source is bind-mounted read-only and run
-  # under `uvicorn --reload`, so routine code edits need no rebuild. Rebuild only
-  # when dependencies change (pyproject.toml, uv.lock): `docker compose build`.
+  # Built from the one infra/Dockerfile (build arg SERVICE picks the dependency group). Source
+  # is bind-mounted read-only and run under `uvicorn --reload`, so routine code edits need no
+  # rebuild. Rebuild only when dependencies change (pyproject.toml, uv.lock):
+  # `docker compose build`.
   # depends_on health-gates the startup order: qdrant → corpus/ingestion,
   # corpus+math-verifier → agent, agent+corpus → gateway.
 
