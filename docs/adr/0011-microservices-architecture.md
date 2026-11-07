@@ -1,6 +1,6 @@
 # Microservices architecture (monorepo)
 
-The system is decomposed into five persistent microservices and one CLI tool, all in a single repository. Services communicate over HTTP (FastAPI). The **Gateway** is the only external-facing service; all others are cluster-internal. The **Math Verifier** is a local MCP server (MCP Python SDK) running as a separate process — the Agent Service is its MCP client. The Eval harness is a CLI tool that runs against the live services in CI and on demand; it is not a persistent service.
+The system is decomposed into five persistent microservices and one CLI tool, all in a single repository. Services communicate over HTTP (FastAPI). The **Gateway** is the only external-facing service; all others are cluster-internal. The **Math Verifier** is a local MCP server (MCP Python SDK) running as a separate process — the Agent Service reaches it over plain HTTP (see "Amendment: the Agent Service calls the REST routes"). The Eval harness is a CLI tool that runs against the live services in CI and on demand; it is not a persistent service.
 
 ## Services
 
@@ -10,7 +10,7 @@ The system is decomposed into five persistent microservices and one CLI tool, al
 | **agent** | Quant Agent + AW Agent via plugin registry, Skill loading, post-gen critics (style critic, citation checker), streaming to gateway | internal HTTP |
 | **corpus** | Qdrant interface, hybrid search (BGE-M3 dense + sparse + RRF), BGE reranker, ACL enforcement, citation metadata | internal HTTP |
 | **ingestion** | Document parsing (PDF/DOCX/TXT), chunking, embedding, Qdrant indexing, job management API; large files are indexed by an in-process background task (see "Amendment: ingestion without a queue worker") | internal HTTP |
-| **math-verifier** | sympy sandbox, local MCP server; accepts `verify_math(expression, expected)` tool calls | MCP protocol (Unix socket in Phase 1, cluster-internal in Phase 2) |
+| **math-verifier** | sympy sandbox, local MCP server; accepts `verify_math(expression, expected)` tool calls | MCP (SSE) for outside clients; `POST /tools/{name}` over HTTP for the Agent Service (see the amendment on the REST routes) |
 
 **Not a service:** the Eval harness (`evals/`) is a CLI tool invoked by CI and nightly cron. It calls the Agent Service and judges directly. Spinning up a persistent eval service would add operational surface for no benefit.
 
@@ -46,7 +46,7 @@ Accepted. Supersedes the monolithic service implied by the earlier ADRs; all ser
 - **Each service has its own Dockerfile and its own entry in Docker Compose.** (k8s manifests were planned and later removed unapplied, ADR-0009.)
 - **Services share one Postgres instance** (different schemas or tables; no cross-schema foreign keys). Alembic migrations are per-service under `services/{name}/migrations/`.
 - **Services share one Qdrant instance** (one collection, ACL via payload filters — ADR-0004).
-- **The Agent Service is an MCP client.** It connects to the Math Verifier MCP server at startup and holds the connection. If the Math Verifier is unreachable, Quant turns degrade to "unable to verify" (verifier-fail event) rather than failing the whole service.
+- **The Agent Service calls the Math Verifier over HTTP, one request per check** (see "Amendment: the Agent Service calls the REST routes"). If the Math Verifier is unreachable, Quant turns degrade to "unable to verify" (verifier-fail event) rather than failing the whole service.
 - **The plugin registry is the v1 extension seam.** It must be designed before writing the first agent class — not retrofitted. The registry interface: `AgentRegistry.register(test_type: str, section: str, agent_cls: type[BaseAgent])`. The Orchestrator calls `AgentRegistry.get(test_type, section)` to resolve the agent for a session. Agents not registered → Orchestrator returns a "section not available" clarification turn.
 - **`test_type` is on session state from day one.** v1 supports only `test_type=gre`; v2 adds `ielts`, `gmat`, etc. The field is present in all session state, corpus document metadata, and the Admin UI upload form even though only one value is valid in v1.
 - **Inter-service auth is internal network trust in Phase 1** (Docker Compose network). Phase 2 uses mTLS or an internal JWT between services — a k8s secret. Not built in Phase 1.
@@ -63,3 +63,7 @@ The decision above named a pgmq queue and a worker for large uploads. Neither wa
 A collection filled before this change (random ids) needs no manual cleanup: the first upload of each document removes its legacy points as part of the replace, so the seed job's first start on an existing volume leaves one copy of each note, not two. Documents that are never uploaded again keep their legacy points.
 
 **Still open.** A durable queue (pgmq or arq) with a worker and a Postgres job table, which would survive restarts and allow more than one replica. Until then the "pgmq" wording above describes the intent, not the code.
+
+## Amendment: the Agent Service calls the REST routes (2026-11)
+
+The decision above had the Agent Service hold an MCP connection to the Math Verifier. It never did: the agent's `verify-math` and `math-tools` Skills `POST` to the verifier's plain-HTTP routes (`/tools/{name}`), which sit beside the FastMCP server in `server.py`. Both surfaces are kept: MCP serves outside clients such as Claude Desktop, REST serves the Agent Service. The model-facing contract of the three math tools (`math_evaluate`, `math_solve`, `math_compare`) is written once in `shared/src/shared/math_tool_specs.py`, which the agent hands to the model and the verifier reads its argument rules from. Both Skills take an optional `client=` (an `httpx.AsyncClient`), so tests and evals reach the real routes in process with `httpx.ASGITransport` instead of patching a method.
