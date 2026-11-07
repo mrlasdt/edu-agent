@@ -2,7 +2,7 @@ Status: completed
 
 ## What to build
 
-The core Candidate-facing React web UI: session-start subject picker (Quant / AW), streaming chat view, mode-switch button, inline citation rendering with collapsible Sources panel, and thumbs-up/down feedback per agent turn. Built with Vite + React + Tailwind + Vercel AI SDK `useChat`.
+The core Candidate-facing React web UI: session-start subject picker (Quant / AW), streaming chat view, mode-switch button, inline citation rendering with collapsible Sources panel, and thumbs-up/down feedback per agent turn. Built with Vite + React and hand-written CSS; the chat stream is read with `fetch` (no Tailwind, no Vercel AI SDK `useChat`).
 
 The chat view streams tokens as they arrive. Status lines ("Checking your answer…", "Finding references…") appear above the streaming response while verifier/retrieval are running. Agent turns in AW show `[N]` inline citation links that open the Sources panel.
 
