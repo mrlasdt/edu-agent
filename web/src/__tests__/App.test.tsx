@@ -69,7 +69,8 @@ describe("App candidate id", () => {
   });
 });
 
-describe("App /chat request limits", () => {  it("caps the composer at the gateway's message limit", async () => {
+describe("App /chat request limits", () => {
+  it("caps the composer at the gateway's message limit", async () => {
     stubGateway();
     await openQuant();
     expect(screen.getByLabelText("Your message")).toHaveAttribute(
