@@ -247,17 +247,21 @@ async def test_completeness_reply_is_parsed_from_the_model_reply(reply, expected
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "reply",
-    ["not json at all", '{"clarification": "Which problem?"}'],
-    ids=["not-json", "no-verdict"],
+    [
+        "not json at all",  # unparseable
+        '{"clarification": "Which problem?"}',  # no verdict: never read as complete
+        '{"complete": "false", "clarification": "Which problem?"}',  # a string is not a boolean
+    ],
 )
-async def test_a_reply_that_is_not_a_verdict_is_an_error_not_complete(reply):
+async def test_a_completeness_reply_that_is_not_a_verdict_is_an_error_not_a_pass(reply):
     router = mock_router({_MODEL: reply})
     with use_router(router), pytest.raises(StructuredOutputError):
-        await check_completeness("solve this", _session(), "t-bad")
+        await check_completeness("solve this", _session(), "t-bad-reply")
+    assert calls(router) == {_MODEL: 1}
 
 
 @pytest.mark.asyncio
-async def test_completeness_check_sends_the_history_and_asks_for_a_verdict():
+async def test_completeness_check_sends_the_history_and_asks_for_the_verdict_schema():
     seen: list[dict[str, Any]] = []
 
     async def behave(**kwargs: Any) -> Any:
@@ -275,7 +279,7 @@ async def test_completeness_check_sends_the_history_and_asks_for_a_verdict():
     assert request["model"] == _MODEL
     assert request["temperature"] == 0
     assert request["stream"] is False
-    assert request["response_format"] is CompletenessVerdict  # the schema itself
+    assert request["response_format"] is CompletenessVerdict
     assert [m["role"] for m in request["messages"]] == ["system", "user", "assistant", "user"]
     assert "GRE QUANT" in request["messages"][0]["content"]
     assert request["messages"][-1]["content"] == "why did we subtract 3?"

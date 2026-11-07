@@ -3,13 +3,10 @@ One resilience policy for every model call: the LiteLLM Router (ADR-0007, "Resil
 Router-native"). These tests run the real Router against litellm's own mock provider, so the
 retries, fallbacks and cooldowns are litellm's and only the provider is faked.
 """
-import time
 from pathlib import Path
-from types import SimpleNamespace
 
 import litellm
 import pytest
-from litellm.router_utils import cooldown_cache
 
 from shared.src.shared.budget import BudgetExceededError, Ledger
 from shared.src.shared.config import Settings, load_model_config
@@ -204,19 +201,15 @@ async def test_an_unconfigured_model_is_never_cooled_down():
     assert response.choices[0].message.content == "fine"
 
 
-async def test_a_model_inside_its_cooldown_is_tried_again_once_it_ends(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    # A fake clock for litellm's cooldown cache, so the cooldown ends when the test says so and
-    # not after a wall-clock wait that a slow runner can overrun.
-    now = [time.time()]
-    monkeypatch.setattr(cooldown_cache, "time", SimpleNamespace(time=lambda: now[0]))
-    policy = RouterPolicy(num_retries=0, retry_after=0, allowed_fails=0, cooldown_time=60)
+async def test_a_model_inside_its_cooldown_is_tried_again_once_it_ends():
+    policy = RouterPolicy(num_retries=0, retry_after=0, allowed_fails=0, cooldown_time=1)
     router = mock_router({A: SERVER_ERROR, B: "from b"}, {A: [B]}, policy)
     await ask(router)
     await ask(router)
     assert calls(router)[A] == 1  # cooled after its one failure
-    now[0] += 61
+    import asyncio
+
+    await asyncio.sleep(1.2)
     await ask(router)
     assert calls(router)[A] == 2
 
