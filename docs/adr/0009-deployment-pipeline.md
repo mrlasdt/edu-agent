@@ -23,7 +23,7 @@ Accepted.
 
 ## Consequences
 
-- **Trunk-based dev means every merge to main must pass all CI gates** — lint, type-check, unit tests, integration tests, and the path-gated per-PR eval slice (ADR-0006). PRs are short-lived (≤1 day); feature flags gate incomplete features rather than long-lived branches.
+- **Trunk-based dev means every merge to main must pass all CI gates** — lint, type-check, unit tests, integration tests, and the offline eval slice (ADR-0006; it runs on every change). PRs are short-lived (≤1 day); feature flags gate incomplete features rather than long-lived branches.
 - **Prompt versioning is git-native.** `prompts/{agent}/{mode}/v{N}.md` with YAML frontmatter. Active version per `(agent, mode)` set in `model_config.yaml`. Old versions retained in git; never deleted. A/B traffic splits configured in the same file: `aw_agent.tutor: { v3: 90, v4: 10 }`.
 - **k8s manifests are first-class artifacts.** (Original intent; not built, see the implementation status.) Written in Phase 1, validated with `kubectl --dry-run=client` in CI, applied to staging on merge to main, applied to prod on tagged release.
 - **Canary auto-rollback is the load-bearing production safety feature.** 5% canary for 30 min; rollback on error rate >2× baseline OR eval key metrics regress >5%. Promotion to 100% is automatic on healthy.

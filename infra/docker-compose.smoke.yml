@@ -3,7 +3,8 @@
 #
 # The base file bind-mounts host source over each image and runs `uvicorn --reload`, which hides
 # anything the Dockerfile forgot to COPY. This overlay drops those mounts and the command, so
-# each service starts from its image alone, exactly what deploy.yml builds and ships.
+# each service starts from its image alone, so a missing COPY or a root-owned path fails here
+# before merge instead of on main.
 services:
   corpus:
     volumes: !reset []
