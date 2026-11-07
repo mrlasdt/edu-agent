@@ -53,7 +53,9 @@ class Judge(Protocol):
 
     async def yes_no(self, q: JudgeQuestion) -> YesNo: ...
 
-    async def score(self, q: JudgeQuestion, criteria: list[str]) -> float: ...
+    async def score(self, q: JudgeQuestion, criteria: list[str]) -> float:
+        """Position on `criteria` counted from 1: 1 is the first descriptor, N the last."""
+        ...
 
 
 class LLMJudge:
@@ -62,6 +64,11 @@ class LLMJudge:
         self._model = model
 
     async def _ask(self, system: str, q: JudgeQuestion) -> str:
+        # models occasionally reply with nothing; one retry recovers it, a second is a real failure
+        text = await self._complete(system, q)
+        return text if text.strip() else await self._complete(system, q)
+
+    async def _complete(self, system: str, q: JudgeQuestion) -> str:
         with tagged("judge"):
             response = await get_router().acompletion(
                 model=self._model,
@@ -84,7 +91,7 @@ class LLMJudge:
         return YesNo(answer=match.group(1).lower() == "yes")
 
     async def score(self, q: JudgeQuestion, criteria: list[str]) -> float:
-        scale = "\n".join(f"{i}: {c}" for i, c in enumerate(criteria))
+        scale = "\n".join(f"{i}: {c}" for i, c in enumerate(criteria, start=1))
         text = await self._ask(
             f"You are a strict grader. Score on this scale:\n{scale}\n"
             "Reply with only a number (decimals allowed).",
@@ -93,7 +100,7 @@ class LLMJudge:
         match = re.search(r"-?\d+(?:\.\d+)?", text)
         if not match:
             raise JudgeError(f"unparseable score: {text[:60]!r}")
-        return min(float(len(criteria) - 1), max(0.0, float(match.group(0))))
+        return min(float(len(criteria)), max(1.0, float(match.group(0))))
 
 
 class JevJudge:
@@ -166,7 +173,8 @@ class JevJudge:
         )
         if "score" not in answer:
             raise JudgeError("jev score answer missing 'score'")
-        return float(answer["score"])
+        # jev scores a 0-based index; the Judge contract counts from 1
+        return float(answer["score"]) + 1.0
 
 
 def estimate_jev_cost(chars: int) -> float:
