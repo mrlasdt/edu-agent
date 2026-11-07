@@ -176,7 +176,6 @@ async def test_get_question_returns_question():
         "id": "q001",
         "question_type": "numeric_entry",
         "expression": "x**2 - 5*x + 6 = 0",
-        "ground_truth": "2,3",
     }
     with patch("mcp_servers.candidate_server._get_random_question", new_callable=AsyncMock) as mock:
         mock.return_value = mock_question
@@ -197,6 +196,72 @@ async def test_get_question_passes_section_and_type():
     call_kwargs = mock.call_args.kwargs
     assert call_kwargs.get("section") == "quant"
     assert call_kwargs.get("question_type") == "quantitative_comparison"
+
+
+def _golden_solve_ids() -> set[str]:
+    from evals.loader import load_golden_set
+
+    return {i["id"] for i in load_golden_set("quant") if i["kind"] == "solve"}
+
+
+@pytest.mark.asyncio
+async def test_get_question_serves_only_practice_questions_without_the_answer_key():
+    """
+    Regression: the tool used to random.choice over every raw golden row, so one call in five
+    returned a prompt-injection test string, and every answer carried the answer key
+    (ground_truth) and the eval's internal failure label (failure_source).
+    """
+    from mcp_servers.candidate_server import _get_random_question
+
+    solve_ids = _golden_solve_ids()
+    assert len(solve_ids) == 16
+    seen: set[str] = set()
+    for _ in range(300):
+        q = await _get_random_question(test_type="gre", section="quant", question_type="")
+        assert q["id"] in solve_ids
+        assert {"ground_truth", "failure_source", "tag", "kind", "hostile", "student"}.isdisjoint(q)
+        assert q["question"]
+        seen.add(q["id"])
+    assert len(seen) > 1
+
+
+@pytest.mark.asyncio
+async def test_get_question_pool_is_exactly_the_solve_rows():
+    from mcp_servers import candidate_server
+
+    pools: list[list[dict]] = []
+
+    def capture(items):
+        pools.append(items)
+        return items[0]
+
+    with patch.object(candidate_server.random, "choice", capture):
+        await candidate_server._get_random_question(
+            test_type="gre", section="quant", question_type=""
+        )
+    assert {q["id"] for q in pools[0]} == _golden_solve_ids()
+
+
+@pytest.mark.asyncio
+async def test_get_question_type_filter_still_applies_to_practice_questions():
+    from mcp_servers.candidate_server import _get_random_question
+
+    for _ in range(50):
+        q = await _get_random_question(
+            test_type="gre", section="quant", question_type="numeric_entry"
+        )
+        assert q["question_type"] == "numeric_entry" and "ground_truth" not in q
+    missing = await _get_random_question(test_type="gre", section="quant", question_type="nope")
+    assert "error" in missing
+
+
+@pytest.mark.asyncio
+async def test_get_question_aw_returns_the_prompt_without_anchor_essays():
+    from mcp_servers.candidate_server import _get_random_question
+
+    q = await _get_random_question(test_type="gre", section="aw", question_type="")
+    assert q["prompt"] and q["task_type"] in {"issue", "argument"}
+    assert "anchor_essays" not in q
 
 
 # ── 3. get_model_essay ────────────────────────────────────────────────────────

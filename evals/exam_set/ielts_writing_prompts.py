@@ -10,9 +10,15 @@ Regenerate the committed file with `python -m evals.exam_set generate-writing`.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from evals.exam_set.schema import Design, ExamItem, LabelProvenance, LabelTier, Source
 
 FILE_NAME = "ielts_writing_prompts.jsonl"
+# The product serves these prompts (/ielts/prompts), so the file lives in the product tree and
+# evals reads and regenerates it there. The product never reads from evals/.
+PATH = (Path(__file__).resolve().parents[2]
+        / "services/agent/src/agent/ielts/data" / FILE_NAME)
 
 # (essay type, prompt)
 _PROMPTS: tuple[tuple[str, str], ...] = (
