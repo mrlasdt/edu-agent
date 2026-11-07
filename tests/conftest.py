@@ -66,6 +66,30 @@ def fresh_router_with_instant_retries(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def routers_unhook_from_litellm(monkeypatch):
+    """
+    Every Router registers its usage and failure callbacks in litellm's process-wide lists, and
+    only `Router.discard()` takes them out. litellm refuses to add past 100 (MAX_CALLBACKS), so
+    once the suite had built that many Routers the next one silently lost the failure callback
+    its cooldown depends on, and the cooldown tests failed depending on test order. Discard each
+    Router a test builds when the test ends.
+    """
+    from litellm.router import Router
+
+    built: list[Router] = []
+    real_init = Router.__init__
+
+    def tracking_init(self, *args, **kwargs):
+        real_init(self, *args, **kwargs)
+        built.append(self)
+
+    monkeypatch.setattr(Router, "__init__", tracking_init)
+    yield
+    for router in built:
+        router.discard()
+
+
+@pytest.fixture(autouse=True)
 def fresh_gateway_rate_limiter(monkeypatch):
     """
     The gateway's /chat limiter (60 a minute per candidate) is module state, and the tests share
