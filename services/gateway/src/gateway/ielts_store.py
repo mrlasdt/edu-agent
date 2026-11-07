@@ -108,12 +108,16 @@ class AttemptStore:
         finally:
             db.close()
 
-    def get(self, attempt_id: str) -> Attempt:
-        with self._connect() as db:
-            row = db.execute("SELECT * FROM attempts WHERE id = ?", (attempt_id,)).fetchone()
+    @staticmethod
+    def _fetch(db: sqlite3.Connection, attempt_id: str) -> Attempt:
+        row = db.execute("SELECT * FROM attempts WHERE id = ?", (attempt_id,)).fetchone()
         if row is None:
             raise AttemptNotFoundError(attempt_id)
         return _row(row)
+
+    def get(self, attempt_id: str) -> Attempt:
+        with self._connect() as db:
+            return self._fetch(db, attempt_id)
 
     def recent(self, limit: int = 20, module: str = MODULE_WRITING_T2) -> list[Attempt]:
         with self._connect() as db:
@@ -163,41 +167,64 @@ class AttemptStore:
             )
         return self.get(attempt_id)
 
-    def submit(self, attempt_id: str, text: str) -> Attempt:
+    def submit(self, attempt_id: str, text: str) -> tuple[Attempt, bool]:
         """
         Final text; idempotent once submitted. Past deadline + grace it is marked late and the
         text is the last autosave, so nothing written after time was up is marked.
+
+        Returns the attempt and whether this call made the in_progress -> submitted transition.
+        Of several simultaneous submits exactly one gets True, so only that caller starts marking.
         """
-        attempt = self.get(attempt_id)
-        if attempt.status != "in_progress":
-            if attempt.final_text is not None:
-                return attempt
-            raise AttemptStateError(f"attempt is {attempt.status}, not in progress")
-        assert attempt.deadline_at is not None
-        now = self.clock()
-        late = now > attempt.deadline_at + GRACE_S
-        if late:
-            text = attempt.draft_text
         with self._connect() as db:
-            db.execute(
+            attempt = self._fetch(db, attempt_id)
+            if attempt.status != "in_progress":
+                if attempt.final_text is not None:
+                    return attempt, False
+                raise AttemptStateError(f"attempt is {attempt.status}, not in progress")
+            assert attempt.deadline_at is not None
+            now = self.clock()
+            late = now > attempt.deadline_at + GRACE_S
+            if late:
+                text = attempt.draft_text
+            moved = db.execute(
                 "UPDATE attempts SET status = 'submitted', final_text = ?, draft_text = ?, "
                 "submitted_at = ?, late = ? WHERE id = ? AND status = 'in_progress'",
                 (text, text, now, int(late), attempt_id),
-            )
-        return self.get(attempt_id)
+            ).rowcount == 1
+            return self._fetch(db, attempt_id), moved
 
-    def begin_grading(self, attempt_id: str) -> Attempt:
-        """submitted -> grading; also re-opens an ungraded attempt whose failure was retryable."""
-        attempt = self.get(attempt_id)
-        retry = attempt.status == "ungraded" and attempt.retryable
-        if attempt.status not in ("submitted", "grading") and not retry:
-            raise AttemptStateError(f"attempt is {attempt.status}, cannot be marked")
+    def begin_grading(self, attempt_id: str) -> tuple[Attempt, bool]:
+        """
+        submitted -> grading; also re-opens an ungraded attempt whose failure was retryable.
+        Returns the attempt and whether this call made the transition: an attempt that is already
+        grading is left alone (False), so a second caller never starts a second marking.
+        """
         with self._connect() as db:
-            db.execute(
-                "UPDATE attempts SET status = 'grading', error = NULL, retryable = 0 WHERE id = ?",
+            attempt = self._fetch(db, attempt_id)
+            if attempt.status == "grading":
+                return attempt, False
+            moved = db.execute(
+                "UPDATE attempts SET status = 'grading', error = NULL, retryable = 0 "
+                "WHERE id = ? AND "
+                "(status = 'submitted' OR (status = 'ungraded' AND retryable = 1))",
                 (attempt_id,),
-            )
-        return self.get(attempt_id)
+            ).rowcount == 1
+            if not moved:
+                raise AttemptStateError(f"attempt is {attempt.status}, cannot be marked")
+            return self._fetch(db, attempt_id), True
+
+    def fail_interrupted(self, error: str) -> int:
+        """
+        Restart recovery: marking runs in-process, so an attempt still 'grading' (or 'submitted'
+        but never picked up) when the server starts lost its worker. The essay is kept and the
+        failure is retryable. Returns how many attempts were settled.
+        """
+        with self._connect() as db:
+            return db.execute(
+                "UPDATE attempts SET status = 'ungraded', error = ?, retryable = 1 "
+                "WHERE status IN ('submitted', 'grading')",
+                (error,),
+            ).rowcount
 
     def finish(self, attempt_id: str, report_json: str, graded: bool) -> Attempt:
         with self._connect() as db:
