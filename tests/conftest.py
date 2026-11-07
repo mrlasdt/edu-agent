@@ -54,15 +54,29 @@ def fresh_router_with_instant_retries(monkeypatch):
     Every model call goes through the LiteLLM Router (shared.llm_router). The process Router is
     built per test (each test has its own event loop), and its backoff between retries of a
     transient error is skipped so a test that provokes a retry does not sleep.
+
+    Each Router adds callbacks to litellm's process-wide lists and never removes them; litellm
+    stops accepting callbacks at 100, after which a new Router's failure callback (the one that
+    drives cooldowns) is silently dropped. The lists are restored after every test so a test
+    behaves the same whether it runs first or after hundreds of others.
     """
     import litellm
 
     from shared.src.shared.llm_router import reset_router
 
+    callback_lists = (
+        "success_callback",
+        "failure_callback",
+        "_async_success_callback",
+        "_async_failure_callback",
+    )
+    saved = {name: list(getattr(litellm, name)) for name in callback_lists}
     monkeypatch.setattr(litellm, "_calculate_retry_after", lambda *a, **k: 0)
     reset_router()
     yield
     reset_router()
+    for name, callbacks in saved.items():
+        getattr(litellm, name)[:] = callbacks
 
 
 @pytest.fixture(autouse=True)
