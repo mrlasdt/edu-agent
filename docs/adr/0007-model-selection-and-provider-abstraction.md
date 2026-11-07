@@ -19,7 +19,7 @@ Accepted.
 - **Config is the source of truth for model picks.** A `model_config.yaml` per environment lists every role with its provider, model, and params. Code never hard-codes a model name. Tests pin a fixture config.
 - **Provider differences are absorbed by the abstraction.**
   - *Caching mechanics* — OpenAI does prefix-prefix caching automatically (≥1024 token prefix, 50% hit discount, short TTL); Anthropic uses explicit `cache_control` breakpoints (90% hit discount, up to 1h TTL). The prompt assembly puts stable content first regardless, so both providers benefit; LiteLLM handles the wire-format detail.
-  - *Structured outputs* — OpenAI's `response_format` with strict JSON schema is used for Orchestrator classification, verify-math tool, and AW judge. LiteLLM passes the schema through to whichever provider supports it.
+  - *Structured outputs* — a call that needs JSON describes it as a pydantic model and passes it as `response_format`; LiteLLM passes the schema through to whichever provider supports it. Today the gateway's completeness check and the AW judge do this; see "Amendment: structured output is validated". The other JSON call sites still use plain `json_object` and their own parsing.
   - *Streaming* — main-agent turns stream (UX); orchestrator/critics/judges do not (structured outputs needed whole). Same behaviour across providers.
 - **Cost ceiling per turn is calibrated under OpenAI defaults.** Blended average ~$0.012/turn with caching working; ~$0.04 without. Hard ceiling on escalation cost: o1 caps escalations at ~$0.25/turn. Per-session 30-turn budget: $0.30–$1.50.
 - **Streaming, retry/backoff, and rate-limit handling are LiteLLM-native** so the same policy applies across providers without per-provider code.
@@ -50,3 +50,15 @@ The consequences above say streaming, retry/backoff and rate-limit handling are 
 **What stays outside the Router.** The spend cap. A call is checked against the ledger before it is made, at the dearest model in the call's fallback chain, so a fallback can never take a call past the cap and `BudgetExceededError` is never followed by an attempt on a pricier model. The ledger and the per-call record use the model that actually answered (`answered_model`). One thing the Router does not do is treat an empty reply as a failure; the IELTS completer continues down the chain itself in that case, checking the cap again before each further call.
 
 **Not changed.** Provider and model choices, and the rule that a role lists its backups in config. The Router makes failover a runtime default for roles that list `fallbacks`; the single-provider default for every other role is unchanged.
+
+## Amendment: structured output is validated (2026-11)
+
+Two call sites asked for `response_format={"type": "json_object"}` and then read the reply with `json.loads` and a default: the gateway's completeness check treated any unreadable reply (and a truthy string such as `{"complete": "false"}`) as "complete", and the AW judge turned a parse failure into `{"score": 0.0}`, which an eval average then counted as a real score. A default that looks like an answer hides a broken model.
+
+**Decision.** Such a call defines a pydantic model (`CompletenessVerdict`, `AWVerdict`) and goes through `shared/src/shared/structured.py`:
+
+- `response_format_for(model, Schema)` returns the schema itself for a model that `litellm.supports_response_schema(model=...)` lists as capable, and `{"type": "json_object"}` otherwise. The default config's free OpenRouter model is not listed, so it takes the `json_object` path.
+- `parse_structured(content, Schema)` validates the reply with `Schema.model_validate_json` in both modes (so a Router fallback onto a model without schema support is still checked), accepts a reply wrapped in a ```` ```json ```` fence, and raises `StructuredOutputError` for anything else. Booleans are `StrictBool` and the judge score a strict float in 0 to 6, so `"false"` and `"4.5"` as strings do not pass.
+- A failure is an error, not a value. `check_completeness` logs a `guardrail.input.completeness.error` event and raises; `/chat` already catches that, skips the check and records `completeness_check_failed`, so the turn is still answered but the failure is visible. The AW judge returns an `AWResult` with `score=None` and an `error`; `summarize_aw` leaves errored items out of the average and reports their count.
+
+**Not changed.** The other places that parse model JSON (the verifier, the critics, the IELTS grader and feedback, the question pipeline) keep their current parsing; moving them onto `structured.py` is the same change repeated.

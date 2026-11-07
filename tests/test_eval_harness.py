@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from evals.human_review_queue import HumanReviewQueue
-from evals.judges.aw_judge import AWResult, grade_aw_item
+from evals.judges.aw_judge import AWResult, grade_aw_item, summarize_aw
 from evals.judges.quant_judge import grade_quant_item
 from evals.loader import load_golden_set, sample_golden_set
 from evals.regression import check_regression
@@ -86,7 +86,9 @@ async def test_aw_judge_returns_score_and_rationale():
         "anchor_essays": {"1": "Score 1 essay...", "6": "Score 6 essay..."},
     }
     with patch("evals.judges.aw_judge._call_aw_judge_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = {"score": 5.0, "rationale": "Strong thesis and development."}
+        mock_llm.return_value = (
+            '{"score": 5.0, "rationale": "Strong thesis and development."}'
+        )
         result = await grade_aw_item(item)
     assert 0.0 <= result.score <= 6.0
     assert result.rationale != ""
@@ -103,7 +105,7 @@ async def test_aw_judge_calls_llm_with_rubric_and_anchors():
         "anchor_essays": {"3": "Score 3 essay...", "5": "Score 5 essay..."},
     }
     with patch("evals.judges.aw_judge._call_aw_judge_llm", new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = {"score": 4.0, "rationale": "Good analysis."}
+        mock_llm.return_value = '{"score": 4.0, "rationale": "Good analysis."}'
         await grade_aw_item(item)
 
     call_args = mock_llm.call_args
@@ -112,6 +114,66 @@ async def test_aw_judge_calls_llm_with_rubric_and_anchors():
     assert (
         "Score 3 essay" in prompt_text or "anchor" in prompt_text.lower() or call_args is not None
     )
+
+
+_AW_ITEM = {
+    "id": "aw010",
+    "task_type": "issue",
+    "prompt": "Technology improves quality of life.",
+    "candidate_essay": "Technology has transformed society...",
+    "anchor_essays": {"1": "Score 1 essay...", "6": "Score 6 essay..."},
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reply",
+    [
+        pytest.param("Sorry, I cannot grade this.", id="prose"),
+        pytest.param('{"score": 4.5, "rationale": "cut o', id="cut-off"),
+        pytest.param('{"score": "4.5", "rationale": "Good."}', id="score-as-string"),
+        pytest.param('{"rationale": "No score given."}', id="score-missing"),
+        pytest.param('{"score": 4.5}', id="rationale-missing"),
+        pytest.param('{"score": 9.0, "rationale": "Off the scale."}', id="score-out-of-range"),
+        pytest.param("", id="empty"),
+        pytest.param(None, id="no-content"),
+    ],
+)
+async def test_an_invalid_aw_judge_reply_is_an_errored_item_not_a_zero(reply):
+    with patch("evals.judges.aw_judge._call_aw_judge_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = reply
+        result = await grade_aw_item(_AW_ITEM)
+
+    assert result.item_id == "aw010"
+    assert result.score is None
+    assert result.error
+
+
+@pytest.mark.asyncio
+async def test_an_integer_score_and_a_fenced_reply_are_valid():
+    with patch("evals.judges.aw_judge._call_aw_judge_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = '```json\n{"score": 5, "rationale": "Strong."}\n```'
+        result = await grade_aw_item(_AW_ITEM)
+
+    assert (result.score, result.error) == (5.0, None)
+
+
+def test_errored_items_are_left_out_of_the_average_and_counted():
+    results = [
+        AWResult(item_id="a", score=4.0, rationale="ok"),
+        AWResult(item_id="b", score=None, rationale="", error="reply is not a valid AWVerdict"),
+        AWResult(item_id="c", score=5.0, rationale="ok"),
+    ]
+
+    summary = summarize_aw(results)
+
+    assert (summary.average, summary.graded, summary.errored) == (4.5, 2, 1)
+
+
+def test_an_average_over_only_errored_items_is_none_not_zero():
+    summary = summarize_aw([AWResult(item_id="a", score=None, rationale="", error="bad")])
+
+    assert (summary.average, summary.graded, summary.errored) == (None, 0, 1)
 
 
 # ── 3. Regression check ───────────────────────────────────────────────────────

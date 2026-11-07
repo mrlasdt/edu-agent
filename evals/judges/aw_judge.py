@@ -1,11 +1,20 @@
 from __future__ import annotations
 
-import json
+import logging
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Annotated, Any
+
+from pydantic import BaseModel, Field
 
 from shared.src.shared.config import load_model_config
 from shared.src.shared.llm_router import get_router
+from shared.src.shared.structured import (
+    StructuredOutputError,
+    parse_structured,
+    response_format_for,
+)
+
+_log = logging.getLogger(__name__)
 
 _RUBRIC = """You are an expert GRE Analytical Writing scorer calibrated to the ETS 6-point rubric.
 
@@ -24,11 +33,42 @@ Respond with valid JSON only:
 """
 
 
+class AWVerdict(BaseModel):
+    """The judge's reply. `score` must be a JSON number on the 0-6 scale, not a string."""
+
+    score: Annotated[float, Field(strict=True, ge=0.0, le=6.0)]
+    rationale: str
+
+
 @dataclass
 class AWResult:
+    """
+    One graded item. A judge reply that failed validation is an *errored* item: `score` is None
+    and `error` says why. It is never a 0.0, so it cannot pull an average down; `summarize_aw`
+    leaves it out of the average and counts it.
+    """
+
     item_id: str
-    score: float
+    score: float | None
     rationale: str
+    error: str | None = None
+
+
+@dataclass
+class AWSummary:
+    average: float | None  # mean score of the graded items; None when none were graded
+    graded: int
+    errored: int
+
+
+def summarize_aw(results: list[AWResult]) -> AWSummary:
+    """The average over graded items only, with the number of errored items reported beside it."""
+    scores = [r.score for r in results if r.error is None and r.score is not None]
+    return AWSummary(
+        average=sum(scores) / len(scores) if scores else None,
+        graded=len(scores),
+        errored=len(results) - len(scores),
+    )
 
 
 async def grade_aw_item(item: dict[str, Any], model_config_path: str | None = None) -> AWResult:
@@ -38,17 +78,18 @@ async def grade_aw_item(item: dict[str, Any], model_config_path: str | None = No
     essay = item.get("candidate_essay", "")
     anchor_essays: dict[str, Any] = item.get("anchor_essays", {})
 
-    raw = await _call_aw_judge_llm(
+    reply = await _call_aw_judge_llm(
         prompt=prompt,
         essay=essay,
         anchor_essays=anchor_essays,
         model_config_path=model_config_path,
     )
-    return AWResult(
-        item_id=item_id,
-        score=float(raw.get("score", 0.0)),
-        rationale=str(raw.get("rationale", "")),
-    )
+    try:
+        verdict = parse_structured(reply, AWVerdict)
+    except StructuredOutputError as exc:
+        _log.warning("AW judge reply for %s is invalid: %s", item_id, exc)
+        return AWResult(item_id=item_id, score=None, rationale="", error=str(exc))
+    return AWResult(item_id=item_id, score=verdict.score, rationale=verdict.rationale)
 
 
 async def _call_aw_judge_llm(
@@ -56,8 +97,11 @@ async def _call_aw_judge_llm(
     essay: str,
     anchor_essays: dict[str, Any],
     model_config_path: str | None = None,
-) -> dict[str, Any]:
-    """LLM judge call with rubric + anchor essays in context. Seam for test patching."""
+) -> str | None:
+    """
+    LLM judge call with rubric + anchor essays in context. Returns the model's raw reply, which
+    grade_aw_item validates as an AWVerdict. Seam for test patching.
+    """
     cfg = load_model_config(model_config_path)
     model = cfg.litellm_model("aw_judge_nightly")
 
@@ -79,11 +123,8 @@ async def _call_aw_judge_llm(
             {"role": "user", "content": user_content},
         ],
         temperature=0,
-        response_format={"type": "json_object"},
+        response_format=response_format_for(model, AWVerdict),
         stream=False,
     )
-    content = response.choices[0].message.content
-    try:
-        return cast(dict[str, Any], json.loads(content))
-    except Exception:
-        return {"score": 0.0, "rationale": "parse error"}
+    content: str | None = response.choices[0].message.content
+    return content

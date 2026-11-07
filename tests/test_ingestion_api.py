@@ -3,10 +3,13 @@ Tests for the Ingestion Service FastAPI endpoints.
 
 Behaviors under test (from issue 06 acceptance criteria):
   1. Small TXT upload (<1MB) → processed synchronously, status=completed
-  2. Large file (>1MB) → queued, returns job_id
+  2. Large file (>=1MB) → 202 queued, then really indexed in the background; the job-status
+     route reports completed (with the chunk count) or failed (with the stage and the error)
   3. Unsupported file type → 415
   4. GET /admin/documents/{job_id} → job status
   5. Chunks stored with correct metadata fields
+  6. Re-uploading a document replaces its points instead of adding a second copy (deterministic
+     point ids), small or large, and a shorter new version leaves no stale tail
 """
 
 import io
@@ -14,9 +17,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from qdrant_client import AsyncQdrantClient
 
+from services.ingestion.src.ingestion import main as ingestion_main
 from services.ingestion.src.ingestion.main import app
 from shared.src.shared.config import ADMIN_KEY_HEADER, get_settings
+from shared.src.shared.vectorstore import COLLECTION
 
 ADMIN_KEY = "test-admin-key"
 
@@ -56,26 +62,106 @@ def test_small_txt_upload_returns_completed(client):
     assert "job_id" in body
 
 
-# ── 2. Large file → queued ────────────────────────────────────────────────────
+# ── 2. Large file → queued, then indexed in the background ───────────────────
 
 
-def test_large_file_upload_returns_queued(client):
-    large_content = b"word " * 300_000  # ~1.5 MB
+class _Corpus:
+    """An in-memory Qdrant and a fake embedder behind the real ingestion pipeline."""
 
-    with patch(
-        "services.ingestion.src.ingestion.main.enqueue_ingestion_job", new_callable=AsyncMock
-    ) as mock_enqueue:
-        mock_enqueue.return_value = "job-abc-123"
-        response = client.post(
-            "/admin/documents",
-            files={"file": ("large.txt", io.BytesIO(large_content), "text/plain")},
-            data={"test_type": "gre"},
-        )
+    def __init__(self) -> None:
+        self.client = AsyncQdrantClient(location=":memory:")
+        self.embed_error: Exception | None = None
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        if self.embed_error:
+            raise self.embed_error
+        return [[1.0, float(len(t) % 7), 0.5, 0.25] for t in texts]
+
+    async def points(self, source_uri: str | None = None):
+        if not await self.client.collection_exists(COLLECTION):
+            return []
+        found, _ = await self.client.scroll(COLLECTION, limit=10_000, with_payload=True)
+        return [p for p in found if source_uri is None or p.payload["source_uri"] == source_uri]
+
+
+@pytest.fixture
+def corpus(client):
+    c = _Corpus()
+    with patch.object(ingestion_main, "get_qdrant_client", lambda: c.client), \
+         patch.object(ingestion_main, "embed_texts", c.embed), \
+         patch.object(c.client, "close", AsyncMock()):
+        yield c
+
+
+def _doc(paragraphs: int, size_kb: int = 0) -> bytes:
+    """A text document of `paragraphs` blank-line separated paragraphs, padded to `size_kb`."""
+    body = "\n\n".join(f"Paragraph {i}. " + "word " * 120 for i in range(paragraphs))
+    return (body + "\n\n" + "pad " * (size_kb * 256)).encode()
+
+
+def _post(client, content: bytes, name: str = "notes.txt", test_type: str = "gre"):
+    return client.post(
+        "/admin/documents",
+        files={"file": (name, io.BytesIO(content), "text/plain")},
+        data={"test_type": test_type},
+    )
+
+
+def test_large_file_is_queued_then_really_indexed(client, corpus):
+    large = _doc(paragraphs=40, size_kb=1100)  # a bit over 1 MB
+    assert len(large) >= ingestion_main._SYNC_SIZE_LIMIT
+
+    response = _post(client, large, "large.txt")
 
     assert response.status_code == 202
     body = response.json()
     assert body["status"] == "queued"
-    assert body["job_id"] == "job-abc-123"
+    job = client.get(f"/admin/documents/{body['job_id']}").json()
+    assert job["status"] == "completed"
+    assert job["error_stage"] is None
+    stored = asyncio_run(corpus.points("large.txt"))
+    assert stored and job["chunks_indexed"] == len(stored)
+    assert {p.payload["tier"] for p in stored} == {"global"}
+
+
+def test_large_file_that_cannot_be_parsed_is_reported_failed(client, corpus):
+    garbage = b"%PDF-1.4 this is not a pdf " * 60_000
+
+    response = _post_pdf(client, garbage)
+
+    assert response.status_code == 202
+    job = client.get(f"/admin/documents/{response.json()['job_id']}").json()
+    assert job["status"] == "failed"
+    assert job["error_stage"] == "parse"
+    assert job["error"]
+    assert asyncio_run(corpus.points()) == []
+
+
+def test_large_file_whose_embedding_fails_is_reported_failed(client, corpus):
+    corpus.embed_error = RuntimeError("embedder down")
+
+    response = _post(client, _doc(paragraphs=40, size_kb=1100), "large.txt")
+
+    assert response.status_code == 202
+    job = client.get(f"/admin/documents/{response.json()['job_id']}").json()
+    assert job["status"] == "failed"
+    assert job["error_stage"] == "index"
+    assert "embedder down" in job["error"]
+    assert asyncio_run(corpus.points()) == []
+
+
+def _post_pdf(client, content: bytes):
+    return client.post(
+        "/admin/documents",
+        files={"file": ("broken.pdf", io.BytesIO(content), "application/pdf")},
+        data={"test_type": "gre"},
+    )
+
+
+def asyncio_run(coro):
+    import asyncio
+
+    return asyncio.run(coro)
 
 
 # ── 3. Unsupported file type → 415 ───────────────────────────────────────────
@@ -102,27 +188,22 @@ def test_exe_file_returns_415(client):
 # ── 4. Job status endpoint ────────────────────────────────────────────────────
 
 
-def test_get_job_status_returns_job(client):
-    with patch("services.ingestion.src.ingestion.main.get_job", new_callable=AsyncMock) as mock_get:
-        mock_get.return_value = {
-            "job_id": "job-xyz",
-            "status": "processing",
-            "filename": "test.txt",
-            "test_type": "gre",
-            "error_stage": None,
-        }
-        response = client.get("/admin/documents/job-xyz")
+def test_get_job_status_returns_the_synchronous_job(client, corpus):
+    job_id = _post(client, _doc(paragraphs=3)).json()["job_id"]
+
+    response = client.get(f"/admin/documents/{job_id}")
 
     assert response.status_code == 200
     body = response.json()
-    assert body["status"] == "processing"
-    assert body["job_id"] == "job-xyz"
+    assert body["job_id"] == job_id
+    assert body["status"] == "completed"
+    assert body["filename"] == "notes.txt"
+    assert body["test_type"] == "gre"
+    assert body["chunks_indexed"] == len(asyncio_run(corpus.points()))
 
 
 def test_get_job_status_404_for_unknown_job(client):
-    with patch("services.ingestion.src.ingestion.main.get_job", new_callable=AsyncMock) as mock_get:
-        mock_get.return_value = None
-        response = client.get("/admin/documents/nonexistent")
+    response = client.get("/admin/documents/nonexistent")
 
     assert response.status_code == 404
 
@@ -156,3 +237,51 @@ def test_uploaded_chunks_have_correct_metadata(client):
         assert "test_type" in chunk
         assert chunk["tier"] == "global"
         assert chunk["test_type"] == "gre"
+
+
+# ── 6. Re-upload replaces, never duplicates ──────────────────────────────────
+
+
+def test_reuploading_a_small_document_does_not_duplicate_its_points(client, corpus):
+    doc = _doc(paragraphs=12)
+
+    assert _post(client, doc).status_code == 200
+    first = asyncio_run(corpus.points())
+    assert _post(client, doc).status_code == 200
+    second = asyncio_run(corpus.points())
+
+    assert len(first) > 1
+    assert sorted(p.id for p in second) == sorted(p.id for p in first)
+
+
+def test_reuploading_a_large_document_does_not_duplicate_its_points(client, corpus):
+    large = _doc(paragraphs=40, size_kb=1100)
+
+    assert _post(client, large, "large.txt").status_code == 202
+    first = asyncio_run(corpus.points())
+    assert _post(client, large, "large.txt").status_code == 202
+    second = asyncio_run(corpus.points())
+
+    assert first
+    assert sorted(p.id for p in second) == sorted(p.id for p in first)
+
+
+def test_a_shorter_new_version_leaves_no_stale_chunks(client, corpus):
+    _post(client, _doc(paragraphs=30))
+    before = len(asyncio_run(corpus.points()))
+    _post(client, _doc(paragraphs=6))
+    after = asyncio_run(corpus.points())
+
+    assert 0 < len(after) < before
+    assert sorted(p.payload["chunk_index"] for p in after) == list(range(len(after)))
+
+
+def test_the_same_filename_in_another_test_type_is_a_different_document(client, corpus):
+    doc = _doc(paragraphs=6)
+
+    _post(client, doc, test_type="gre")
+    _post(client, doc, test_type="ielts")
+
+    stored = asyncio_run(corpus.points())
+    assert {p.payload["test_type"] for p in stored} == {"gre", "ielts"}
+    assert len(stored) % 2 == 0 and len(stored) == len({p.id for p in stored})

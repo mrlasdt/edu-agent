@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, cast
+from typing import Any
 
 import httpx
+from pydantic import BaseModel, StrictBool
 
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
 from services.gateway.src.gateway.guardrails.supportive import flagged_reason
 from shared.src.shared.config import get_settings, load_model_config
 from shared.src.shared.models import MessageRole, Session
 from shared.src.shared.observability import build_llm_metadata
+from shared.src.shared.structured import parse_structured, response_format_for
 from shared.src.shared.turn_meter import TurnMeter
 
 _log = logging.getLogger(__name__)
@@ -22,9 +24,17 @@ _HISTORY_TURNS = 6
 # clarifying question). A reasoning model also spends hidden thinking tokens against this cap, so
 # it is sized well above the visible answer: low enough to stop a runaway reply from delaying
 # every turn before the tutor starts, high enough that a reasoning model still finishes. If the
-# reply is cut off it does not parse and the check fails open (the question is treated as
-# complete).
+# reply is cut off it does not validate: check_completeness raises, and /chat skips the check
+# and answers the turn (flag `completeness_check_failed`), same as any other failure of it.
 COMPLETENESS_MAX_TOKENS = 512
+
+
+class CompletenessVerdict(BaseModel):
+    """The completeness check's reply. `complete` must be a real JSON boolean: the string
+    "false" is truthy, so accepting it would read an incomplete question as complete."""
+
+    complete: StrictBool
+    clarification: str = ""
 
 
 class ModerationUnavailableError(RuntimeError):
@@ -103,13 +113,21 @@ async def check_completeness(
     """
     Haiku-tier LLM check: is the question complete enough to answer?
     Returns (complete, clarification_prompt). With a `meter`, its model call is measured.
+
+    A reply that is not valid JSON of the CompletenessVerdict shape never counts as complete:
+    the failure is logged as a guardrail "error" event and raised, like any other failure of the
+    call, for the caller to handle.
     """
-    result = await _call_enrichment_llm(text, session, trace_id, meter)
-    complete = result.get("complete", True)
-    clarification = result.get("clarification", "")
-    label = "pass" if complete else "fail"
+    try:
+        verdict = await _call_enrichment_llm(text, session, trace_id, meter)
+    except Exception as exc:
+        emit_guardrail_event(
+            "input", "completeness", "error", trace_id, reason=type(exc).__name__
+        )
+        raise
+    label = "pass" if verdict.complete else "fail"
     emit_guardrail_event("input", "completeness", label, trace_id)
-    return complete, clarification
+    return verdict.complete, verdict.clarification
 
 
 async def _call_moderation_api(text: str) -> dict[str, Any]:
@@ -129,10 +147,10 @@ async def _call_moderation_api(text: str) -> dict[str, Any]:
 
 async def _call_enrichment_llm(
     text: str, session: Session, trace_id: str, meter: TurnMeter | None = None
-) -> dict[str, Any]:
+) -> CompletenessVerdict:
     """
-    Haiku-tier LLM call to detect incomplete questions.
-    Returns {"complete": bool, "clarification": str}.
+    Haiku-tier LLM call to detect incomplete questions. Returns the validated reply; raises
+    StructuredOutputError if the model's reply is not a CompletenessVerdict.
     Seam for unit test patching.
     """
     cfg = load_model_config()
@@ -165,13 +183,7 @@ async def _call_enrichment_llm(
         ],
         temperature=0,
         max_tokens=COMPLETENESS_MAX_TOKENS,
-        response_format={"type": "json_object"},
+        response_format=response_format_for(model, CompletenessVerdict),
         **build_llm_metadata(trace_id=trace_id, prompt_version=version),
     )
-    import json
-
-    content = response.choices[0].message.content
-    try:
-        return cast(dict[str, Any], json.loads(content))
-    except Exception:
-        return {"complete": True, "clarification": ""}
+    return parse_structured(response.choices[0].message.content, CompletenessVerdict)

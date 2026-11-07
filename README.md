@@ -57,7 +57,7 @@ curl -H "X-Admin-Key: $INGESTION_ADMIN_KEY" \
      http://localhost:8003/admin/documents
 ```
 
-A missing or wrong key returns 401. There is no `tier` field: the server files every upload under the global tier and ignores a client-sent `tier`. Files under 1 MB are ingested synchronously (200); larger ones are queued (202). Poll `GET /admin/documents/{job_id}` with the same header. `.txt`, `.pdf` and `.docx` are accepted.
+A missing or wrong key returns 401. There is no `tier` field: the server files every upload under the global tier and ignores a client-sent `tier`. Files under 1 MB are ingested before the response (200); larger ones answer 202 `queued` and are indexed by a background task in the same process. Poll `GET /admin/documents/{job_id}` with the same header for `completed` (with `chunks_indexed`) or `failed` (with `error_stage` and `error`); job records are kept in memory, so they are lost on a restart (the service runs as a single replica). Uploading the same filename again replaces its chunks instead of adding a copy. `.txt`, `.pdf` and `.docx` are accepted.
 
 ### Test and eval
 
@@ -111,7 +111,7 @@ Candidate / Admin     ┌──────────────────�
 | `math-verifier` | 8090 | FastMCP server: sympy checks behind an allow-list parser, one killable child process per check; also `POST /tools/{name}` for the math tools |
 | `tei-embedder` | 8080 | BGE-M3 embeddings (Hugging Face TEI) |
 | `qdrant` | 6333 | Vector store |
-| `seed` | - | One-shot job: ingests any `seed/gre-quant/*.txt` note not yet indexed |
+| `seed` | - | One-shot job: uploads every `seed/gre-quant/*.txt` note; ingestion replaces a note already indexed, so a restart never duplicates it |
 | `tei-reranker`, `langfuse`, `postgres` | 8081, 3000, 5432 | Opt-in profiles (`reranker`, `observability`) |
 
 ### Three-tier corpus

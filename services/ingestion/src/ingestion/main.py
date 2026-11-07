@@ -1,12 +1,24 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 import secrets
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    UploadFile,
+)
 from fastapi.responses import JSONResponse
-from qdrant_client import models
+from qdrant_client import AsyncQdrantClient, models
 
 from services.ingestion.src.ingestion.chunker import chunk_text
 from services.ingestion.src.ingestion.parser import is_allowed, parse_bytes
@@ -24,11 +36,20 @@ from shared.src.shared.vectorstore import (
 
 app = FastAPI(title="Ingestion Service")
 
-# In-memory job store for Phase 1 (replaced by Postgres in Phase 2)
+_log = logging.getLogger(__name__)
+
+# Job records live in this process's memory: they are lost on a restart and invisible to a second
+# replica, so the ingestion service runs as a single replica (infra/k8s/ingestion.yaml). A
+# durable job table with a real queue is the Phase 2 follow-up (ADR-0011).
 _jobs: dict[str, dict[str, Any]] = {}
 
-# Files under this threshold are processed synchronously
+# Files under this threshold are indexed inside the upload request; larger ones are indexed by a
+# FastAPI background task after the 202 is sent, and the job-status route reports how it ended.
 _SYNC_SIZE_LIMIT = 1 * 1024 * 1024  # 1 MB
+
+# Namespace of the Qdrant point ids. It must never change: every id already stored was derived
+# from it, and a new namespace would make a re-upload add a second copy of every chunk.
+_POINT_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "https://edu-agent/ingestion/chunk-points")
 
 # The server, not the uploader, decides which tier a document lands in. Only the shared
 # global tier is writable for now: school and candidate tiers need an authenticated owner
@@ -65,16 +86,95 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+class IngestionError(Exception):
+    """A document could not be ingested; `stage` is "parse" or "index"."""
+
+    def __init__(self, stage: str, cause: Exception) -> None:
+        super().__init__(f"{type(cause).__name__}: {cause}")
+        self.stage = stage
+
+
+def chunk_point_id(chunk: dict[str, Any]) -> str:
+    """
+    The Qdrant point id of a chunk: the same document (tier, test type, source) and chunk
+    position always give the same id, so upserting a document again replaces its points instead
+    of adding a second copy.
+    """
+    key = f"{chunk['tier']}:{chunk['test_type']}:{chunk['source_uri']}:{chunk['chunk_index']}"
+    return str(uuid.uuid5(_POINT_NAMESPACE, key))
+
+
+def _build_chunks(
+    content: bytes, filename: str, test_type: str, source_uri: str
+) -> list[dict[str, Any]]:
+    text = parse_bytes(content, filename)
+    return [
+        ChunkPayload(
+            text=c.text,
+            tier=_UPLOAD_TIER,
+            test_type=test_type,
+            source_uri=source_uri,
+            page_or_section=c.section_title or f"chunk-{c.chunk_index}",
+            section_title=c.section_title,
+            chunk_index=c.chunk_index,
+            char_start=c.char_start,
+            char_end=c.char_end,
+            school_id=None,
+            candidate_id=None,
+        ).model_dump()
+        for c in chunk_text(text)
+    ]
+
+
+async def _ingest(content: bytes, filename: str, test_type: str, source_uri: str) -> int:
+    """Parse, chunk and index one document; returns the number of chunks indexed."""
+    try:
+        # Parsing and chunking a large PDF or DOCX is CPU work: keep it off the event loop.
+        chunks = await asyncio.to_thread(_build_chunks, content, filename, test_type, source_uri)
+    except Exception as exc:
+        raise IngestionError("parse", exc) from exc
+    metadata = {
+        "tier": _UPLOAD_TIER,
+        "test_type": test_type,
+        "source_uri": source_uri,
+        "school_id": None,
+        "candidate_id": None,
+    }
+    try:
+        result = await run_ingestion_pipeline(chunks, metadata)
+    except Exception as exc:
+        raise IngestionError("index", exc) from exc
+    return int(result.get("chunks_indexed", len(chunks)))
+
+
+async def _ingest_in_background(
+    job_id: str, content: bytes, filename: str, test_type: str, source_uri: str
+) -> None:
+    """The background task of a large upload: runs the job and records how it ended."""
+    job = _jobs[job_id]
+    job["status"] = "processing"
+    try:
+        job["chunks_indexed"] = await _ingest(content, filename, test_type, source_uri)
+    except IngestionError as exc:
+        _log.warning("ingestion job %s failed at %s: %s", job_id, exc.stage, exc, exc_info=True)
+        job.update(status="failed", error_stage=exc.stage, error=str(exc))
+        return
+    job["status"] = "completed"
+
+
 @admin.post("/documents")
 async def upload_document(
+    background: BackgroundTasks,
     file: UploadFile = File(...),
     test_type: str = Form(...),
 ) -> JSONResponse:
     """
     Upload a document for ingestion into the corpus (global tier; see _UPLOAD_TIER).
     Requires the admin key.
-    Files under 1 MB are processed synchronously (200 + completed).
-    Larger files are queued (202 + queued).
+    Files under 1 MB are indexed before the response (200 + completed).
+    Larger files are answered at once (202 + queued) and indexed by a background task; poll
+    GET /admin/documents/{job_id} for completed or failed. Job records are per process.
+    Uploading a document again (same filename, tier and test type) replaces its chunks.
     Unsupported types return 415.
     """
     if not is_allowed(file.filename or "", file.content_type or ""):
@@ -82,64 +182,31 @@ async def upload_document(
 
     content = await file.read()
     job_id = str(uuid.uuid4())
-    doc_metadata: dict[str, Any] = {
-        "tier": _UPLOAD_TIER,
-        "test_type": test_type,
-        "source_uri": file.filename or job_id,
-        "school_id": None,
-        "candidate_id": None,
-    }
-
-    if len(content) < _SYNC_SIZE_LIMIT:
-        # Synchronous fast path
-        text = parse_bytes(content, file.filename or "upload.txt")
-        chunks_raw = chunk_text(text)
-        chunk_dicts = [
-            ChunkPayload(
-                text=c.text,
-                tier=_UPLOAD_TIER,
-                test_type=test_type,
-                source_uri=doc_metadata["source_uri"],
-                page_or_section=c.section_title or f"chunk-{c.chunk_index}",
-                section_title=c.section_title,
-                chunk_index=c.chunk_index,
-                char_start=c.char_start,
-                char_end=c.char_end,
-                school_id=doc_metadata["school_id"],
-                candidate_id=doc_metadata["candidate_id"],
-            ).model_dump()
-            for c in chunks_raw
-        ]
-        result = await run_ingestion_pipeline(chunk_dicts, doc_metadata)
-        _jobs[job_id] = {
-            "job_id": job_id,
-            "status": "completed",
-            "filename": file.filename,
-            "test_type": test_type,
-            "chunks_indexed": result.get("chunks_indexed", len(chunk_dicts)),
-            "error_stage": None,
-        }
-        return JSONResponse(status_code=200, content={"job_id": job_id, "status": "completed"})
-
-    # Async path: enqueue
-    queued_job_id = await enqueue_ingestion_job(
-        content=content,
-        filename=file.filename or "upload.bin",
-        metadata=doc_metadata,
-    )
-    _jobs[queued_job_id] = {
-        "job_id": queued_job_id,
+    filename = file.filename or "upload.txt"
+    source_uri = file.filename or job_id
+    job: dict[str, Any] = {
+        "job_id": job_id,
         "status": "queued",
         "filename": file.filename,
         "test_type": test_type,
+        "chunks_indexed": None,
         "error_stage": None,
+        "error": None,
     }
-    return JSONResponse(status_code=202, content={"job_id": queued_job_id, "status": "queued"})
+    _jobs[job_id] = job
+
+    if len(content) < _SYNC_SIZE_LIMIT:
+        job["chunks_indexed"] = await _ingest(content, filename, test_type, source_uri)
+        job["status"] = "completed"
+        return JSONResponse(status_code=200, content={"job_id": job_id, "status": "completed"})
+
+    background.add_task(_ingest_in_background, job_id, content, filename, test_type, source_uri)
+    return JSONResponse(status_code=202, content={"job_id": job_id, "status": "queued"})
 
 
 @admin.get("/documents/{job_id}")
 async def get_job_status(job_id: str) -> dict[str, Any]:
-    job = await get_job(job_id)
+    job = _jobs.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
     return job
@@ -148,7 +215,7 @@ async def get_job_status(job_id: str) -> dict[str, Any]:
 app.include_router(admin)
 
 
-# ── seams (patched in tests / replaced by real impls in integration) ──────────
+# ── pipeline (patched in tests that do not need a real index) ─────────────────
 
 
 async def run_ingestion_pipeline(
@@ -170,36 +237,39 @@ async def run_ingestion_pipeline(
         await ensure_collection(client, dim=len(vectors[0]))
         points = [
             models.PointStruct(
-                id=str(uuid.uuid4()),
+                id=chunk_point_id(chunk),
                 vector={DENSE_VECTOR: vector, SPARSE_VECTOR: encode_document(chunk["text"])},
                 payload=chunk,
             )
             for chunk, vector in zip(chunks, vectors)
         ]
         await client.upsert(collection_name=COLLECTION, points=points)
+        # A shorter new version of the same document must not keep the old version's tail. This
+        # runs after the upsert, so a failure leaves old plus new chunks, never none.
+        await _delete_stale_tail(client, chunks)
     finally:
         await client.close()
     return {"chunks_indexed": len(points)}
 
 
-async def enqueue_ingestion_job(
-    content: bytes, filename: str, metadata: dict[str, Any]
-) -> str:
-    """
-    Push a large-file ingestion job to the pgmq queue.
-    Stub in unit tests; real implementation uses pgmq in Phase 2.
-    """
-    job_id = str(uuid.uuid4())
-    _jobs[job_id] = {
-        "job_id": job_id,
-        "status": "queued",
-        "filename": filename,
-        "test_type": metadata.get("test_type"),
-        "error_stage": None,
-    }
-    return job_id
-
-
-async def get_job(job_id: str) -> dict[str, Any] | None:
-    """Retrieve a job by ID. Stub backed by in-memory store."""
-    return _jobs.get(job_id)
+async def _delete_stale_tail(client: AsyncQdrantClient, chunks: list[dict[str, Any]]) -> None:
+    """Delete the points of this document (same source, tier and test type) past its last chunk."""
+    first = chunks[0]
+    last_index = max(c["chunk_index"] for c in chunks)
+    await client.delete(
+        collection_name=COLLECTION,
+        points_selector=models.FilterSelector(
+            filter=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="source_uri", match=models.MatchValue(value=first["source_uri"])
+                    ),
+                    models.FieldCondition(key="tier", match=models.MatchValue(value=first["tier"])),
+                    models.FieldCondition(
+                        key="test_type", match=models.MatchValue(value=first["test_type"])
+                    ),
+                    models.FieldCondition(key="chunk_index", range=models.Range(gt=last_index)),
+                ]
+            )
+        ),
+    )

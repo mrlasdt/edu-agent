@@ -19,6 +19,7 @@ import pytest
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
 from services.gateway.src.gateway.guardrails.input import (
     COMPLETENESS_MAX_TOKENS,
+    CompletenessVerdict,
     check_completeness,
     check_content_safety,
 )
@@ -30,8 +31,9 @@ from services.gateway.src.gateway.guardrails.output import (
 from services.gateway.src.gateway.guardrails.rate_limit import (
     RateLimiter,
 )
-from shared.src.shared.config import Settings
+from shared.src.shared.config import Settings, get_settings
 from shared.src.shared.models import Message, MessageRole, Mode, Session
+from shared.src.shared.structured import StructuredOutputError
 from shared.src.shared.turn_meter import TurnMeter
 
 _INPUT = "services.gateway.src.gateway.guardrails.input"
@@ -104,7 +106,9 @@ async def test_moderation_is_never_skipped_outside_dev(env):
 async def test_incomplete_quant_question_returns_clarification():
     with patch("services.gateway.src.gateway.guardrails.input._call_enrichment_llm",
                new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = {"complete": False, "clarification": "What is the full problem?"}
+        mock_llm.return_value = CompletenessVerdict(
+            complete=False, clarification="What is the full problem?"
+        )
         complete, prompt = await check_completeness("solve this", make_session(), "trace-3")
     assert complete is False
     assert len(prompt) > 0
@@ -114,7 +118,7 @@ async def test_incomplete_quant_question_returns_clarification():
 async def test_complete_question_passes():
     with patch("services.gateway.src.gateway.guardrails.input._call_enrichment_llm",
                new_callable=AsyncMock) as mock_llm:
-        mock_llm.return_value = {"complete": True, "clarification": ""}
+        mock_llm.return_value = CompletenessVerdict(complete=True)
         complete, prompt = await check_completeness(
             "Solve x^2 - 5x + 6 = 0 for all real values of x.", make_session(), "trace-4"
         )
@@ -171,6 +175,66 @@ async def test_enrichment_llm_history_is_capped_to_recent_turns():
         await check_completeness("next", session, "trace-cap")
     contents = [m["content"] for m in mock_llm.call_args.kwargs["messages"][1:]]
     assert contents == [f"turn {i}" for i in range(14, 20)] + ["next"]
+
+
+# A reply that is not a valid CompletenessVerdict must never read as "complete": the check raises
+# (and logs a guardrail "error" event) so the caller sees a failure, not a pass.
+_BAD_REPLIES = [
+    pytest.param('{"complete": "false", "clarification": "Which problem?"}', id="false-as-string"),
+    pytest.param('{"complete": "true"}', id="true-as-string"),
+    pytest.param('{"complete": 0}', id="number-not-bool"),
+    pytest.param('{"clarification": "Which problem?"}', id="complete-missing"),
+    pytest.param('{"complete": null}', id="complete-null"),
+    pytest.param("Sure! The question looks complete.", id="prose"),
+    pytest.param('{"complete": false, "clarification": "Wh', id="cut-off"),
+    pytest.param("", id="empty"),
+    pytest.param(None, id="no-content"),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reply", _BAD_REPLIES)
+async def test_an_invalid_completeness_reply_is_an_error_never_complete(reply, caplog):
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm, \
+            caplog.at_level(logging.INFO, logger="guardrails"):
+        mock_llm.return_value = _llm_response(reply)
+        with pytest.raises(StructuredOutputError):
+            await check_completeness("solve this", make_session(), "trace-bad")
+    assert "guardrail.input.completeness.error trace_id=trace-bad" in caplog.text
+    assert "guardrail.input.completeness.pass" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_fenced_completeness_reply_is_read():
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = _llm_response(
+            '```json\n{"complete": false, "clarification": "Which problem?"}\n```'
+        )
+        complete, prompt = await check_completeness("solve this", make_session(), "trace-fence")
+    assert (complete, prompt) == (False, "Which problem?")
+
+
+@pytest.mark.asyncio
+async def test_a_model_with_schema_support_is_asked_for_the_schema():
+    # The pinned dev config model is gpt-4o-mini.
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = _llm_response('{"complete": true}')
+        await check_completeness("Solve 2x = 8.", make_session(), "trace-schema")
+    assert mock_llm.call_args.kwargs["response_format"] is CompletenessVerdict
+
+
+@pytest.mark.asyncio
+async def test_a_model_without_schema_support_gets_json_object_and_the_same_validation(
+    monkeypatch,
+):
+    # The default config's free OpenRouter model: litellm does not list it as schema-capable.
+    monkeypatch.setenv("MODEL_CONFIG_PATH", "config/model_config.free.yaml")
+    get_settings.cache_clear()
+    with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = _llm_response('{"complete": "false"}')
+        with pytest.raises(StructuredOutputError):
+            await check_completeness("solve this", make_session(), "trace-free")
+    assert mock_llm.call_args.kwargs["response_format"] == {"type": "json_object"}
 
 
 # ── 3. Output PII redaction ───────────────────────────────────────────────────
