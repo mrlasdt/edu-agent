@@ -10,7 +10,8 @@ either fails at construction.
 The stored JSON keeps its old key names, so reports and baselines written before this module
 (`evals/baselines/*.json`, `.eval-runs/*.json`) still load: `units_dropped` is stored as
 `units_dropped_model_unavailable` and read from either spelling. A result stored before the
-unit counts existed loads through `SuiteResult.from_stored`, the one place that fills them in.
+unit counts existed loads through `SuiteResult.from_stored` with those counts unknown (None): its
+coverage is unknown and the coverage gate fails it. Only that path may hold an unknown count.
 
 Only the figures a reader (the gate, the regression metrics, the baseline compare, the two
 report printers) looks at are typed field by field. Blobs that are written for a human to read
@@ -18,11 +19,22 @@ and never read back by code stay `dict[str, Any]`.
 """
 from __future__ import annotations
 
-from typing import Any, ClassVar, Self
+from typing import Any, Self
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SerializeAsAny, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializeAsAny,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 JSON = dict[str, Any]
+
+STORED: JSON = {"stored": True}
 
 
 class StrictModel(BaseModel):
@@ -130,11 +142,30 @@ class SuiteResult(StrictModel):
     the coverage gate is `1 - units_dropped / units_total`. Both are required on purpose.
     """
 
-    units_total: int
-    units_dropped: int = Field(
+    units_total: int | None
+    units_dropped: int | None = Field(
         validation_alias=AliasChoices("units_dropped", "units_dropped_model_unavailable"),
         serialization_alias="units_dropped_model_unavailable",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _unknown_counts_when_stored(cls, data: Any, info: ValidationInfo) -> Any:
+        """A result read from disk may predate the counts; they load as unknown, never as 0."""
+        if not (isinstance(data, dict) and info.context == STORED):
+            return data
+        filled = dict(data)
+        filled.setdefault("units_total", None)
+        if not {"units_dropped", "units_dropped_model_unavailable"} & data.keys():
+            filled["units_dropped"] = None
+        return filled
+
+    @field_validator("units_total", "units_dropped")
+    @classmethod
+    def _counts_are_known_unless_stored(cls, value: int | None, info: ValidationInfo) -> int | None:
+        if value is None and info.context != STORED:
+            raise ValueError("a suite result must say how many units it started and dropped")
+        return value
 
     # Subclasses that carry per-attempt agent rows say how long each one took.
     def agent_latencies(self) -> list[float]:
@@ -142,16 +173,14 @@ class SuiteResult(StrictModel):
 
     @classmethod
     def from_stored(cls, raw: JSON) -> Self:
-        """Load a result written to disk. A result that predates the unit counts reads as 0/0."""
-        if "units_total" not in raw:
-            raw = {"units_total": 0, **raw}
-        if not {"units_dropped", "units_dropped_model_unavailable"} & raw.keys():
-            raw = {"units_dropped": 0, **raw}
-        return cls.model_validate(raw)
+        """Load a result written to disk; counts it never recorded stay unknown (None)."""
+        return cls.model_validate(raw, context=STORED)
 
     @property
-    def coverage(self) -> float:
-        """Share of units that finished (1.0 for a suite that started none)."""
+    def coverage(self) -> float | None:
+        """Share of units that finished: 1.0 when none started, None when the counts are unknown."""
+        if self.units_total is None or self.units_dropped is None:
+            return None
         return 1 - self.units_dropped / self.units_total if self.units_total else 1.0
 
 
@@ -425,7 +454,7 @@ SUITE_MODELS: dict[str, type[SuiteResult]] = {
 class CoverageGate(StrictModel):
     passed: bool
     min: float
-    coverage: dict[str, float]
+    coverage: dict[str, float | None]
 
 
 class EvalReport(StrictModel):
@@ -448,8 +477,6 @@ class EvalReport(StrictModel):
     cache: dict[str, int] | None = None
     coverage_gate: CoverageGate | None = None
     regression_metrics: dict[str, float] = Field(default_factory=dict)
-
-    SUITES: ClassVar[dict[str, type[SuiteResult]]] = SUITE_MODELS
 
     @field_validator("suites", mode="before")
     @classmethod
@@ -474,10 +501,10 @@ class EvalReport(StrictModel):
     def agent_latencies(self) -> list[float]:
         return [t for s in self.suites.values() for t in s.agent_latencies()]
 
-    def coverage_failures(self, min_coverage: float) -> dict[str, float]:
-        """Suites whose share of completed units is below `min_coverage` (suite -> coverage)."""
+    def coverage_failures(self, min_coverage: float) -> dict[str, float | None]:
+        """Suites whose share of completed units is below `min_coverage`, or unknown (None)."""
         coverages = {name: s.coverage for name, s in self.suites.items()}
-        return {name: c for name, c in coverages.items() if c < min_coverage}
+        return {name: c for name, c in coverages.items() if c is None or c < min_coverage}
 
 
 class BaselineMetric(StrictModel):

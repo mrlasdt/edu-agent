@@ -429,6 +429,16 @@ def test_a_suite_result_without_units_total_fails_at_construction(suite: type[Su
         )
 
 
+def test_a_suite_result_cannot_be_constructed_with_unknown_counts():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="units"):
+        AwResult(
+            n_judgements=1, within_tolerance=None, tolerance=1.0, mae=None, errors=0,
+            units_total=None, units_dropped=None,
+        )
+
+
 def test_a_suite_result_without_units_dropped_fails_at_construction():
     from pydantic import ValidationError
 
@@ -449,10 +459,11 @@ def test_a_stored_result_keeps_its_key_names_and_reads_either_spelling():
 
 
 def test_a_result_stored_before_unit_counts_existed_still_loads():
-    """`from_stored` is the one place that fills the counts in, for reports already on disk."""
+    """`from_stored` loads the missing counts as unknown, never as zero or full coverage."""
     legacy = {"n_judgements": 3, "within_tolerance": 1.0, "tolerance": 1.0, "mae": 0.0, "errors": 0}
     loaded = AwResult.from_stored(legacy)
-    assert loaded.units_total == 0 and loaded.units_dropped == 0
+    assert loaded.units_total is None and loaded.units_dropped is None
+    assert loaded.coverage is None
     with pytest.raises(Exception, match="units_total"):
         AwResult.model_validate(legacy)  # the plain constructor path stays strict
 
@@ -485,8 +496,10 @@ def test_a_run_report_written_before_provenance_and_unit_counts_still_loads():
     report = EvalReport.model_validate(legacy)
     assert report.run_meta is None
     gen = report.suite("generation", GenerationResult)
-    assert gen is not None and gen.units_total == 0 and gen.units_dropped == 7
-    assert report.coverage_failures(0.8) == {"aw": 0.75}
+    assert gen is not None and gen.units_total is None and gen.units_dropped == 7
+    assert gen.coverage is None
+    assert report.coverage_failures(0.8) == {"generation": None, "aw": 0.75}
+    assert report.coverage_failures(0.0) == {"generation": None}
 
 
 def test_the_quant_agent_factory_has_no_default_corpus_skill():
