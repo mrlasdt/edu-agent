@@ -4,8 +4,8 @@
 # in pyproject.toml (one lock for all), the source that ships (infra/assemble-service.sh lists it)
 # and the start command, so an image holds what its service imports and nothing else.
 
-# The one place the uv image is pinned (the CI uv in .github/actions/setup-python is the same
-# version; tests/test_cicd.py keeps them equal). Bump both together, in a PR.
+# The uv image tag is pinned here. Bump it together with the CI uv version in
+# .github/actions/setup-python/action.yml; the two are kept equal by hand, in a PR.
 ARG UV_VERSION=0.13.6
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
