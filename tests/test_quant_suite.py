@@ -17,10 +17,18 @@ import pytest
 from evals import read_transcripts
 from evals.agent_eval import cli, graders, quant_suite, runner, stats
 from evals.agent_eval.budget import Ledger
+from evals.agent_eval.results import (
+    QuantAttempt,
+    QuantBaseline,
+    QuantSuiteResult,
+    SecurityBlock,
+    TranscriptMessage,
+)
 from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport, cache_slot
 from evals.judges.quant_judge import grade_quant_item
 from evals.loader import load_golden_set
 from services.agent.src.agent.agents.quant import QuantAgent
+from tests.eval_result_fakes import aw_result, eval_report, run_meta
 from tests.llm_fakes import ScriptedRouter
 
 ITEMS = load_golden_set("quant")
@@ -62,7 +70,7 @@ async def test_every_hostile_string_is_rejected_by_the_real_verifier():
     for item in ITEMS:
         if item["kind"] == "security":
             row = await quant_suite.run_security_case(item, skill)
-            assert row["passed"], (item["id"], row["checks"])
+            assert row.passed, (item["id"], row.checks)
 
 
 # ── statistics ───────────────────────────────────────────────────────────────
@@ -74,17 +82,19 @@ def test_wilson_interval_widens_as_n_shrinks():
     narrow = stats.wilson(80, 80) or (0, 0)
     assert narrow[0] > 0.95
     assert stats.wilson(0, 0) is None
-    assert stats.rate(0, 0)["value"] is None
+    assert stats.rate(0, 0).value is None
 
 
 def test_mean_pass_rate_interval_stays_wide_at_small_n_and_at_all_pass():
     all_pass = stats.group_summary({f"i{n}": [True, True, True] for n in range(4)}, 3)
-    low, high = all_pass["mean_pass_rate_ci95"]
+    assert all_pass.mean_pass_rate_ci95 is not None
+    low, high = all_pass.mean_pass_rate_ci95
     assert high == 1.0 and low < 0.55  # 4 items that all passed still allow a ~1 in 2 failure rate
-    assert stats.verdict_vs_baseline(0.9, all_pass["mean_pass_rate_ci95"]) == "within noise"
+    assert stats.verdict_vs_baseline(0.9, all_pass.mean_pass_rate_ci95) == "within noise"
     mixed = stats.group_summary({"a": [True] * 3, "b": [False] * 3, "c": [True, False, False]}, 3)
-    low, high = mixed["mean_pass_rate_ci95"]
-    assert low < mixed["mean_pass_rate"] < high and high - low > 0.4
+    assert mixed.mean_pass_rate_ci95 is not None and mixed.mean_pass_rate is not None
+    low, high = mixed.mean_pass_rate_ci95
+    assert low < mixed.mean_pass_rate < high and high - low > 0.4
 
 
 def test_pass_at_k_and_pass_hat_k_separate_lucky_from_reliable():
@@ -93,11 +103,11 @@ def test_pass_at_k_and_pass_hat_k_separate_lucky_from_reliable():
          "flaky": [True, False, True]},
         3,
     )
-    assert summary["pass_at_k"]["successes"] == 2  # always and flaky: at least one pass
-    assert summary["pass_hat_k"]["successes"] == 1  # only always: all three passed
-    assert summary["mean_pass_rate"] == pytest.approx((1 + 0 + 2 / 3) / 3, abs=1e-3)
-    assert summary["flaky_items"] == ["flaky"]
-    assert summary["always_failing_items"] == ["never"]
+    assert summary.pass_at_k.successes == 2  # always and flaky: at least one pass
+    assert summary.pass_hat_k.successes == 1  # only always: all three passed
+    assert summary.mean_pass_rate == pytest.approx((1 + 0 + 2 / 3) / 3, abs=1e-3)
+    assert summary.flaky_items == ["flaky"]
+    assert summary.always_failing_items == ["never"]
 
 
 def test_verdicts_only_call_a_change_real_outside_the_baseline_interval():
@@ -217,7 +227,7 @@ def _good(item: Any, system: str, messages: Any) -> str:
 
 async def _run(
     tmp_path: Path, behave: Any, ids: list[str], samples: int = 3
-) -> dict[str, Any]:
+) -> QuantSuiteResult:
     transport = MeteredTransport(
         Ledger(tmp_path / "ledger.json", 5.0), "t", fake_model=_fake(behave)
     )
@@ -225,9 +235,9 @@ async def _run(
     config = runner.write_model_config("offline/fake")
 
     def factory(notes: list[str]) -> QuantAgent:
-        return QuantAgent(
-            model_config_path=config, verify_math_skill=skill,
-            retrieve_corpus_skill=quant_suite.NotesSkill(notes),
+        return runner.build_quant_agent(
+            model_config_path=config, verify_skill=skill,
+            corpus_skill=quant_suite.NotesSkill(notes),
         )
 
     with transport.installed(), quant_suite.collecting_turns() as collector:
@@ -244,14 +254,15 @@ async def test_a_good_model_passes_everything_and_the_report_carries_n_and_inter
     tmp_path: Path,
 ):
     suite = await _run(tmp_path, _good, IDS)
-    assert suite["n_items"] == 8
-    assert suite["groups"]["solve"]["pass_hat_k"]["value"] == 1.0
-    assert suite["groups"]["tutor"]["n_items"] == 4
-    assert suite["groups"]["tutor"]["pass_hat_k"]["ci95"][1] == 1.0
-    assert suite["groups"]["tutor_multiturn"]["checks"]["stays_on_problem"]["value"] == 1.0
-    assert suite["security"]["n"] == 1
-    assert suite["units_dropped_model_unavailable"] == 0
-    assert any("cannot be told apart from noise" in c for c in suite["caveats"])
+    assert suite.n_items == 8
+    assert suite.groups["solve"].pass_hat_k.value == 1.0
+    assert suite.groups["tutor"].n_items == 4
+    tutor_ci = suite.groups["tutor"].pass_hat_k.ci95
+    assert tutor_ci is not None and tutor_ci[1] == 1.0
+    assert suite.groups["tutor_multiturn"].checks["stays_on_problem"].value == 1.0
+    assert suite.security is not None and suite.security.n == 1
+    assert suite.units_dropped == 0
+    assert any("cannot be told apart from noise" in c for c in suite.caveats)
 
 
 async def test_a_leaky_tutor_fails_the_leak_check_and_only_it(tmp_path: Path):
@@ -261,13 +272,13 @@ async def test_a_leaky_tutor_fails_the_leak_check_and_only_it(tmp_path: Path):
         return _good(item, system, messages)
 
     suite = await _run(tmp_path, leaky, ["t001", "t002", "m001"])
-    tutor = suite["groups"]["tutor"]
-    assert tutor["pass_at_k"]["value"] == 0.0
-    assert tutor["checks"]["no_leak"]["value"] == 0.0
-    assert tutor["checks"]["no_latex"]["value"] == 1.0
-    assert set(tutor["always_failing_items"]) == {"t001", "t002"}
-    assert suite["groups"]["tutor_multiturn"]["checks"]["no_leak"]["value"] == 0.0
-    assert suite["by_tag"]["answer-leak"]["pass_at_k"]["value"] == 0.0
+    tutor = suite.groups["tutor"]
+    assert tutor.pass_at_k.value == 0.0
+    assert tutor.checks["no_leak"].value == 0.0
+    assert tutor.checks["no_latex"].value == 1.0
+    assert set(tutor.always_failing_items) == {"t001", "t002"}
+    assert suite.groups["tutor_multiturn"].checks["no_leak"].value == 0.0
+    assert suite.by_tag["answer-leak"].pass_at_k.value == 0.0
 
 
 async def test_each_known_failure_is_caught_by_its_own_check(tmp_path: Path):
@@ -281,11 +292,11 @@ async def test_each_known_failure_is_caught_by_its_own_check(tmp_path: Path):
         return replies[item["id"]] if "tutor" in system else _good(item, system, messages)
 
     suite = await _run(tmp_path, broken, list(replies), samples=1)
-    checks = suite["groups"]["tutor"]["checks"]
-    assert checks["citations_ok"]["passed"] == 2  # only t006 broke it
-    assert checks["moves_forward"]["passed"] == 2  # only t008
-    assert checks["no_latex"]["passed"] == 2  # only t011
-    assert suite["groups"]["tutor"]["pass_at_k"]["successes"] == 0
+    checks = suite.groups["tutor"].checks
+    assert checks["citations_ok"].passed == 2  # only t006 broke it
+    assert checks["moves_forward"].passed == 2  # only t008
+    assert checks["no_latex"].passed == 2  # only t011
+    assert suite.groups["tutor"].pass_at_k.successes == 0
 
 
 async def test_multi_turn_item_fails_when_the_last_reply_leaves_the_problem(tmp_path: Path):
@@ -297,11 +308,12 @@ async def test_multi_turn_item_fails_when_the_last_reply_leaves_the_problem(tmp_
         return f"Back to the problem: {item['question']} What could you work out first?"
 
     suite = await _run(tmp_path, drifts, ["m004"], samples=2)
-    group = suite["groups"]["tutor_multiturn"]
-    assert group["checks"]["stays_on_problem"]["passed"] == 0
-    assert group["checks"]["no_leak"]["value"] == 1.0
-    row = suite["rows"]["attempts"][0]
-    assert len(row["transcript"]) == 8 and row["transcript"][-1]["role"] == "tutor"
+    group = suite.groups["tutor_multiturn"]
+    assert group.checks["stays_on_problem"].passed == 0
+    assert group.checks["no_leak"].value == 1.0
+    assert suite.rows is not None
+    row = suite.rows.attempts[0]
+    assert len(row.transcript) == 8 and row.transcript[-1].role == "tutor"
 
 
 async def test_flaky_model_shows_in_pass_hat_k_but_not_in_pass_at_k(tmp_path: Path):
@@ -314,10 +326,10 @@ async def test_flaky_model_shows_in_pass_hat_k_but_not_in_pass_at_k(tmp_path: Pa
         return _good(item, system, messages)
 
     suite = await _run(tmp_path, flaky, ["q002", "q005"], samples=3)
-    solve = suite["groups"]["solve"]
-    assert solve["pass_at_k"]["value"] == 1.0
-    assert solve["pass_hat_k"]["value"] < solve["pass_at_k"]["value"]
-    assert set(solve["flaky_items"]) == {"q002", "q005"}
+    solve = suite.groups["solve"]
+    assert solve.pass_at_k.value == 1.0
+    assert solve.pass_hat_k.value is not None and solve.pass_hat_k.value < 1.0
+    assert set(solve.flaky_items) == {"q002", "q005"}
 
 
 async def test_unavailable_model_drops_the_attempt_and_counts_it(tmp_path: Path):
@@ -325,19 +337,20 @@ async def test_unavailable_model_drops_the_attempt_and_counts_it(tmp_path: Path)
         raise AllModelsFailedError("down")
 
     suite = await _run(tmp_path, down, ["q002", "s001"], samples=2)
-    assert suite["units_dropped_model_unavailable"] == 2
-    assert suite["units_total"] == 3  # 2 solve attempts + the model-free security case
-    assert suite["groups"] == {}
+    assert suite.units_dropped == 2
+    assert suite.units_total == 3  # 2 solve attempts + the model-free security case
+    assert suite.groups == {}
 
 
 async def test_cost_and_latency_come_from_the_turn_meter(tmp_path: Path):
     suite = await _run(tmp_path, _good, ["t001", "m001"], samples=2)
-    block = suite["groups"]["tutor_multiturn"]["cost_latency"]
-    assert block["turns"] == 8  # 2 attempts x 4 turns
-    assert block["llm_calls_per_turn_mean"] == 1.0
-    assert block["latency_ms_p95"] >= block["latency_ms_p50"] >= 0
-    assert block["turns_with_estimated_tokens"] == 8  # the fake reports no usage: flagged
-    assert suite["all_model_turns"]["turns"] == 10
+    block = suite.groups["tutor_multiturn"].cost_latency
+    assert block.turns == 8  # 2 attempts x 4 turns
+    assert block.llm_calls_per_turn_mean == 1.0
+    assert block.latency_ms_p50 is not None and block.latency_ms_p95 is not None
+    assert block.latency_ms_p95 >= block.latency_ms_p50 >= 0
+    assert block.turns_with_estimated_tokens == 8  # the fake reports no usage: flagged
+    assert suite.all_model_turns.turns == 10
 
 
 # ── provider usage and sampling through the transport ────────────────────────
@@ -394,17 +407,19 @@ async def test_samples_get_separate_cache_entries(tmp_path: Path):
 
 async def test_baseline_round_trip_flags_only_drops_outside_its_interval(tmp_path: Path):
     suite = await _run(tmp_path, _good, IDS)
-    meta = {"model": "offline/fake", "is_product_default_model": False}
+    meta = run_meta()
     doc = quant_suite.baseline_document(suite, meta)
-    assert doc["schema"] == quant_suite.BASELINE_SCHEMA and doc["meta"] == meta
-    assert "rows" not in doc["summary"] and '"transcript"' not in json.dumps(doc)
+    assert doc.schema_id == quant_suite.BASELINE_SCHEMA and doc.meta == meta
+    stored = json.loads(doc.model_dump_json())
+    assert stored["schema"] == quant_suite.BASELINE_SCHEMA  # the stored key keeps its name
+    assert stored["summary"]["rows"] is None and '"transcript"' not in json.dumps(stored)
     same = quant_suite.compare_with_baseline(suite, doc)
-    assert {r["verdict"] for r in same} == {"within noise"}
-    doc["metrics"]["tutor.mean_pass_rate"]["value"] = 1.0
-    doc["metrics"]["tutor.mean_pass_rate"]["ci95"] = [0.99, 1.0]
-    worse = json.loads(json.dumps(suite))
-    worse["groups"]["tutor"]["mean_pass_rate"] = 0.5
-    verdicts = {r["metric"]: r["verdict"] for r in quant_suite.compare_with_baseline(worse, doc)}
+    assert {r.verdict for r in same} == {"within noise"}
+    doc.metrics["tutor.mean_pass_rate"].value = 1.0
+    doc.metrics["tutor.mean_pass_rate"].ci95 = [0.99, 1.0]
+    worse = suite.model_copy(deep=True)
+    worse.groups["tutor"].mean_pass_rate = 0.5
+    verdicts = {r.metric: r.verdict for r in quant_suite.compare_with_baseline(worse, doc)}
     assert verdicts["tutor.mean_pass_rate"] == "regression"
 
 
@@ -412,21 +427,27 @@ async def test_one_accepted_hostile_string_is_a_regression_against_an_8_of_8_bas
     tmp_path: Path,
 ):
     suite = await _run(tmp_path, _good, IDS)
-    clean = json.loads(json.dumps(suite))
-    clean["security"].update(successes=8, n=8, value=1.0, ci95=[0.6756, 1.0], failed_items=[])
-    doc = quant_suite.baseline_document(clean, {})
-    worse = json.loads(json.dumps(clean))
-    worse["security"].update(successes=7, value=0.875, failed_items=["s001"])
-    verdicts = {r["metric"]: r["verdict"] for r in quant_suite.compare_with_baseline(worse, doc)}
+    clean = suite.model_copy(deep=True)
+    clean.security = SecurityBlock(
+        value=1.0, successes=8, n=8, ci95=[0.6756, 1.0], failed_items=[]
+    )
+    doc = quant_suite.baseline_document(clean, run_meta())
+    worse = clean.model_copy(deep=True)
+    worse.security = SecurityBlock(
+        value=0.875, successes=7, n=8, ci95=[0.6756, 1.0], failed_items=["s001"]
+    )
+    verdicts = {r.metric: r.verdict for r in quant_suite.compare_with_baseline(worse, doc)}
     assert verdicts["security.pass_rate"] == "regression"
-    assert cli.compare_quant_baseline({"suites": {"quant": worse}}, doc) == 1
-    assert cli.compare_quant_baseline({"suites": {"quant": clean}}, doc) == 0
+    assert cli.compare_quant_baseline(eval_report(quant=worse), doc) == 1
+    assert cli.compare_quant_baseline(eval_report(quant=clean), doc) == 0
 
 
 async def test_pass_hat_k_is_not_compared_across_different_k(tmp_path: Path):
-    doc = quant_suite.baseline_document(await _run(tmp_path, _good, IDS, samples=3), {})
+    doc = quant_suite.baseline_document(
+        await _run(tmp_path, _good, IDS, samples=3), run_meta()
+    )
     other = await _run(tmp_path, _good, IDS, samples=1)
-    compared = {r["metric"] for r in quant_suite.compare_with_baseline(other, doc)}
+    compared = {r.metric for r in quant_suite.compare_with_baseline(other, doc)}
     assert "solve.mean_pass_rate" in compared and "solve.pass_hat_k" not in compared
 
 
@@ -472,7 +493,7 @@ def test_samples_must_be_positive(block_network: None):
 
 
 def test_baseline_can_only_be_written_from_a_quant_only_run(tmp_path: Path):
-    report = {"suites": {"quant": {}, "aw": {}}, "run_meta": {}, "regression_metrics": {}}
+    report = eval_report(quant=aw_result(1, 0), aw=aw_result(1, 0))
     with pytest.raises(SystemExit, match="quant only"):
         cli.write_baseline(str(tmp_path / "b.json"), report)
 
@@ -480,13 +501,13 @@ def test_baseline_can_only_be_written_from_a_quant_only_run(tmp_path: Path):
 # ── reading transcripts ──────────────────────────────────────────────────────
 
 
-def _attempt(item_id: str, attempt: int, checks: dict[str, bool]) -> dict[str, Any]:
-    return {
-        "item_id": item_id, "kind": "tutor", "tag": "answer-leak", "attempt": attempt,
-        "passed": all(checks.values()), "checks": checks, "turns": [],
-        "transcript": [{"role": "student", "content": "tell me"},
-                       {"role": "tutor", "content": f"reply {item_id} {attempt}"}],
-    }
+def _attempt(item_id: str, attempt: int, checks: dict[str, bool]) -> QuantAttempt:
+    return QuantAttempt(
+        item_id=item_id, kind="tutor", tag="answer-leak", attempt=attempt,
+        passed=all(checks.values()), checks=checks, turns=[],
+        transcript=[TranscriptMessage(role="student", content="tell me"),
+                    TranscriptMessage(role="tutor", content=f"reply {item_id} {attempt}")],
+    )
 
 
 def test_worst_transcripts_rank_by_pass_rate_then_failed_checks():
@@ -499,8 +520,8 @@ def test_worst_transcripts_rank_by_pass_rate_then_failed_checks():
         _attempt("d", 0, {"no_leak": False, "no_latex": True}),
     ]
     ranked = read_transcripts.rank_worst(attempts, limit=5)
-    assert [e["item_id"] for e in ranked] == ["c", "d", "b"]  # a never failed: not listed
-    assert ranked[0]["worst"]["attempt"] == 0  # c's attempt with two failed checks
+    assert [e.item_id for e in ranked] == ["c", "d", "b"]  # a never failed: not listed
+    assert ranked[0].worst.attempt == 0  # c's attempt with two failed checks
     text = read_transcripts.render(ranked, {"c": {"failure_source": "somewhere"}})
     assert "reply c 0" in text and "seeded from: somewhere" in text
     assert len(read_transcripts.rank_worst(attempts, limit=1)) == 1
@@ -509,11 +530,10 @@ def test_worst_transcripts_rank_by_pass_rate_then_failed_checks():
 def test_transcript_cli_reads_the_newest_report(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ):
-    report = {"run_id": "r1", "run_meta": {"model": "m"},
-              "suites": {"quant": {"rows": {"attempts": [
-                  _attempt("t001", 0, {"no_leak": False})]}}}}
+    suite = quant_suite.summarise([_attempt("t001", 0, {"no_leak": False})], 1, 0, 1)
+    report = eval_report(quant=suite)
     path = tmp_path / "r1.json"
-    path.write_text(json.dumps(report))
+    path.write_text(report.model_dump_json())
     assert read_transcripts.main([str(path), "--worst", "5"]) == 0
     out = capsys.readouterr().out
     assert "t001" in out and "failed checks: no_leak" in out
@@ -528,14 +548,13 @@ def test_transcript_cli_reads_the_newest_report(
 def test_checked_in_baseline_names_its_model_and_renders_as_a_report(capsys):
     from evals import quant_report
 
-    doc = json.loads(Path("evals/baselines/quant.json").read_text())
-    meta = doc["meta"]
+    meta = QuantBaseline.model_validate_json(Path("evals/baselines/quant.json").read_text()).meta
     # measured on the product default (the free config); a baseline on any other model must say so
-    assert meta["model"] == meta["product_default_model"] == "openrouter/recursive/flint-v1.0:free"
-    assert meta["is_product_default_model"] is True
+    assert meta.model == meta.product_default_model == "openrouter/recursive/flint-v1.0:free"
+    assert meta.is_product_default_model is True
     assert quant_report.main([]) == 0
     out = capsys.readouterr().out
-    assert meta["model"] in out and "pass^k" in out and "95% interval" in out
+    assert meta.model in out and "pass^k" in out and "95% interval" in out
 
 
 def test_comparing_a_baseline_with_itself_moves_nothing(capsys):

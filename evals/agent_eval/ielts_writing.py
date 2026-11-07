@@ -24,6 +24,11 @@ from typing import Any, Protocol
 from evals.agent_eval.agreement import agreement_report, quadratic_weighted_kappa
 from evals.agent_eval.cache import cache_key
 from evals.agent_eval.judges import JudgeError
+from evals.agent_eval.results import (
+    IeltsAdversarialResult,
+    IeltsReportResult,
+    IeltsWritingResult,
+)
 from evals.agent_eval.transport import AllModelsFailedError, gather_limited, tagged
 from evals.exam_set.schema import (
     CRITERIA,
@@ -214,20 +219,16 @@ def select_items(
 async def run_ielts_writing(
     items: list[ExamItem], grader: IeltsGrader, *, tier: str = "best", max_items: int = 5,
     seed: int = 42,
-) -> dict[str, Any]:
+) -> IeltsWritingResult:
     chosen, picked, counts = select_items(items, tier, max_items, seed)
-    base: dict[str, Any] = {
-        "label_tier": chosen.value if chosen else None,
-        "label_tier_caveat": TIER_CAVEATS[chosen] if chosen else None,
-        "tier_counts_available": counts,
-        "grader": grader.name,
-        "tolerance": TOLERANCE,
-    }
     if chosen is None or not picked:
-        return {
-            **base, "n_items": 0, "units_total": 0, "units_dropped_model_unavailable": 0,
-            "note": "no labelled IELTS Writing Task 2 items available (see evals/exam_set)",
-        }
+        return IeltsWritingResult(
+            label_tier=chosen.value if chosen else None,
+            label_tier_caveat=TIER_CAVEATS[chosen] if chosen else None,
+            tier_counts_available=counts, grader=grader.name, tolerance=TOLERANCE,
+            n_items=0, units_total=0, units_dropped=0,
+            note="no labelled IELTS Writing Task 2 items available (see evals/exam_set)",
+        )
     errors: list[str] = []
     unavailable: list[str] = []
 
@@ -257,22 +258,26 @@ async def run_ielts_writing(
         for crit, gold in item.labels.criteria.items():
             per_criterion[crit].append((row["pred"][crit], gold))
     spreads = [r["spread"] for _, r in rows if r["spread"] is not None]
-    return {
-        **base,
-        "n_items": len(rows),
-        "overall": agreement_report(overall_pairs, TOLERANCE),
-        "per_criterion": {
+    return IeltsWritingResult(
+        label_tier=chosen.value,
+        label_tier_caveat=TIER_CAVEATS[chosen],
+        tier_counts_available=counts,
+        grader=grader.name,
+        tolerance=TOLERANCE,
+        n_items=len(rows),
+        overall=agreement_report(overall_pairs, TOLERANCE),
+        per_criterion={
             CRITERION_NAMES[c]: agreement_report(pairs, TOLERANCE)
             for c, pairs in per_criterion.items()
         },
-        "calibration_gate": gate_report(
+        calibration_gate=gate_report(
             overall_pairs, per_criterion, tier=chosen.value,
             qwk=quadratic_weighted_kappa(overall_pairs), spreads=spreads or None,
         ),
-        "errors": len(errors),
-        "units_total": len(results),
-        "units_dropped_model_unavailable": len(unavailable),
-        "rows": {
+        errors=len(errors),
+        units_total=len(results),
+        units_dropped=len(unavailable),
+        rows={
             "grade": [
                 {"item_id": r["item_id"], "pred": r["pred"], "pred_overall": r["pred_overall"],
                  "gold_overall": i.labels.overall if i.labels else None,
@@ -280,7 +285,7 @@ async def run_ielts_writing(
                 for i, r in rows
             ]
         },
-    }
+    )
 
 
 _UNCALIBRATED = Calibration(status="uncalibrated", label="Uncalibrated estimate")
@@ -289,7 +294,7 @@ _UNCALIBRATED = Calibration(status="uncalibrated", label="Uncalibrated estimate"
 async def run_ielts_report(
     items: list[ExamItem], completer: llm.Completer, *, tier: str = "best",
     max_items: int = REPORT_CHECK_ITEMS, seed: int = 42, samples: int = DEFAULT_SAMPLES,
-) -> dict[str, Any]:
+) -> IeltsReportResult:
     """Full report (grade plus feedback) on a few essays, run through the mechanical checks."""
     chosen, picked, _ = select_items(items, tier, max_items, seed)
     unavailable: list[str] = []
@@ -313,21 +318,21 @@ async def run_ielts_report(
 
     results = await gather_limited([one(i) for i in picked])
     done = [r for r in results if r is not None]
-    return {
-        "label_tier": chosen.value if chosen else None,
-        "n_items": len(done),
-        "units_total": len(results),
-        "units_dropped_model_unavailable": len(unavailable),
-        "reports_with_problems": sum(1 for r in done if r["problems"]),
-        "problems": [p for r in done for p in r["problems"]],
-        "feedback_status": dict(Counter(r["feedback_status"] for r in done)),
-        "rows": {"report": done},
-    }
+    return IeltsReportResult(
+        label_tier=chosen.value if chosen else None,
+        n_items=len(done),
+        units_total=len(results),
+        units_dropped=len(unavailable),
+        reports_with_problems=sum(1 for r in done if r["problems"]),
+        problems=[p for r in done for p in r["problems"]],
+        feedback_status=dict(Counter(r["feedback_status"] for r in done)),
+        rows={"report": done},
+    )
 
 
 async def run_ielts_adversarial(
     items: list[ExamItem], completer: llm.Completer, *, samples: int = DEFAULT_SAMPLES,
-) -> dict[str, Any]:
+) -> IeltsAdversarialResult:
     """Each case must raise its flags and stay at or under its band ceiling."""
     cases = [i for i in items if i.task_type == "adversarial_response"]
     unavailable: list[str] = []
@@ -353,13 +358,13 @@ async def run_ielts_adversarial(
 
     results = await gather_limited([one(i) for i in cases])
     done = [r for r in results if r is not None]
-    return {
-        "n_cases": len(done),
-        "units_total": len(results),
-        "units_dropped_model_unavailable": len(unavailable),
-        "passed": sum(1 for r in done if r["passed"]),
-        "failed_cases": [r["case"] for r in done if not r["passed"]],
-        "max_band_given": max((r["overall"] for r in done if r["overall"] is not None),
-                              default=None),
-        "rows": {"adversarial": done},
-    }
+    return IeltsAdversarialResult(
+        n_cases=len(done),
+        units_total=len(results),
+        units_dropped=len(unavailable),
+        passed=sum(1 for r in done if r["passed"]),
+        failed_cases=[r["case"] for r in done if not r["passed"]],
+        max_band_given=max((r["overall"] for r in done if r["overall"] is not None),
+                           default=None),
+        rows={"adversarial": done},
+    )

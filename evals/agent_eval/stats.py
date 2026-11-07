@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
-from typing import Any
+
+from evals.agent_eval.results import GroupStats, Rate
 
 Z95 = 1.959964  # two-sided 95% normal quantile
 
@@ -39,18 +40,18 @@ def mean_rate_ci(mean: float, n_items: int) -> tuple[float, float] | None:
     return wilson(mean * n_items, n_items)
 
 
-def rate(successes: int, n: int) -> dict[str, Any]:
-    """A proportion with its n and 95% Wilson interval (all None when n is 0)."""
+def rate(successes: int, n: int) -> Rate:
+    """A proportion with its n and 95% Wilson interval (value and interval None when n is 0)."""
     ci = wilson(successes, n)
-    return {
-        "value": successes / n if n else None,
-        "successes": successes,
-        "n": n,
-        "ci95": None if ci is None else [round(ci[0], 4), round(ci[1], 4)],
-    }
+    return Rate(
+        value=successes / n if n else None,
+        successes=successes,
+        n=n,
+        ci95=None if ci is None else [round(ci[0], 4), round(ci[1], 4)],
+    )
 
 
-def group_summary(per_item: Mapping[str, Sequence[bool]], k: int) -> dict[str, Any]:
+def group_summary(per_item: Mapping[str, Sequence[bool]], k: int) -> GroupStats:
     """
     Summarise one group of items. `per_item` maps an item id to the pass/fail of each completed
     attempt. Items with no completed attempt are left out (and counted by the caller as dropped).
@@ -62,27 +63,26 @@ def group_summary(per_item: Mapping[str, Sequence[bool]], k: int) -> dict[str, A
     per_item_rate = [sum(a) / len(a) for a in runs.values()]
     mean = sum(per_item_rate) / n if n else None
     ci = None if mean is None else mean_rate_ci(mean, n)
-    return {
-        "n_items": n,
-        "samples": k,
-        "attempts": sum(len(a) for a in runs.values()),
-        "mean_pass_rate": None if mean is None else round(mean, 4),
-        "mean_pass_rate_ci95": None if ci is None else [round(ci[0], 4), round(ci[1], 4)],
-        "pass_at_k": rate(ever, n),
-        "pass_hat_k": rate(always, n),
-        "flaky_items": sorted(i for i, a in runs.items() if any(a) and not all(a)),
-        "always_failing_items": sorted(i for i, a in runs.items() if not any(a)),
-    }
+    return GroupStats(
+        n_items=n,
+        samples=k,
+        attempts=sum(len(a) for a in runs.values()),
+        mean_pass_rate=None if mean is None else round(mean, 4),
+        mean_pass_rate_ci95=None if ci is None else [round(ci[0], 4), round(ci[1], 4)],
+        pass_at_k=rate(ever, n),
+        pass_hat_k=rate(always, n),
+        flaky_items=sorted(i for i, a in runs.items() if any(a) and not all(a)),
+        always_failing_items=sorted(i for i, a in runs.items() if not any(a)),
+    )
 
 
-def resolution(summary: Mapping[str, Any]) -> float | None:
+def resolution(summary: GroupStats) -> float | None:
     """Half-width of the widest 95% interval in a group: the smallest change it can resolve."""
     halves = []
-    for key in ("pass_at_k", "pass_hat_k"):
-        ci = summary[key]["ci95"]
-        if ci:
-            halves.append((ci[1] - ci[0]) / 2)
-    ci = summary.get("mean_pass_rate_ci95")
+    for interval in (summary.pass_at_k.ci95, summary.pass_hat_k.ci95):
+        if interval:
+            halves.append((interval[1] - interval[0]) / 2)
+    ci = summary.mean_pass_rate_ci95
     if ci:
         halves.append((ci[1] - ci[0]) / 2)
     return round(max(halves), 3) if halves else None

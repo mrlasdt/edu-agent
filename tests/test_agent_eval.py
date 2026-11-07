@@ -18,9 +18,22 @@ from evals.agent_eval.probes import (
     leaks_by_rule,
     perturb_answer,
 )
+from evals.agent_eval.results import (
+    AwResult,
+    EvalReport,
+    GenerationResult,
+    IeltsAdversarialResult,
+    IeltsReportResult,
+    IeltsWritingResult,
+    QuantBaseline,
+    QuantJudgeResult,
+    QuantSuiteResult,
+    SuiteResult,
+)
 from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport
 from evals.judges.quant_judge import grade_quant_item
 from shared.src.shared.config import Settings
+from tests.eval_result_fakes import aw_result, eval_report
 from tests.llm_fakes import (
     RATE_LIMITED,
     SERVER_ERROR,
@@ -234,8 +247,8 @@ async def test_run_aw_scores_a_judge_that_answers_the_correct_level():
             return str(int(q.facts["gold"]))
 
     out = await run_aw(items, ExactLLM("m"))
-    assert out["mae"] == 0.0 and out["within_tolerance"] == 1.0
-    assert out["n_judgements"] == 6
+    assert out.mae == 0.0 and out.within_tolerance == 1.0
+    assert out.n_judgements == 6
 
 
 async def test_llm_judge_retries_an_empty_reply_once(monkeypatch: pytest.MonkeyPatch):
@@ -394,31 +407,105 @@ def test_litellm_banner_is_suppressed():
 
 
 def test_coverage_failures_flags_mostly_dropped_suites():
-    from evals.agent_eval.runner import coverage_failures
+    report = eval_report(quant=aw_result(20, 19), aw=aw_result(10, 1))
+    assert report.coverage_failures(0.8) == {"quant": pytest.approx(0.05)}
+    assert report.coverage_failures(0.0) == {}
 
-    report = {
+
+@pytest.mark.parametrize("suite", [
+    AwResult, GenerationResult, IeltsAdversarialResult, IeltsReportResult, IeltsWritingResult,
+    QuantJudgeResult, QuantSuiteResult,
+])
+def test_a_suite_result_without_units_total_fails_at_construction(suite: type[SuiteResult]):
+    """A suite that forgets `units_total` is a construction error, not full coverage."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="units_total"):
+        suite.model_validate({"units_dropped": 7})  # every other field may be wrong too
+    with pytest.raises(ValidationError, match="units_total"):
+        AwResult(
+            n_judgements=1, within_tolerance=None, tolerance=1.0, mae=None, errors=0,
+            units_dropped=7,  # type: ignore[call-arg]
+        )
+
+
+def test_a_suite_result_without_units_dropped_fails_at_construction():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="units_dropped"):
+        AwResult(
+            n_judgements=1, within_tolerance=None, tolerance=1.0, mae=None, errors=0,
+            units_total=8,  # type: ignore[call-arg]
+        )
+
+
+def test_a_stored_result_keeps_its_key_names_and_reads_either_spelling():
+    stored = aw_result(8, 7).model_dump(mode="json")
+    assert stored["units_total"] == 8 and stored["units_dropped_model_unavailable"] == 7
+    assert "units_dropped" not in stored
+    assert AwResult.model_validate(stored).units_dropped == 7
+    renamed = {k: v for k, v in stored.items() if k != "units_dropped_model_unavailable"}
+    assert AwResult.model_validate({**renamed, "units_dropped": 7}).units_dropped == 7
+
+
+def test_a_result_stored_before_unit_counts_existed_still_loads():
+    """`from_stored` is the one place that fills the counts in, for reports already on disk."""
+    legacy = {"n_judgements": 3, "within_tolerance": 1.0, "tolerance": 1.0, "mae": 0.0, "errors": 0}
+    loaded = AwResult.from_stored(legacy)
+    assert loaded.units_total == 0 and loaded.units_dropped == 0
+    with pytest.raises(Exception, match="units_total"):
+        AwResult.model_validate(legacy)  # the plain constructor path stays strict
+
+
+def test_checked_in_baselines_load_and_keep_their_stored_shape():
+    """The files under evals/baselines/ predate the models; they must read and write back."""
+    for path in sorted(Path("evals/baselines").glob("*.json")):
+        stored = json.loads(path.read_text())
+        loaded = QuantBaseline.model_validate(stored)
+        written = json.loads(loaded.model_dump_json())
+        assert written["schema"] == stored["schema"] == "eval-baseline/1", path
+        assert written["metrics"] == stored["metrics"], path
+        assert written["summary"]["units_dropped_model_unavailable"] == (
+            stored["summary"]["units_dropped_model_unavailable"]
+        ), path
+
+
+def test_a_run_report_written_before_provenance_and_unit_counts_still_loads():
+    legacy = {
+        "run_id": "old", "mode": "offline", "model_chain": ["m"], "judge": "j", "seed": 42,
         "suites": {
-            "quant": {"units_total": 20, "units_dropped_model_unavailable": 19},
-            "aw": {"units_total": 10, "units_dropped_model_unavailable": 1},
-        }
+            "generation": {
+                "n_requests": 0, "targets": {}, "comparison": {}, "review_queue": 0,
+                "judge_errors": 0, "units_dropped_model_unavailable": 7, "rows": {},
+            },
+            "aw": aw_result(4, 1).model_dump(mode="json"),
+        },
+        "regression_metrics": {},
     }
-    assert coverage_failures(report, 0.8) == {"quant": pytest.approx(0.05)}
-    assert coverage_failures(report, 0.0) == {}
+    report = EvalReport.model_validate(legacy)
+    assert report.run_meta is None
+    gen = report.suite("generation", GenerationResult)
+    assert gen is not None and gen.units_total == 0 and gen.units_dropped == 7
+    assert report.coverage_failures(0.8) == {"aw": 0.75}
 
 
-def test_a_suite_result_without_units_total_fails_the_coverage_check():
-    """A suite that forgets `units_total` must not read as full coverage."""
-    from evals.agent_eval.runner import coverage_failures
+def test_the_quant_agent_factory_has_no_default_corpus_skill():
+    """The agent's own default calls the corpus service; an eval must always choose its notes."""
+    from evals.agent_eval import quant_suite, runner
 
-    report = {"suites": {"generation": {"units_dropped_model_unavailable": 7}}}
-    assert coverage_failures(report, 0.8) == {"generation": 0.0}
-    assert coverage_failures(report, 0.0) == {}
+    with pytest.raises(TypeError, match="corpus_skill"):
+        runner.build_quant_agent(  # type: ignore[call-arg]
+            model_config_path="config/model_config.dev.yaml"
+        )
+    runner.build_quant_agent(
+        model_config_path="config/model_config.dev.yaml",
+        corpus_skill=quant_suite.NotesSkill(["note"]),
+    )
 
 
 async def test_generation_run_with_the_model_down_fails_the_coverage_gate():
     """End to end through run_generation: every unit dropped must trip the real gate."""
     from evals.agent_eval import generation
-    from evals.agent_eval.runner import coverage_failures
 
     class Down:
         async def run(self, request: Any) -> Any:
@@ -435,8 +522,8 @@ async def test_generation_run_with_the_model_down_fails_the_coverage_gate():
     out = await generation.run_generation(
         requests, {"baseline": Down(), "pipeline": Down()}, cli._offline_judge(), skill, transport
     )
-    assert out["units_total"] == 8 and out["units_dropped_model_unavailable"] == 8
-    assert coverage_failures({"suites": {"generation": out}}, 0.8) == {"generation": 0.0}
+    assert out.units_total == 8 and out.units_dropped == 8
+    assert eval_report(generation=out).coverage_failures(0.8) == {"generation": 0.0}
 
 
 async def test_quant_judge_suite_never_reaches_the_corpus_service(
@@ -460,7 +547,7 @@ async def test_quant_judge_suite_never_reaches_the_corpus_service(
         cache_dir=str(tmp_path / "c"), no_cache=True, math_tools="on",
     )
     report, code = await cli.run(args)
-    assert code == 0 and report["suites"]["quant_judge"]["n_items"] == 3
+    assert code == 0 and report.suite("quant_judge", QuantJudgeResult).n_items == 3
     assert corpus_calls == []
 
 
@@ -481,9 +568,9 @@ async def test_failed_run_exits_nonzero_and_emits_no_regression_metrics(
     )
     report, code = await cli.run(args)
     assert code == 2
-    assert report["coverage_gate"]["passed"] is False
-    assert report["regression_metrics"] == {}
-    assert report["call_failures"]
+    assert report.coverage_gate is not None and report.coverage_gate.passed is False
+    assert report.regression_metrics == {}
+    assert report.call_failures
 
 
 # ── per-question-type answers, QC grading, calibration probes ────────────────

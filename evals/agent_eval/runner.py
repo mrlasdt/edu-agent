@@ -33,6 +33,17 @@ from evals.agent_eval.probes import (
     leaks_by_rule,
     normalize_for_type,
 )
+from evals.agent_eval.results import (
+    AwResult,
+    JudgeCalibration,
+    LabelAgreement,
+    QuantJudgeResult,
+    QuantJudgeRows,
+    SolveRow,
+    SolveSummary,
+    TutorRow,
+    TutorSummary,
+)
 from evals.agent_eval.transport import (
     AllModelsFailedError,
     MeteredTransport,
@@ -43,6 +54,7 @@ from evals.judges.quant_judge import grade_quant_item
 from evals.loader import load_golden_set, sample_golden_set
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.skills.math_tools import MathToolsSkill
+from services.agent.src.agent.skills.retrieve_corpus import RetrieveCorpusSkill
 from services.agent.src.agent.skills.verify_math import VerifyMathSkill
 from services.math_verifier.src.math_verifier.server import mcp as math_verifier_mcp
 from shared.src.shared.config import DEFAULT_MODEL_CONFIG_PATH
@@ -80,6 +92,28 @@ def in_process_math_tools() -> MathToolsSkill:
     return MathToolsSkill(client=_in_process_client())
 
 
+def build_quant_agent(
+    *,
+    model_config_path: str,
+    corpus_skill: RetrieveCorpusSkill,
+    math_tools_enabled: bool = False,
+    verify_skill: VerifyMathSkill | None = None,
+) -> QuantAgent:
+    """
+    The one way an eval builds the real QuantAgent: the verifier and the math tools reach the
+    real routes in this process, and `corpus_skill` is passed explicitly. It has no default on
+    purpose: the agent's own default calls the corpus service, so an eval that forgot it would
+    score differently depending on whether the docker stack happens to be running.
+    """
+    return QuantAgent(
+        model_config_path=model_config_path,
+        verify_math_skill=verify_skill or in_process_verify_skill(),
+        retrieve_corpus_skill=corpus_skill,
+        math_tools_skill=in_process_math_tools(),
+        math_tools_enabled=math_tools_enabled,
+    )
+
+
 def write_model_config(model: str, base_path: str = DEFAULT_MODEL_CONFIG_PATH) -> str:
     """A model config identical to the default one but with every role routed to `model`."""
     raw = yaml.safe_load(Path(base_path).read_text())
@@ -96,14 +130,14 @@ def _rate(flags: Sequence[bool]) -> float | None:
     return sum(flags) / len(flags) if flags else None
 
 
-def _agreement(pairs: Sequence[tuple[bool, bool]]) -> dict[str, Any]:
+def _agreement(pairs: Sequence[tuple[bool, bool]]) -> LabelAgreement:
     n = len(pairs)
-    return {
-        "n": n,
-        "agreement": (sum(1 for a, b in pairs if a == b) / n) if n else None,
-        "false_positive": sum(1 for p, g in pairs if p and not g),
-        "false_negative": sum(1 for p, g in pairs if g and not p),
-    }
+    return LabelAgreement(
+        n=n,
+        agreement=(sum(1 for a, b in pairs if a == b) / n) if n else None,
+        false_positive=sum(1 for p, g in pairs if p and not g),
+        false_negative=sum(1 for p, g in pairs if g and not p),
+    )
 
 
 async def _guarded[T](coro: Coroutine[Any, Any, T], failures: list[str]) -> T | None:
@@ -144,22 +178,22 @@ async def _run_agent(
 
 async def run_quant(
     items: list[dict[str, Any]], agent: QuantAgent, judge: Judge
-) -> dict[str, Any]:
+) -> QuantJudgeResult:
     judge_errors: list[str] = []
     unavailable: list[str] = []
 
-    async def tutor(item: dict[str, Any], probe: str) -> dict[str, Any]:
+    async def tutor(item: dict[str, Any], probe: str) -> TutorRow:
         reply, _, latency = await _run_agent(
             agent, item, Mode.tutor, TUTOR_PROBES[probe].format(question=item["question"])
         )
         rule = leaks_by_rule(reply, item["ground_truth"], item["question_type"])
         verdict = await _yes_no(judge, leak_question(item, reply, rule), judge_errors)
-        return {
-            "item_id": item["id"], "probe": probe, "latency_s": latency,
-            "leak_rule": rule, "leak_judge": None if verdict is None else verdict.answer,
-        }
+        return TutorRow(
+            item_id=item["id"], probe=probe, latency_s=latency,
+            leak_rule=rule, leak_judge=None if verdict is None else verdict.answer,
+        )
 
-    async def solve(item: dict[str, Any]) -> dict[str, Any]:
+    async def solve(item: dict[str, Any]) -> SolveRow:
         text, verifier_fail, latency = await _run_agent(
             agent, item, Mode.solve, item["question"]
         )
@@ -168,11 +202,11 @@ async def run_quant(
         )
         graded = await grade_quant_item(item, candidate_answer=answer)
         verdict = await _yes_no(judge, correct_question(item, text, graded.correct), judge_errors)
-        return {
-            "item_id": item["id"], "latency_s": latency, "answer": answer,
-            "correct": graded.correct, "verifier_fail": verifier_fail,
-            "judge_correct": None if verdict is None else verdict.answer,
-        }
+        return SolveRow(
+            item_id=item["id"], latency_s=latency, answer=answer,
+            correct=graded.correct, verifier_fail=verifier_fail,
+            judge_correct=None if verdict is None else verdict.answer,
+        )
 
     async def calibrate(
         item: dict[str, Any],
@@ -201,43 +235,40 @@ async def run_quant(
     leak_cal = [p for lp, _ in calibration for p in lp]
     correct_cal = [p for _, cp in calibration for p in cp]
     judged_leaks = [
-        (r["leak_judge"], r["leak_rule"]) for r in tutor_rows if r["leak_judge"] is not None
+        (r.leak_judge, r.leak_rule) for r in tutor_rows if r.leak_judge is not None
     ]
     judged_correct = [
-        (r["judge_correct"], r["correct"]) for r in solve_rows if r["judge_correct"] is not None
+        (r.judge_correct, r.correct) for r in solve_rows if r.judge_correct is not None
     ]
-    return {
-        "n_items": len(items),
-        "tutor": {
-            "leak_rate_rule": _rate([r["leak_rule"] for r in tutor_rows]),
-            "leak_rate_judge": _rate(
-                [r["leak_judge"] for r in tutor_rows if r["leak_judge"] is not None]
-            ),
-            "leak_rate_rule_by_probe": {
-                p: _rate([r["leak_rule"] for r in tutor_rows if r["probe"] == p])
-                for p in TUTOR_PROBES
+    return QuantJudgeResult(
+        n_items=len(items),
+        tutor=TutorSummary(
+            leak_rate_rule=_rate([r.leak_rule for r in tutor_rows]),
+            leak_rate_judge=_rate([r.leak_judge for r in tutor_rows if r.leak_judge is not None]),
+            leak_rate_rule_by_probe={
+                p: _rate([r.leak_rule for r in tutor_rows if r.probe == p]) for p in TUTOR_PROBES
             },
-            "judge_vs_rule_on_agent_output": _agreement(judged_leaks),
-        },
-        "solve": {
-            "accuracy": _rate([r["correct"] for r in solve_rows]),
-            "verifier_fail_rate": _rate(
-                [bool(r["verifier_fail"]) for r in solve_rows if r["verifier_fail"] is not None]
+            judge_vs_rule_on_agent_output=_agreement(judged_leaks),
+        ),
+        solve=SolveSummary(
+            accuracy=_rate([r.correct for r in solve_rows]),
+            verifier_fail_rate=_rate(
+                [bool(r.verifier_fail) for r in solve_rows if r.verifier_fail is not None]
             ),
-            "judge_vs_sympy_on_agent_output": _agreement(judged_correct),
-        },
-        "judge_calibration": {
-            "leak_labels": _agreement(leak_cal),
-            "correctness_labels": _agreement(correct_cal),
-            "errors": len(judge_errors),
-        },
-        "units_total": len(tutor_out) + len(solve_out) + len(cal_out),
-        "units_dropped_model_unavailable": len(unavailable),
-        "rows": {"tutor": tutor_rows, "solve": solve_rows},
-    }
+            judge_vs_sympy_on_agent_output=_agreement(judged_correct),
+        ),
+        judge_calibration=JudgeCalibration(
+            leak_labels=_agreement(leak_cal),
+            correctness_labels=_agreement(correct_cal),
+            errors=len(judge_errors),
+        ),
+        units_total=len(tutor_out) + len(solve_out) + len(cal_out),
+        units_dropped=len(unavailable),
+        rows=QuantJudgeRows(tutor=tutor_rows, solve=solve_rows),
+    )
 
 
-async def run_aw(items: list[dict[str, Any]], judge: Judge) -> dict[str, Any]:
+async def run_aw(items: list[dict[str, Any]], judge: Judge) -> AwResult:
     """Judge calibration against the golden anchor essays (held out of the judge's context)."""
     errors: list[str] = []
     unavailable: list[str] = []
@@ -272,29 +303,15 @@ async def run_aw(items: list[dict[str, Any]], judge: Judge) -> dict[str, Any]:
     )
     pairs = [r for r in results if r is not None]
     diffs = [abs(s - g) for s, g in pairs]
-    return {
-        "n_judgements": len(pairs),
-        "within_tolerance": _rate([d <= AW_AGREE_TOLERANCE for d in diffs]),
-        "tolerance": AW_AGREE_TOLERANCE,
-        "mae": statistics.fmean(diffs) if diffs else None,
-        "errors": len(errors),
-        "units_total": len(results),
-        "units_dropped_model_unavailable": len(unavailable),
-    }
-
-
-def coverage_failures(report: dict[str, Any], min_coverage: float) -> dict[str, float]:
-    """Suites whose share of completed units is below `min_coverage` (suite -> coverage)."""
-    out: dict[str, float] = {}
-    for name, suite in report["suites"].items():
-        total = suite.get("units_total")
-        if total is None:  # a suite that cannot say how many units it ran has not proven coverage
-            coverage = 0.0
-        else:
-            coverage = 1 - suite["units_dropped_model_unavailable"] / total if total else 1.0
-        if coverage < min_coverage:
-            out[name] = coverage
-    return out
+    return AwResult(
+        n_judgements=len(pairs),
+        within_tolerance=_rate([d <= AW_AGREE_TOLERANCE for d in diffs]),
+        tolerance=AW_AGREE_TOLERANCE,
+        mae=statistics.fmean(diffs) if diffs else None,
+        errors=len(errors),
+        units_total=len(results),
+        units_dropped=len(unavailable),
+    )
 
 
 def latency_cost_summary(

@@ -31,9 +31,30 @@ from typing import Any
 from unittest.mock import patch
 
 import sympy as sp
+from pydantic import BaseModel
 
 from evals.agent_eval import graders, stats
 from evals.agent_eval.probes import answer_values, normalize_for_type
+from evals.agent_eval.results import (
+    BaselineMetric,
+    CheckRate,
+    Control,
+    GroupSummary,
+    ObservedWrong,
+    QuantAttempt,
+    QuantBaseline,
+    QuantRows,
+    QuantSuiteResult,
+    RunMeta,
+    SecurityBlock,
+    SeededWrongAnswers,
+    SelfCompare,
+    TranscriptMessage,
+    TurnCost,
+    TurnUsage,
+    VerdictTally,
+    WrongButVerified,
+)
 from evals.agent_eval.transport import AllModelsFailedError, cache_slot, gather_limited, tagged
 from evals.judges.quant_judge import grade_quant_item
 from evals.turn_report import percentile
@@ -80,20 +101,20 @@ class TurnCollector(TurnLog):
     def read(self) -> list[dict[str, Any]]:
         return list(self.records)
 
-    def turn(self, trace_id: str) -> dict[str, Any]:
+    def turn(self, trace_id: str) -> TurnUsage:
         """Cost, tokens and time of one turn, from the record its meter wrote."""
         recs = [r for r in self.records if r.get("trace_id") == trace_id]
-        return {
-            "usd": sum(r.get("cost_usd", 0.0) for r in recs),
-            "input_tokens": sum(r.get("input_tokens", 0) for r in recs),
-            "output_tokens": sum(r.get("output_tokens", 0) for r in recs),
-            "llm_calls": sum(r.get("llm_calls", 0) for r in recs),
-            "tool_calls": sum(len(r.get("tool_calls", [])) for r in recs),
-            "tool_errors": sum(r.get("tool_errors", 0) for r in recs),
-            "tool_budget_exhausted": any(r.get("tool_budget_exhausted") for r in recs),
-            "latency_ms": sum(r.get("total_ms", 0.0) for r in recs),
-            "estimated": any(r.get("usage") in ("estimate", "mixed") for r in recs),
-        }
+        return TurnUsage(
+            usd=sum(r.get("cost_usd", 0.0) for r in recs),
+            input_tokens=sum(r.get("input_tokens", 0) for r in recs),
+            output_tokens=sum(r.get("output_tokens", 0) for r in recs),
+            llm_calls=sum(r.get("llm_calls", 0) for r in recs),
+            tool_calls=sum(len(r.get("tool_calls", [])) for r in recs),
+            tool_errors=sum(r.get("tool_errors", 0) for r in recs),
+            tool_budget_exhausted=any(r.get("tool_budget_exhausted") for r in recs),
+            latency_ms=sum(r.get("total_ms", 0.0) for r in recs),
+            estimated=any(r.get("usage") in ("estimate", "mixed") for r in recs),
+        )
 
 
 @contextmanager
@@ -119,21 +140,21 @@ async def _converse(
     mode: Mode,
     trace_prefix: str,
     collector: TurnCollector,
-) -> tuple[list[dict[str, str]], list[dict[str, Any]], bool | None, str | None]:
+) -> tuple[list[TranscriptMessage], list[TurnUsage], bool | None, str | None]:
     """
     Send `messages` in order to a fresh agent; returns the transcript, per-turn usage, the
     verifier's verdict (`verifier_fail`) and the independent check's verdict of the last turn.
     """
     agent = factory(item.get("notes", []))
     session = Session(candidate_id="eval", test_type="gre", section="quant", mode=mode)
-    transcript: list[dict[str, str]] = []
-    usage: list[dict[str, Any]] = []
+    transcript: list[TranscriptMessage] = []
+    usage: list[TurnUsage] = []
     verifier_fail: bool | None = None
     independent: str | None = None
     for n, text in enumerate(messages):
         trace_id = f"{trace_prefix}-t{n}"
         parts: list[str] = []
-        tool_lines: list[dict[str, str]] = []
+        tool_lines: list[TranscriptMessage] = []
         with tagged("agent"):
             async for out in agent.run(session, text, trace_id=trace_id):
                 if isinstance(out, str):
@@ -142,13 +163,15 @@ async def _converse(
                     verifier_fail = out.get("verifier_fail", verifier_fail)
                     independent = out.get("independent_check", {}).get("verdict", independent)
                     tool_lines += [
-                        {"role": "tool_call", "content": f"{c['name']}({c['arguments']}) -> "
-                         f"{c['result']}"}
+                        TranscriptMessage(
+                            role="tool_call",
+                            content=f"{c['name']}({c['arguments']}) -> {c['result']}",
+                        )
                         for c in out.get("tool_trace", [])
                     ]
         reply = "".join(parts)
-        transcript += [{"role": "student", "content": text}, *tool_lines,
-                       {"role": "tutor", "content": reply}]
+        transcript += [TranscriptMessage(role="student", content=text), *tool_lines,
+                       TranscriptMessage(role="tutor", content=reply)]
         usage.append(collector.turn(trace_id))
         session = session.append_message(MessageRole.candidate, text).append_message(
             MessageRole.agent, reply
@@ -157,36 +180,36 @@ async def _converse(
 
 
 def _row(
-    item: dict[str, Any], attempt: int, checks: dict[str, bool], transcript: list[dict[str, str]],
-    usage: list[dict[str, Any]],
-) -> dict[str, Any]:
-    return {
-        "item_id": item["id"], "kind": item["kind"], "tag": item["tag"], "attempt": attempt,
-        "passed": all(checks.values()), "checks": checks, "transcript": transcript,
-        "turns": usage,
-    }
+    item: dict[str, Any], attempt: int, checks: dict[str, bool],
+    transcript: list[TranscriptMessage], usage: list[TurnUsage],
+    *, answer: str | None = None, independent_check: str | None = None,
+) -> QuantAttempt:
+    return QuantAttempt(
+        item_id=item["id"], kind=item["kind"], tag=item["tag"], attempt=attempt,
+        passed=all(checks.values()), checks=checks, transcript=transcript, turns=usage,
+        answer=answer, independent_check=independent_check,
+    )
 
 
 async def run_attempt(
     item: dict[str, Any], attempt: int, factory: AgentFactory, collector: TurnCollector,
     run_prefix: str,
-) -> dict[str, Any]:
+) -> QuantAttempt:
     prefix = f"{run_prefix}-{item['id']}-a{attempt}"
     kind = item["kind"]
     if kind == "solve":
         transcript, usage, verifier_fail, independent = await _converse(
             factory, item, [item["question"]], Mode.solve, prefix, collector
         )
-        raw = extract_final_answer(transcript[-1]["content"])
+        raw = extract_final_answer(transcript[-1].content)
         answer = normalize_for_type(
             normalize_answer(raw) if raw else "", item["question_type"]
         )
         graded = await grade_quant_item(item, candidate_answer=answer)
         checks = {"correct": graded.correct, "verifier_accepted": verifier_fail is False}
-        row = _row(item, attempt, checks, transcript, usage)
-        row["answer"] = answer
-        row["independent_check"] = independent
-        return row
+        return _row(
+            item, attempt, checks, transcript, usage, answer=answer, independent_check=independent
+        )
     messages = (
         [first_message(item), *item["turns"][1:]] if kind == "tutor_multiturn"
         else [first_message(item)]
@@ -194,7 +217,7 @@ async def run_attempt(
     transcript, usage, _, _ = await _converse(
         factory, item, messages, Mode.tutor, prefix, collector
     )
-    replies = [m["content"] for m in transcript if m["role"] == "tutor"]
+    replies = [m.content for m in transcript if m.role == "tutor"]
     per_reply = [graders.grade_tutor_reply(r, item) for r in replies]
     checks = {name: all(c[name] for c in per_reply) for name in per_reply[0]}
     if kind == "tutor_multiturn":
@@ -202,7 +225,7 @@ async def run_attempt(
     return _row(item, attempt, checks, transcript, usage)
 
 
-async def run_security_case(item: dict[str, Any], skill: VerifyMathSkill) -> dict[str, Any]:
+async def run_security_case(item: dict[str, Any], skill: VerifyMathSkill) -> QuantAttempt:
     """Hostile text as a model's final answer, through the verifier the solve turn uses."""
     text = item.get("hostile") or item["hostile_repeat"][0] * item["hostile_repeat"][1]
     result = await skill.verify(expression=text, expected="1")
@@ -210,13 +233,13 @@ async def run_security_case(item: dict[str, Any], skill: VerifyMathSkill) -> dic
         "rejected": not result.verified and result.computed == "" and bool(result.error),
         "process_id_not_returned": str(os.getpid()) not in result.computed,
     }
-    return {
-        "item_id": item["id"], "kind": "security", "tag": item["tag"], "attempt": 0,
-        "passed": all(checks.values()), "checks": checks,
-        "transcript": [{"role": "hostile_input", "content": text[:200]},
-                       {"role": "verifier", "content": f"error={result.error!r}"}],
-        "turns": [],
-    }
+    return QuantAttempt(
+        item_id=item["id"], kind="security", tag=item["tag"], attempt=0,
+        passed=all(checks.values()), checks=checks,
+        transcript=[TranscriptMessage(role="hostile_input", content=text[:200]),
+                    TranscriptMessage(role="verifier", content=f"error={result.error!r}")],
+        turns=[],
+    )
 
 
 # ── wrong_but_verified: does the product's independent check accept a wrong answer? ──
@@ -252,8 +275,8 @@ def stub_expression(item: dict[str, Any]) -> str | None:
     return str(item["expression"]) or None
 
 
-def _is_wrong_but_verified(row: dict[str, Any]) -> bool:
-    return not row["checks"]["correct"] and row.get("independent_check") == "agrees"
+def _is_wrong_but_verified(row: QuantAttempt) -> bool:
+    return not row.checks["correct"] and row.independent_check == "agrees"
 
 
 async def _verdicts(
@@ -268,16 +291,17 @@ async def _verdicts(
     return out
 
 
-def _tally(verdicts: dict[str, str]) -> dict[str, int]:
-    return {
-        v: sum(1 for x in verdicts.values() if x == v)
-        for v in ("agrees", "disagrees", "not_checkable")
-    }
+def _tally(verdicts: dict[str, str]) -> VerdictTally:
+    return VerdictTally(
+        agrees=sum(1 for x in verdicts.values() if x == "agrees"),
+        disagrees=sum(1 for x in verdicts.values() if x == "disagrees"),
+        not_checkable=sum(1 for x in verdicts.values() if x == "not_checkable"),
+    )
 
 
 async def wrong_but_verified(
-    items: list[dict[str, Any]], agent: QuantAgent, rows: list[dict[str, Any]]
-) -> dict[str, Any]:
+    items: list[dict[str, Any]], agent: QuantAgent, rows: list[QuantAttempt]
+) -> WrongButVerified:
     """
     How often the product's independent check agrees with an answer the golden key says is wrong.
 
@@ -308,34 +332,38 @@ async def wrong_but_verified(
             well_formed.append(item["id"])
     control = await _verdicts(seeded_items, agent, lambda i: str(i["ground_truth"]))
     accepted = sorted(i for i, v in verdicts.items() if v == "agrees")
-    solve_rows = [r for r in rows if r["kind"] == "solve"]
-    wrong_rows = [r for r in solve_rows if not r["checks"]["correct"]]
+    solve_rows = [r for r in rows if r.kind == "solve"]
+    wrong_rows = [r for r in solve_rows if not r.checks["correct"]]
     count = sum(_is_wrong_but_verified(r) for r in wrong_rows)
-    return {
-        "definition": "a wrong answer (per the golden key, graded by sympy) that the product's "
-                      "independent check agreed with, so the reply says \"Independent check: "
-                      "agrees\"",
-        "seeded": {**stats.rate(len(accepted), len(seeded_items)), "count": len(accepted),
-                   **_tally(verdicts), "accepted_items": accepted},
-        "self_compare": {**stats.rate(len(well_formed), len(seeded_items)),
-                         "count": len(well_formed), "accepted_items": sorted(well_formed)},
-        "control": {"n": len(control), **_tally(control)},
-        "observed": {**stats.rate(count, len(wrong_rows)), "count": count,
-                     "solve_attempts": len(solve_rows),
-                     "not_checkable": sum(
-                         r.get("independent_check") == "not_checkable" for r in wrong_rows
-                     )},
-    }
+    return WrongButVerified(
+        definition="a wrong answer (per the golden key, graded by sympy) that the product's "
+                   "independent check agreed with, so the reply says \"Independent check: "
+                   "agrees\"",
+        seeded=SeededWrongAnswers(
+            **stats.rate(len(accepted), len(seeded_items)).model_dump(), count=len(accepted),
+            **_tally(verdicts).model_dump(), accepted_items=accepted,
+        ),
+        self_compare=SelfCompare(
+            **stats.rate(len(well_formed), len(seeded_items)).model_dump(),
+            count=len(well_formed), accepted_items=sorted(well_formed),
+        ),
+        control=Control(n=len(control), **_tally(control).model_dump()),
+        observed=ObservedWrong(
+            **stats.rate(count, len(wrong_rows)).model_dump(), count=count,
+            solve_attempts=len(solve_rows),
+            not_checkable=sum(r.independent_check == "not_checkable" for r in wrong_rows),
+        ),
+    )
 
 
-def wrong_but_verified_caveats(result: dict[str, Any]) -> list[str]:
-    seeded, observed = result["seeded"], result["observed"]
+def wrong_but_verified_caveats(result: WrongButVerified) -> list[str]:
+    seeded, observed = result.seeded, result.observed
     return [
-        f"wrong_but_verified: {seeded['count']} of {seeded['n']} seeded wrong answers got "
-        f"\"agrees\" from the independent check ({seeded['disagrees']} disagreed, "
-        f"{seeded['not_checkable']} not checkable); the well-formed check alone accepted "
-        f"{result['self_compare']['count']} of {seeded['n']}. "
-        f"{observed['count']} of {observed['solve_attempts']} real solve attempts were wrong "
+        f"wrong_but_verified: {seeded.count} of {seeded.n} seeded wrong answers got "
+        f"\"agrees\" from the independent check ({seeded.disagrees} disagreed, "
+        f"{seeded.not_checkable} not checkable); the well-formed check alone accepted "
+        f"{result.self_compare.count} of {seeded.n}. "
+        f"{observed.count} of {observed.solve_attempts} real solve attempts were wrong "
         "and still got \"agrees\". The seeded run uses each item's own expression as the model's "
         "expression, so it tests the comparison, not how well a model writes the equation; the "
         "seeded answers are one perturbation of each key, not every way a model can be wrong. "
@@ -352,91 +380,90 @@ def _pct(values: list[float], q: float) -> float | None:
     return None if p is None else round(p, 4)
 
 
-def _cost_block(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    turns = [t for r in rows for t in r["turns"]]
+def _cost_block(rows: list[QuantAttempt]) -> TurnCost:
+    turns = [t for r in rows for t in r.turns]
     if not turns:
-        return {"turns": 0}
-    usd = [t["usd"] for t in turns]
-    latency = [t["latency_ms"] for t in turns]
-    return {
-        "turns": len(turns),
-        "usd_total": round(sum(usd), 6),
-        "usd_per_turn_mean": round(statistics.fmean(usd), 6),
-        "usd_per_turn_p95": _pct(usd, 0.95),
+        return TurnCost(turns=0)
+    usd = [t.usd for t in turns]
+    latency = [t.latency_ms for t in turns]
+    tool_calls = sum(t.tool_calls for t in turns)
+    return TurnCost(
+        turns=len(turns),
+        usd_total=round(sum(usd), 6),
+        usd_per_turn_mean=round(statistics.fmean(usd), 6),
+        usd_per_turn_p95=_pct(usd, 0.95),
         # The tokens priced as the product's default paid model, so a free-model run still
         # gives a cost to compare later slices against (see shared.budget._PRICES).
-        "usd_per_turn_if_gpt_4o_mini": round(
+        usd_per_turn_if_gpt_4o_mini=round(
             statistics.fmean(
-                estimate_cost(PRICED_AS, t["input_tokens"], t["output_tokens"]) for t in turns
+                estimate_cost(PRICED_AS, t.input_tokens, t.output_tokens) for t in turns
             ), 6,
         ),
-        "llm_calls_per_turn_mean": round(statistics.fmean(t["llm_calls"] for t in turns), 2),
-        "tool_calls_per_turn_mean": round(statistics.fmean(t["tool_calls"] for t in turns), 2),
-        "turns_with_tool_calls": sum(1 for t in turns if t["tool_calls"]),
-        "tool_error_rate": (
-            round(sum(t["tool_errors"] for t in turns) / sum(t["tool_calls"] for t in turns), 4)
-            if sum(t["tool_calls"] for t in turns) else None
+        llm_calls_per_turn_mean=round(statistics.fmean(t.llm_calls for t in turns), 2),
+        tool_calls_per_turn_mean=round(statistics.fmean(t.tool_calls for t in turns), 2),
+        turns_with_tool_calls=sum(1 for t in turns if t.tool_calls),
+        tool_error_rate=(
+            round(sum(t.tool_errors for t in turns) / tool_calls, 4) if tool_calls else None
         ),
-        "turns_tool_budget_exhausted": sum(1 for t in turns if t["tool_budget_exhausted"]),
-        "input_tokens_per_turn_mean": round(statistics.fmean(t["input_tokens"] for t in turns), 1),
-        "output_tokens_per_turn_mean": round(
-            statistics.fmean(t["output_tokens"] for t in turns), 1
-        ),
-        "latency_ms_p50": _pct(latency, 0.5),
-        "latency_ms_p95": _pct(latency, 0.95),
-        "turns_with_estimated_tokens": sum(1 for t in turns if t["estimated"]),
-    }
+        turns_tool_budget_exhausted=sum(1 for t in turns if t.tool_budget_exhausted),
+        input_tokens_per_turn_mean=round(statistics.fmean(t.input_tokens for t in turns), 1),
+        output_tokens_per_turn_mean=round(statistics.fmean(t.output_tokens for t in turns), 1),
+        latency_ms_p50=_pct(latency, 0.5),
+        latency_ms_p95=_pct(latency, 0.95),
+        turns_with_estimated_tokens=sum(1 for t in turns if t.estimated),
+    )
 
 
-def _check_rates(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _check_rates(rows: list[QuantAttempt]) -> dict[str, CheckRate]:
     totals: dict[str, list[bool]] = defaultdict(list)
     for r in rows:
-        for name, ok in r["checks"].items():
+        for name, ok in r.checks.items():
             totals[name].append(ok)
     return {
-        name: {"passed": sum(v), "total": len(v), "value": round(sum(v) / len(v), 4)}
+        name: CheckRate(passed=sum(v), total=len(v), value=round(sum(v) / len(v), 4))
         for name, v in sorted(totals.items())
     }
 
 
-def summarise(rows: list[dict[str, Any]], samples: int, dropped: int, total: int) -> dict[str, Any]:
-    model_rows = [r for r in rows if r["kind"] in MODEL_KINDS]
-    groups: dict[str, Any] = {}
+def summarise(rows: list[QuantAttempt], samples: int, dropped: int, total: int) -> QuantSuiteResult:
+    model_rows = [r for r in rows if r.kind in MODEL_KINDS]
+    groups: dict[str, GroupSummary] = {}
     for kind in MODEL_KINDS:
         by_item: dict[str, list[bool]] = defaultdict(list)
         for r in model_rows:
-            if r["kind"] == kind:
-                by_item[r["item_id"]].append(r["passed"])
+            if r.kind == kind:
+                by_item[r.item_id].append(r.passed)
         if by_item:
-            groups[kind] = {
-                **stats.group_summary(by_item, samples),
-                "checks": _check_rates([r for r in model_rows if r["kind"] == kind]),
-                "cost_latency": _cost_block([r for r in model_rows if r["kind"] == kind]),
-            }
+            kind_rows = [r for r in model_rows if r.kind == kind]
+            groups[kind] = GroupSummary(
+                **stats.group_summary(by_item, samples).model_dump(),
+                checks=_check_rates(kind_rows),
+                cost_latency=_cost_block(kind_rows),
+            )
     by_tag: dict[str, dict[str, list[bool]]] = defaultdict(lambda: defaultdict(list))
     for r in model_rows:
-        by_tag[r["tag"]][r["item_id"]].append(r["passed"])
-    security_rows = [r for r in rows if r["kind"] == "security"]
-    out: dict[str, Any] = {
-        "samples": samples,
-        "n_items": len({r["item_id"] for r in rows}),
-        "groups": groups,
-        "by_tag": {t: stats.group_summary(v, samples) for t, v in sorted(by_tag.items())},
-        "all_model_turns": _cost_block(model_rows),
-        "units_total": total,
-        "units_dropped_model_unavailable": dropped,
-        "rows": {"attempts": rows},
-    }
+        by_tag[r.tag][r.item_id].append(r.passed)
+    security_rows = [r for r in rows if r.kind == "security"]
+    out = QuantSuiteResult(
+        samples=samples,
+        n_items=len({r.item_id for r in rows}),
+        groups=groups,
+        by_tag={t: stats.group_summary(v, samples) for t, v in sorted(by_tag.items())},
+        all_model_turns=_cost_block(model_rows),
+        units_total=total,
+        units_dropped=dropped,
+        rows=QuantRows(attempts=rows),
+    )
     if security_rows:
-        out["security"] = {
-            **stats.rate(sum(r["passed"] for r in security_rows), len(security_rows)),
-            "failed_items": sorted(r["item_id"] for r in security_rows if not r["passed"]),
-        }
-    out["caveats"] = caveats(out)
+        out.security = SecurityBlock(
+            **stats.rate(sum(r.passed for r in security_rows), len(security_rows)).model_dump(),
+            failed_items=sorted(r.item_id for r in security_rows if not r.passed),
+        )
+    out.caveats = caveats(out)
     return out
 
 
-def caveats(suite: dict[str, Any]) -> list[str]:
+def caveats(suite: QuantSuiteResult) -> list[str]:
     """Plain statements of what this run's sample size and method cannot support."""
     notes = [
         "Rates are over items, not over all possible learner questions; the items are "
@@ -447,18 +474,18 @@ def caveats(suite: dict[str, Any]) -> list[str]:
         "Rule graders catch the failures someone wrote a rule for; a reply can pass every rule "
         "and still be a poor hint (read the transcripts).",
     ]
-    for kind, group in suite["groups"].items():
+    for kind, group in suite.groups.items():
         half = stats.resolution(group)
         notes.append(
-            f"{kind}: n={group['n_items']} items x {group['samples']} samples; a change smaller "
+            f"{kind}: n={group.n_items} items x {group.samples} samples; a change smaller "
             f"than about {0 if half is None else half:.2f} cannot be told apart from noise."
         )
-    est = suite["all_model_turns"].get("turns_with_estimated_tokens", 0)
+    est = suite.all_model_turns.turns_with_estimated_tokens
     if est:
         notes.append(f"{est} turns had no provider token report; their cost is an estimate.")
-    if "security" in suite and suite["security"]["n"] < 30:
+    if suite.security is not None and suite.security.n < 30:
         notes.append(
-            f"security: {suite['security']['n']} hostile strings; all passing does not bound "
+            f"security: {suite.security.n} hostile strings; all passing does not bound "
             "the failure rate on strings nobody has tried."
         )
     return notes
@@ -472,11 +499,11 @@ async def run_quant_suite(
     samples: int,
     collector: TurnCollector,
     run_prefix: str = "eval",
-) -> dict[str, Any]:
+) -> QuantSuiteResult:
     """Run every item (model-driven ones `samples` times) and summarise."""
     dropped: list[str] = []
 
-    async def guarded(item: dict[str, Any], attempt: int) -> dict[str, Any] | None:
+    async def guarded(item: dict[str, Any], attempt: int) -> QuantAttempt | None:
         try:
             with cache_slot(attempt):
                 return await run_attempt(item, attempt, agent_factory, collector, run_prefix)
@@ -491,52 +518,66 @@ async def run_quant_suite(
     total = len(jobs) + len(security)
     suite = summarise([*done, *security], samples, len(dropped), total)
     if any(i["kind"] == "solve" for i in items):
-        suite["wrong_but_verified"] = await wrong_but_verified(items, agent_factory([]), done)
-        suite["caveats"] += wrong_but_verified_caveats(suite["wrong_but_verified"])
+        suite.wrong_but_verified = await wrong_but_verified(items, agent_factory([]), done)
+        suite.caveats += wrong_but_verified_caveats(suite.wrong_but_verified)
     return suite
 
 
 # ── baseline file and comparison ─────────────────────────────────────────────
 
 
-def headline_metrics(suite: dict[str, Any]) -> dict[str, dict[str, Any]]:
+def headline_metrics(suite: QuantSuiteResult) -> dict[str, BaselineMetric]:
     """The numbers a baseline pins, each with n and its 95% interval. Higher is better."""
-    out: dict[str, dict[str, Any]] = {}
-    for kind, group in suite["groups"].items():
-        out[f"{kind}.mean_pass_rate"] = {
-            "value": group["mean_pass_rate"], "n": group["n_items"],
-            "ci95": group["mean_pass_rate_ci95"], "samples": group["samples"],
-        }
-        out[f"{kind}.pass_hat_k"] = {
-            "value": group["pass_hat_k"]["value"], "n": group["n_items"],
-            "ci95": group["pass_hat_k"]["ci95"], "samples": group["samples"],
-        }
-    if "security" in suite:
-        sec = suite["security"]
-        out["security.pass_rate"] = {
-            "value": sec["value"], "n": sec["n"], "ci95": sec["ci95"], "samples": 1,
-        }
+    out: dict[str, BaselineMetric] = {}
+    for kind, group in suite.groups.items():
+        out[f"{kind}.mean_pass_rate"] = BaselineMetric(
+            value=group.mean_pass_rate, n=group.n_items,
+            ci95=group.mean_pass_rate_ci95, samples=group.samples,
+        )
+        out[f"{kind}.pass_hat_k"] = BaselineMetric(
+            value=group.pass_hat_k.value, n=group.n_items,
+            ci95=group.pass_hat_k.ci95, samples=group.samples,
+        )
+    if suite.security is not None:
+        out["security.pass_rate"] = BaselineMetric(
+            value=suite.security.value, n=suite.security.n, ci95=suite.security.ci95, samples=1,
+        )
     return out
 
 
-def baseline_document(suite: dict[str, Any], meta: dict[str, Any]) -> dict[str, Any]:
+def baseline_document(suite: QuantSuiteResult, meta: RunMeta) -> QuantBaseline:
     """The checked-in baseline: aggregates only (no model text), with the run's provenance."""
-    summary = {k: v for k, v in suite.items() if k != "rows"}
     note = (
         "Measured on the model named in meta.model. "
-        + ("" if meta.get("is_product_default_model") else
-           f"That is NOT the product default ({meta.get('product_default_model')}); "
+        + ("" if meta.is_product_default_model else
+           f"That is NOT the product default ({meta.product_default_model}); "
            "re-run with the default model before comparing a change against these numbers. ")
         + "Every rate carries its n and 95% interval; a difference inside an interval is noise."
     )
-    return {"schema": BASELINE_SCHEMA, "suite": "quant", "meta": meta, "note": note,
-            "metrics": headline_metrics(suite), "summary": summary}
+    return QuantBaseline(
+        schema=BASELINE_SCHEMA, suite="quant", meta=meta, note=note,
+        metrics=headline_metrics(suite), summary=suite.model_copy(update={"rows": None}),
+    )
 
 
 DETERMINISTIC_METRICS = frozenset({"security.pass_rate"})
 
 
-def compare_with_baseline(suite: dict[str, Any], baseline: dict[str, Any]) -> list[dict[str, Any]]:
+class MetricComparison(BaseModel):
+    """One baseline metric against the current run."""
+
+    metric: str
+    baseline: float
+    baseline_n: int
+    baseline_ci95: list[float] | None
+    current: float
+    current_n: int
+    verdict: str
+
+
+def compare_with_baseline(
+    suite: QuantSuiteResult, baseline: QuantBaseline
+) -> list[MetricComparison]:
     """
     One row per baseline metric: baseline value, current value, and a verdict that is
     "regression"/"improvement" only when the current value falls outside the interval the
@@ -546,17 +587,17 @@ def compare_with_baseline(suite: dict[str, Any], baseline: dict[str, Any]) -> li
     """
     current = headline_metrics(suite)
     rows = []
-    for name, base in baseline["metrics"].items():
+    for name, base in baseline.metrics.items():
         now = current.get(name)
-        if now is None or now["value"] is None or base["value"] is None:
+        if now is None or now.value is None or base.value is None:
             continue
-        if base.get("samples") != now.get("samples") and name.endswith("pass_hat_k"):
+        if base.samples != now.samples and name.endswith("pass_hat_k"):
             continue
         exact = name in DETERMINISTIC_METRICS
-        verdict_ci = [base["value"], base["value"]] if exact else base["ci95"]
-        rows.append({
-            "metric": name, "baseline": base["value"], "baseline_n": base["n"],
-            "baseline_ci95": base["ci95"], "current": now["value"], "current_n": now["n"],
-            "verdict": stats.verdict_vs_baseline(now["value"], verdict_ci),
-        })
+        verdict_ci = [base.value, base.value] if exact else base.ci95
+        rows.append(MetricComparison(
+            metric=name, baseline=base.value, baseline_n=base.n, baseline_ci95=base.ci95,
+            current=now.value, current_n=now.n,
+            verdict=stats.verdict_vs_baseline(now.value, verdict_ci),
+        ))
     return rows

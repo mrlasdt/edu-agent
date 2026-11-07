@@ -18,6 +18,15 @@ import pytest
 
 from evals import quant_report
 from evals.agent_eval import cli, quant_suite, runner
+from evals.agent_eval.results import (
+    Control,
+    ObservedWrong,
+    QuantAttempt,
+    QuantBaseline,
+    SeededWrongAnswers,
+    SelfCompare,
+    WrongButVerified,
+)
 from evals.judges.quant_judge import grade_quant_item
 from evals.loader import load_golden_set
 from services.agent.src.agent.agents.quant import QuantAgent
@@ -35,9 +44,11 @@ def _agent() -> QuantAgent:
     )
 
 
-def _row(kind: str, correct: bool, verdict: str | None) -> dict:
-    return {"kind": kind, "checks": {"correct": correct, "verifier_accepted": True},
-            "independent_check": verdict}
+def _row(kind: str, correct: bool, verdict: str | None) -> QuantAttempt:
+    return QuantAttempt(
+        item_id="x", kind=kind, tag="t", attempt=0, passed=correct, transcript=[], turns=[],
+        checks={"correct": correct, "verifier_accepted": True}, independent_check=verdict,
+    )
 
 
 async def test_a_wrong_but_parseable_answer_passes_the_well_formed_check():
@@ -75,22 +86,24 @@ async def test_every_seeded_wrong_answer_is_wrong_by_the_golden_key():
 async def test_the_suite_measures_no_seeded_wrong_answer_as_independently_verified():
     result = await quant_suite.wrong_but_verified(SOLVE_ITEMS, _agent(), [])
 
-    assert result["seeded"]["n"] == len(SOLVE_ITEMS) == 16
-    assert result["seeded"]["count"] == 0
-    assert result["seeded"]["accepted_items"] == []
+    assert result.seeded.n == len(SOLVE_ITEMS) == 16
+    assert result.seeded.count == 0
+    assert result.seeded.accepted_items == []
     # numeric answers are disagreed with; a comparison letter has nothing to compute
-    assert result["seeded"]["disagrees"] == 14
-    assert result["seeded"]["not_checkable"] == len(COMPARISONS) == 2
+    assert result.seeded.disagrees == 14
+    assert result.seeded.not_checkable == len(COMPARISONS) == 2
     # the "before": the well-formed check alone accepted every one
-    assert result["self_compare"]["count"] == 16
-    assert result["self_compare"]["accepted_items"] == sorted(i["id"] for i in SOLVE_ITEMS)
+    assert result.self_compare.count == 16
+    assert result.self_compare.accepted_items == sorted(i["id"] for i in SOLVE_ITEMS)
 
 
 async def test_the_independent_check_does_not_reject_the_golden_key():
     """Control: a check that disagreed with everything would also score 0 on wrong answers."""
     result = await quant_suite.wrong_but_verified(SOLVE_ITEMS, _agent(), [])
 
-    assert result["control"] == {"n": 16, "agrees": 14, "disagrees": 0, "not_checkable": 2}
+    assert result.control.model_dump() == {
+        "n": 16, "agrees": 14, "disagrees": 0, "not_checkable": 2,
+    }
 
 
 async def test_the_count_rises_if_the_check_agrees_with_a_wrong_answer():
@@ -99,7 +112,7 @@ async def test_the_count_rises_if_the_check_agrees_with_a_wrong_answer():
     with patch.object(agent, "_independent_check", new=AsyncMock(return_value=agree)):
         result = await quant_suite.wrong_but_verified(SOLVE_ITEMS, agent, [])
 
-    assert result["seeded"]["count"] == 16
+    assert result.seeded.count == 16
 
 
 async def test_observed_counts_real_attempts_that_were_wrong_and_agreed():
@@ -112,10 +125,10 @@ async def test_observed_counts_real_attempts_that_were_wrong_and_agreed():
     ]
     result = await quant_suite.wrong_but_verified(SOLVE_ITEMS, _agent(), rows)
 
-    assert result["observed"]["count"] == 1
-    assert result["observed"]["n"] == 3  # the wrong solve attempts
-    assert result["observed"]["not_checkable"] == 1
-    assert result["observed"]["solve_attempts"] == 4
+    assert result.observed.count == 1
+    assert result.observed.n == 3  # the wrong solve attempts
+    assert result.observed.not_checkable == 1
+    assert result.observed.solve_attempts == 4
 
 
 def test_the_offline_cli_run_reports_wrong_but_verified_and_the_report_renders_it(
@@ -136,17 +149,25 @@ def test_the_offline_cli_run_reports_wrong_but_verified_and_the_report_renders_i
 
 
 def test_the_quant_report_has_a_wrong_but_verified_section_when_the_run_measured_it():
-    baseline = json.loads(Path("evals/baselines/quant.json").read_text())
-    baseline["summary"].pop("wrong_but_verified", None)  # an older baseline did not measure it
+    baseline = QuantBaseline.model_validate_json(Path("evals/baselines/quant.json").read_text())
+    baseline.summary.wrong_but_verified = None  # an older baseline did not measure it
     assert "Wrong but verified" not in quant_report.render(baseline)
 
-    baseline["summary"]["wrong_but_verified"] = {
-        "seeded": {"count": 0, "n": 16, "ci95": [0.0, 0.19], "disagrees": 14,
-                   "not_checkable": 2},
-        "self_compare": {"count": 16, "n": 16},
-        "control": {"n": 16, "agrees": 14, "disagrees": 0, "not_checkable": 2},
-        "observed": {"count": 2, "solve_attempts": 30},
-    }
+    baseline.summary.wrong_but_verified = WrongButVerified(
+        definition="d",
+        seeded=SeededWrongAnswers(
+            value=0.0, successes=0, n=16, ci95=[0.0, 0.19], count=0, agrees=0, disagrees=14,
+            not_checkable=2, accepted_items=[],
+        ),
+        self_compare=SelfCompare(
+            value=1.0, successes=16, n=16, ci95=[0.8, 1.0], count=16, accepted_items=[],
+        ),
+        control=Control(n=16, agrees=14, disagrees=0, not_checkable=2),
+        observed=ObservedWrong(
+            value=0.07, successes=2, n=30, ci95=[0.0, 0.2], count=2, solve_attempts=30,
+            not_checkable=0,
+        ),
+    )
     rendered = quant_report.render(baseline)
     assert "## Wrong but verified" in rendered
     assert "0/16" in rendered and "16/16 accepted" in rendered and "2/30" in rendered

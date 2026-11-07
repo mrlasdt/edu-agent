@@ -13,6 +13,7 @@ import pytest
 from evals.agent_eval import cli, generation, offline_generation
 from evals.agent_eval.budget import BudgetExceededError, Ledger
 from evals.agent_eval.judges import HeuristicJudge
+from evals.agent_eval.results import GenerationResult
 from evals.agent_eval.runner import in_process_verify_skill, write_model_config
 from evals.agent_eval.transport import MeteredTransport
 from evals.human_review_queue import HumanReviewQueue
@@ -321,7 +322,8 @@ async def test_pipeline_through_the_metered_transport_aborts_on_budget(tmp_path:
 # ── the eval target: baseline vs pipeline on the offline fake ────────────────
 
 
-def _offline_run(max_items: int = 12) -> dict[str, Any]:
+def _offline_run(max_items: int = 12) -> tuple[GenerationResult, list[dict[str, Any]]]:
+    """The generation result, and what the run put in the human review queue."""
     requests = [
         GenerationRequest.model_validate(i) for i in load_golden_set("quant_generation")
     ][:max_items]
@@ -332,7 +334,7 @@ def _offline_run(max_items: int = 12) -> dict[str, Any]:
     judge = HeuristicJudge(lambda q: bool(q.facts["gold"]), lambda q, c: 0.0)
     queue = HumanReviewQueue()
 
-    async def go() -> dict[str, Any]:
+    async def go() -> GenerationResult:
         with transport.installed():
             return await generation.run_generation(
                 requests,
@@ -340,50 +342,50 @@ def _offline_run(max_items: int = 12) -> dict[str, Any]:
                 judge, SKILL, transport, queue,
             )
 
-    out = asyncio.run(go())
-    out["queue_items"] = queue.list()
-    return out
+    return asyncio.run(go()), queue.list()
 
 
 def test_pipeline_beats_the_single_call_baseline_offline():
-    out = _offline_run()
-    base, pipe = out["targets"]["baseline"], out["targets"]["pipeline"]
-    assert pipe["valid_yield"] > base["valid_yield"] + 0.5
-    assert pipe["shipped_defect_rate"] == 0.0 and base["shipped_defect_rate"] > 0.5
-    assert base["unparseable_rate"] > 0 and pipe["unparseable_rate"] == 0
-    assert pipe["mean_llm_calls"] > base["mean_llm_calls"] == 1.0  # the price of the loop
-    assert out["comparison"]["valid_yield_gain"] == pytest.approx(
-        pipe["valid_yield"] - base["valid_yield"]
+    out, _ = _offline_run()
+    base, pipe = out.targets["baseline"], out.targets["pipeline"]
+    assert pipe.valid_yield is not None and base.valid_yield is not None
+    assert pipe.valid_yield > base.valid_yield + 0.5
+    assert pipe.shipped_defect_rate == 0.0
+    assert base.shipped_defect_rate is not None and base.shipped_defect_rate > 0.5
+    assert base.unparseable_rate is not None and base.unparseable_rate > 0
+    assert pipe.unparseable_rate == 0
+    assert pipe.mean_llm_calls is not None and base.mean_llm_calls == 1.0
+    assert pipe.mean_llm_calls > 1.0  # the price of the loop
+    assert out.comparison["valid_yield_gain"] == pytest.approx(
+        pipe.valid_yield - base.valid_yield
     )
 
 
 def test_verifier_reject_and_per_accepted_cost_metrics():
-    out = _offline_run()
-    pipe, base = out["targets"]["pipeline"], out["targets"]["baseline"]
-    rows = out["rows"]["pipeline"]
-    events = [e for r in rows for e in r["trace"]]
+    out, _ = _offline_run()
+    pipe, base = out.targets["pipeline"], out.targets["baseline"]
+    rows = out.rows["pipeline"]
+    events = [e for r in rows for e in r.trace]
     gens = sum(e["step"] == "generate" for e in events)
     rejected = sum(e["step"] == "verify" and not e["ok"] for e in events)
     assert rejected > 0
-    assert pipe["verifier_reject_rate"] == pytest.approx(rejected / gens)
-    assert base["verifier_reject_rate"] is None
-    emitted = sum(r["status"] in ("accepted", "unchecked") for r in rows)
-    if pipe["cost"]["usd"]:
-        assert pipe["cost"]["usd_per_accepted_item"] == pytest.approx(
-            pipe["cost"]["usd"] / emitted
-        )
+    assert pipe.verifier_reject_rate == pytest.approx(rejected / gens)
+    assert base.verifier_reject_rate is None
+    emitted = sum(r.status in ("accepted", "unchecked") for r in rows)
+    if pipe.cost.usd:
+        assert pipe.cost.usd_per_accepted_item == pytest.approx(pipe.cost.usd / emitted)
     else:
-        assert pipe["cost"]["usd_per_accepted_item"] == 0.0
+        assert pipe.cost.usd_per_accepted_item == 0.0
 
 
 def test_unrepairable_items_go_to_review_not_to_the_candidate():
-    out = _offline_run()
-    stubborn = [r for r in out["rows"]["pipeline"] if r["status"] == "needs_review"]
-    assert [r["request_id"] for r in stubborn] == ["g06"]  # FLAW_CYCLE: id % 7 == 6
-    assert out["review_queue"] == 1
-    assert out["queue_items"][0]["reason"] == "generation_needs_review"
-    assert all(r["defects"] == [] for r in out["rows"]["pipeline"] if r["status"] == "accepted")
-    assert stubborn[0]["trace"][-1]["step"] == "escalate"
+    out, queue_items = _offline_run()
+    stubborn = [r for r in out.rows["pipeline"] if r.status == "needs_review"]
+    assert [r.request_id for r in stubborn] == ["g06"]  # FLAW_CYCLE: id % 7 == 6
+    assert out.review_queue == 1
+    assert queue_items[0]["reason"] == "generation_needs_review"
+    assert all(r.defects == [] for r in out.rows["pipeline"] if r.status == "accepted")
+    assert stubborn[0].trace[-1]["step"] == "escalate"
 
 
 def test_fake_flaw_schedule_is_deterministic():
