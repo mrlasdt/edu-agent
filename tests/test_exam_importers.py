@@ -418,6 +418,68 @@ def test_buddy_import_honours_robots_txt(tmp_path: Path):
     assert record.count == 0 and stats.pages_disallowed == 1 and "/a.html" not in seen
 
 
+def robots_client(handler_for_robots: Any, seen: list[str]) -> httpx.Client:
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        if request.url.path == "/robots.txt":
+            return handler_for_robots(request)
+        return httpx.Response(200, text=BUDDY_PAGE)
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def _connect_error(request: httpx.Request) -> httpx.Response:
+    raise httpx.ConnectError("boom", request=request)
+
+
+@pytest.mark.parametrize(
+    "robots",
+    [
+        pytest.param(lambda r: httpx.Response(503), id="503"),
+        pytest.param(lambda r: httpx.Response(500, text="Disallow: /"), id="500-with-body"),
+        pytest.param(lambda r: httpx.Response(401), id="401"),
+        pytest.param(lambda r: httpx.Response(403), id="403"),
+        pytest.param(_connect_error, id="connect-error"),
+    ],
+)
+def test_buddy_import_aborts_when_robots_txt_is_unavailable(tmp_path: Path, robots: Any):
+    seen: list[str] = []
+    client = robots_client(robots, seen)
+    with pytest.raises(ieltsbuddy.RobotsUnavailableError, match="robots.txt"):
+        ieltsbuddy.import_ieltsbuddy(tmp_path, client, pages=("a.html",), sleep=lambda s: None)
+    assert "/a.html" not in seen  # not a single page request after a failed robots check
+
+
+def test_buddy_fetch_robots_message_names_the_status_and_the_rule():
+    client = robots_client(lambda r: httpx.Response(503), [])
+    with pytest.raises(ieltsbuddy.RobotsUnavailableError, match=r"HTTP 503.*RFC 9309"):
+        ieltsbuddy.fetch_robots(client)
+
+
+def test_buddy_fetch_robots_treats_a_missing_file_as_no_restrictions():
+    allowed = ieltsbuddy.fetch_robots(robots_client(lambda r: httpx.Response(404), []))
+    assert allowed(f"{ieltsbuddy.BASE}/a.html")
+
+
+def test_buddy_fetch_robots_applies_a_served_disallow_rule():
+    robots = "User-agent: *\nDisallow: /private\n"
+    allowed = ieltsbuddy.fetch_robots(robots_client(lambda r: httpx.Response(200, text=robots), []))
+    assert allowed(f"{ieltsbuddy.BASE}/a.html")
+    assert not allowed(f"{ieltsbuddy.BASE}/private/x.html")
+
+
+def test_buddy_cli_exits_2_with_an_error_when_robots_txt_is_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    from evals.exam_set import __main__ as cli
+
+    client = robots_client(lambda r: httpx.Response(503), [])
+    monkeypatch.setattr(ieltsbuddy, "make_client", lambda: client)
+    code = cli.main(["--local-dir", str(tmp_path), "import-ieltsbuddy"])
+    assert code == 2
+    assert "ERROR:" in capsys.readouterr().err
+
+
 def test_buddy_import_survives_a_failed_page(tmp_path: Path):
     client = buddy_client({}, [])
     record, stats = ieltsbuddy.import_ieltsbuddy(
