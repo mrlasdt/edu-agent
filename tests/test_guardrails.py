@@ -19,6 +19,7 @@ import pytest
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
 from services.gateway.src.gateway.guardrails.input import (
     COMPLETENESS_MAX_TOKENS,
+    DEFAULT_CLARIFICATION,
     CompletenessVerdict,
     check_completeness,
     check_content_safety,
@@ -31,10 +32,12 @@ from services.gateway.src.gateway.guardrails.output import (
 from services.gateway.src.gateway.guardrails.rate_limit import (
     RateLimiter,
 )
+from services.gateway.src.gateway.guardrails.verdict import Verdict
 from shared.src.shared.config import Settings, get_settings
 from shared.src.shared.models import Message, MessageRole, Mode, Session
 from shared.src.shared.structured import StructuredOutputError
 from shared.src.shared.turn_meter import TurnMeter
+from shared.src.shared.turn_outcome import Outcome
 
 _INPUT = "services.gateway.src.gateway.guardrails.input"
 
@@ -50,9 +53,10 @@ async def test_unsafe_input_blocked():
     with patch(f"{_INPUT}.get_settings", return_value=Settings(env="dev", openai_api_key="k")), \
          patch(f"{_INPUT}._call_moderation_api", new_callable=AsyncMock) as mock_mod:
         mock_mod.return_value = {"flagged": True, "categories": {"violence": True}}
-        safe, reason = await check_content_safety("I want to hurt someone", "trace-1")
-    assert safe is False
-    assert reason != ""
+        verdict = await check_content_safety("I want to hurt someone", "trace-1")
+    assert verdict == Verdict.stop(
+        Outcome.content_blocked, "I can't help with that request (content flagged: violence)."
+    )
 
 
 @pytest.mark.asyncio
@@ -60,8 +64,8 @@ async def test_safe_input_passes():
     with patch(f"{_INPUT}.get_settings", return_value=Settings(env="dev", openai_api_key="k")), \
          patch(f"{_INPUT}._call_moderation_api", new_callable=AsyncMock) as mock_mod:
         mock_mod.return_value = {"flagged": False, "categories": {}}
-        safe, reason = await check_content_safety("Solve x^2 - 5x + 6 = 0", "trace-2")
-    assert safe is True
+        verdict = await check_content_safety("Solve x^2 - 5x + 6 = 0", "trace-2")
+    assert verdict == Verdict.allow()
 
 
 @pytest.mark.asyncio
@@ -69,9 +73,9 @@ async def test_moderation_is_skipped_and_recorded_in_dev_without_an_openai_key()
     meter = TurnMeter("trace-skip", "gateway", "gre/quant", "tutor")
     with patch(f"{_INPUT}.get_settings", return_value=Settings(env="dev", openai_api_key="")), \
          patch(f"{_INPUT}._call_moderation_api", new_callable=AsyncMock) as mock_mod:
-        safe, reason = await check_content_safety("Solve x + 1 = 2", "trace-skip", meter)
+        verdict = await check_content_safety("Solve x + 1 = 2", "trace-skip", meter)
     mock_mod.assert_not_called()
-    assert (safe, reason) == (True, "")
+    assert verdict == Verdict.allow()
     assert meter.snapshot()["moderation_skipped"] is True
 
 
@@ -109,9 +113,17 @@ async def test_incomplete_quant_question_returns_clarification():
         mock_llm.return_value = CompletenessVerdict(
             complete=False, clarification="What is the full problem?"
         )
-        complete, prompt = await check_completeness("solve this", make_session(), "trace-3")
-    assert complete is False
-    assert len(prompt) > 0
+        verdict = await check_completeness("solve this", make_session(), "trace-3")
+    assert verdict == Verdict.stop(Outcome.clarification_requested, "What is the full problem?")
+
+
+@pytest.mark.asyncio
+async def test_incomplete_question_without_a_clarification_gets_the_default_one():
+    with patch("services.gateway.src.gateway.guardrails.input._call_enrichment_llm",
+               new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = CompletenessVerdict(complete=False)
+        verdict = await check_completeness("solve this", make_session(), "trace-3b")
+    assert verdict == Verdict.stop(Outcome.clarification_requested, DEFAULT_CLARIFICATION)
 
 
 @pytest.mark.asyncio
@@ -119,10 +131,10 @@ async def test_complete_question_passes():
     with patch("services.gateway.src.gateway.guardrails.input._call_enrichment_llm",
                new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = CompletenessVerdict(complete=True)
-        complete, prompt = await check_completeness(
+        verdict = await check_completeness(
             "Solve x^2 - 5x + 6 = 0 for all real values of x.", make_session(), "trace-4"
         )
-    assert complete is True
+    assert verdict.allowed is True
 
 
 def _llm_response(content: str) -> MagicMock:
@@ -143,8 +155,8 @@ async def test_enrichment_llm_sees_history_and_carries_trace_metadata():
         new_callable=AsyncMock,
     ) as mock_llm:
         mock_llm.return_value = _llm_response('{"complete": true, "clarification": ""}')
-        complete, _ = await check_completeness("why did we subtract 3?", session, "trace-hist")
-    assert complete is True
+        verdict = await check_completeness("why did we subtract 3?", session, "trace-hist")
+    assert verdict.allowed is True
     kwargs = mock_llm.call_args.kwargs
     assert [m["role"] for m in kwargs["messages"]] == ["system", "user", "assistant", "user"]
     assert kwargs["messages"][1]["content"] == "Solve 2x + 3 = 11."
@@ -210,8 +222,8 @@ async def test_a_fenced_completeness_reply_is_read():
         mock_llm.return_value = _llm_response(
             '```json\n{"complete": false, "clarification": "Which problem?"}\n```'
         )
-        complete, prompt = await check_completeness("solve this", make_session(), "trace-fence")
-    assert (complete, prompt) == (False, "Which problem?")
+        verdict = await check_completeness("solve this", make_session(), "trace-fence")
+    assert verdict == Verdict.stop(Outcome.clarification_requested, "Which problem?")
 
 
 @pytest.mark.asyncio
@@ -309,7 +321,7 @@ async def test_answer_leak_detected_in_tutor_mode():
         leaked = await check_answer_leak(
             "The answer is x = 2.", mode=Mode.tutor, trace_id="trace-5"
         )
-    assert leaked is True
+    assert leaked.allowed is False
 
 
 @pytest.mark.asyncio
@@ -320,7 +332,7 @@ async def test_no_leak_check_in_solve_mode():
             "The answer is x = 2.", mode=Mode.solve, trace_id="trace-6"
         )
     mock_check.assert_not_called()
-    assert leaked is False
+    assert leaked.allowed is True
 
 
 @pytest.mark.asyncio
@@ -331,7 +343,7 @@ async def test_no_leak_in_safe_hint():
         leaked = await check_answer_leak(
             "What happens when you factor the left side?", mode=Mode.tutor, trace_id="trace-7"
         )
-    assert leaked is False
+    assert leaked.allowed is True
 
 
 @pytest.mark.asyncio
@@ -342,7 +354,7 @@ async def test_regex_stage_flags_leak_without_calling_the_llm():
             "Therefore x equals four.", mode=Mode.tutor, trace_id="trace-8"
         )
     mock_check.assert_not_called()
-    assert leaked is True
+    assert leaked.allowed is False
 
 
 @pytest.mark.asyncio
@@ -356,7 +368,7 @@ async def test_llm_stage_is_skipped_when_provider_has_no_api_key():
             "Try isolating the variable.", mode=Mode.tutor, trace_id="trace-9"
         )
     mock_llm.assert_not_called()
-    assert leaked is False
+    assert leaked.allowed is True
 
 
 @pytest.mark.asyncio
@@ -370,7 +382,7 @@ async def test_leak_check_caps_its_output_tokens():
             "Try isolating the variable.", mode=Mode.tutor, trace_id="trace-cap"
         )
     assert mock_llm.call_args.kwargs["max_tokens"] == LEAK_CHECK_MAX_TOKENS
-    assert leaked is False
+    assert leaked.allowed is True
 
 
 @pytest.mark.asyncio
@@ -385,7 +397,7 @@ async def test_leak_check_cut_off_before_a_verdict_is_not_a_leak_or_a_crash(cont
         leaked = await check_answer_leak(
             "Try isolating the variable.", mode=Mode.tutor, trace_id="trace-cut"
         )
-    assert leaked is False
+    assert leaked.allowed is True
 
 
 @pytest.mark.asyncio
@@ -398,7 +410,7 @@ async def test_llm_stage_failure_is_not_a_leak():
         leaked = await check_answer_leak(
             "Try isolating the variable.", mode=Mode.tutor, trace_id="trace-10"
         )
-    assert leaked is False
+    assert leaked.allowed is True
 
 
 # ── 5. Rate limit ─────────────────────────────────────────────────────────────

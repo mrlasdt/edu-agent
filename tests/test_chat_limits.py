@@ -15,6 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
+from services.gateway.src.gateway.guardrails.verdict import Verdict
 from services.gateway.src.gateway.main import (
     MAX_CANDIDATE_ID_CHARS,
     MAX_HISTORY_ITEM_CHARS,
@@ -22,6 +23,7 @@ from services.gateway.src.gateway.main import (
     MAX_MESSAGE_CHARS,
     app,
 )
+from tests.gateway_fakes import agent_replies, rate_limiter_of
 
 client = TestClient(app)
 BODY = {"candidate_id": "c1", "test_type": "gre", "section": "quant", "message": "Solve 2x+3=11"}
@@ -43,12 +45,10 @@ def pipeline():
         "services.gateway.src.gateway.main.check_completeness", new_callable=AsyncMock
     ) as completeness, patch(
         "services.gateway.src.gateway.main.check_answer_leak", new_callable=AsyncMock
-    ) as leak, patch("services.gateway.src.gateway.main._stream_from_agent", fake_stream), patch(
-        "services.gateway.src.gateway.main._rate_limiter", RateLimiter()
-    ):
-        safety.return_value = (True, "")
-        completeness.return_value = (True, "")
-        leak.return_value = False
+    ) as leak, agent_replies(fake_stream), rate_limiter_of(RateLimiter()):
+        safety.return_value = Verdict.allow()
+        completeness.return_value = Verdict.allow()
+        leak.return_value = Verdict.allow()
         yield sent, safety
 
 

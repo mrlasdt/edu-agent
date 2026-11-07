@@ -18,12 +18,18 @@ from fastapi.testclient import TestClient
 
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
 from services.gateway.src.gateway.guardrails.stream import ReplyGuard
+from services.gateway.src.gateway.guardrails.verdict import Verdict
 from services.gateway.src.gateway.main import app
 from shared.src.shared.models import Mode
+from shared.src.shared.turn_outcome import Outcome
+from tests.gateway_fakes import agent_replies, rate_limiter_of
 
 client = TestClient(app)
 
-_SAFE = (True, "")
+_SAFE = Verdict.allow()
+_BLOCKED = Verdict.stop(
+    Outcome.content_blocked, "I can't help with that request (content flagged: violence)."
+)
 
 
 @pytest.fixture(autouse=True)
@@ -43,7 +49,7 @@ def completeness():
     with patch(
         "services.gateway.src.gateway.main.check_completeness", new_callable=AsyncMock
     ) as mock:
-        mock.return_value = (True, "")
+        mock.return_value = Verdict.allow()
         yield mock
 
 
@@ -52,7 +58,7 @@ def test_chat_refuses_unsafe_content():
         "services.gateway.src.gateway.main.check_content_safety",
         new_callable=AsyncMock,
     ) as mock_safety:
-        mock_safety.return_value = (False, "content flagged: violence")
+        mock_safety.return_value = _BLOCKED
         resp = client.post(
             "/chat",
             json={"candidate_id": "c1", "test_type": "gre", "section": "quant", "message": "x"},
@@ -83,9 +89,7 @@ def test_chat_proxies_agent_stream_on_route():
     with patch(
         "services.gateway.src.gateway.main.check_content_safety",
         new_callable=AsyncMock,
-    ) as mock_safety, patch(
-        "services.gateway.src.gateway.main._stream_from_agent", fake_stream
-    ):
+    ) as mock_safety, agent_replies(fake_stream):
         mock_safety.return_value = _SAFE
         resp = client.post(
             "/chat",
@@ -112,18 +116,12 @@ def test_complete_request_reaches_the_agent(completeness):
 
 
 def test_incomplete_request_is_asked_to_clarify_without_calling_the_agent(completeness):
-    completeness.return_value = (False, "Which equation do you want to solve?")
+    completeness.return_value = Verdict.stop(
+        Outcome.clarification_requested, "Which equation do you want to solve?"
+    )
     sent: list = []
     resp = _chat(["never streamed"], body={"message": "solve this"}, sent=sent)
     assert resp.text == "Which equation do you want to solve?"
-    assert sent == []
-
-
-def test_incomplete_request_without_a_prompt_gets_a_default_clarification(completeness):
-    completeness.return_value = (False, "")
-    sent: list = []
-    resp = _chat(["never streamed"], sent=sent)
-    assert "full question" in resp.text.lower()
     assert sent == []
 
 
@@ -145,7 +143,7 @@ def test_unsafe_request_never_reaches_the_completeness_check(completeness):
     with patch(
         "services.gateway.src.gateway.main.check_content_safety", new_callable=AsyncMock
     ) as mock_safety:
-        mock_safety.return_value = (False, "content flagged: violence")
+        mock_safety.return_value = _BLOCKED
         client.post("/chat", json=_BODY)
     completeness.assert_not_called()
 
@@ -166,7 +164,7 @@ def _chat(tokens, body=None, num_sources=None, sent=None):
 
     with patch(
         "services.gateway.src.gateway.main.check_content_safety", new_callable=AsyncMock
-    ) as mock_safety, patch("services.gateway.src.gateway.main._stream_from_agent", fake_stream):
+    ) as mock_safety, agent_replies(fake_stream):
         mock_safety.return_value = _SAFE
         return client.post("/chat", json={**_BODY, **(body or {})})
 
@@ -260,7 +258,7 @@ def test_multibyte_characters_split_across_chunks_survive():
 
     with patch(
         "services.gateway.src.gateway.main.check_content_safety", new_callable=AsyncMock
-    ) as mock_safety, patch("services.gateway.src.gateway.main._stream_from_agent", fake_stream):
+    ) as mock_safety, agent_replies(fake_stream):
         mock_safety.return_value = _SAFE
         resp = client.post("/chat", json=_BODY)
     assert resp.content == raw
@@ -314,7 +312,7 @@ def test_input_pii_is_redacted_before_the_agent_and_announced():
 def test_rate_limited_candidate_gets_a_clear_message_and_agent_is_not_called():
     sent: list[dict] = []
     limiter = RateLimiter(max_per_minute=2)
-    with patch("services.gateway.src.gateway.main._rate_limiter", limiter):
+    with rate_limiter_of(limiter):
         _chat(["a"], body={"candidate_id": "rl"}, sent=sent)
         _chat(["a"], body={"candidate_id": "rl"}, sent=sent)
         resp = _chat(["a"], body={"candidate_id": "rl"}, sent=sent)

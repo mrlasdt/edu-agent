@@ -13,9 +13,11 @@ from services.gateway.src.gateway.guardrails.input import (
     ModerationUnavailableError,
     check_content_safety,
 )
+from services.gateway.src.gateway.guardrails.verdict import Verdict
 from services.gateway.src.gateway.main import app
 from shared.src.shared.config import Settings
 from shared.src.shared.turn_meter import TurnMeter
+from tests.gateway_fakes import agent_replies
 
 _INPUT = "services.gateway.src.gateway.guardrails.input"
 _MAIN = "services.gateway.src.gateway.main"
@@ -43,7 +45,7 @@ async def test_outage_fails_open_in_dev_by_default_and_is_recorded():
     meter = TurnMeter("t", "gateway", "gre/quant", "tutor")
     with patch(f"{_INPUT}.get_settings", return_value=_settings(env="dev")), \
          patch(f"{_INPUT}._call_moderation_api", new_callable=AsyncMock, side_effect=_OUTAGE):
-        assert await check_content_safety("Solve x + 1 = 2", "t", meter) == (True, "")
+        assert await check_content_safety("Solve x + 1 = 2", "t", meter) == Verdict.allow()
     assert meter.snapshot()["moderation_failed_open"] is True
 
 
@@ -57,7 +59,7 @@ async def test_explicit_policy_overrides_the_env_default(env, policy, fails_open
     with patch(f"{_INPUT}.get_settings", return_value=settings), \
          patch(f"{_INPUT}._call_moderation_api", new_callable=AsyncMock, side_effect=_OUTAGE):
         if fails_open:
-            assert await check_content_safety("hi", "t") == (True, "")
+            assert await check_content_safety("hi", "t") == Verdict.allow()
         else:
             with pytest.raises(ModerationUnavailableError):
                 await check_content_safety("hi", "t")
@@ -77,8 +79,8 @@ def _chat(client: TestClient, settings: Settings) -> Any:
     with (
         patch(f"{_INPUT}.get_settings", return_value=settings),
         patch(f"{_INPUT}._call_moderation_api", new_callable=AsyncMock, side_effect=_OUTAGE),
-        patch(f"{_MAIN}.check_completeness", new_callable=AsyncMock, return_value=(True, "")),
-        patch(f"{_MAIN}._stream_from_agent", agent_stream),
+        patch(f"{_MAIN}.check_completeness", new_callable=AsyncMock, return_value=Verdict.allow()),
+        agent_replies(agent_stream),
         patch("services.gateway.src.gateway.guardrails.output._call_leak_checker",
               new_callable=AsyncMock, return_value=False),
     ):

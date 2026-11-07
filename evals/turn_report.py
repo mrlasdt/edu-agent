@@ -31,6 +31,7 @@ from shared.src.shared.budget import estimate_cost
 from shared.src.shared.config import get_settings
 from shared.src.shared.feedback import latest_votes
 from shared.src.shared.turn_meter import TurnLog
+from shared.src.shared.turn_outcome import Outcome
 
 
 def merge_turns(records: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -76,7 +77,7 @@ def _merge(trace_id: str, recs: list[dict[str, Any]]) -> dict[str, Any]:
         "notes_retrieved": agent.get("notes_retrieved"),
         "tool_calls": len(agent.get("tool_calls") or []),
         "tool_errors": agent.get("tool_errors", 0),
-        "outcome": gateway.get("outcome", "no gateway record"),
+        "outcome": gateway.get("outcome", Outcome.no_gateway_record.value),
         "flags": gateway.get("flags") or [],
         "error": agent.get("error") or gateway.get("error"),
     }

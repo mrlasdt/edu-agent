@@ -20,7 +20,9 @@ import httpx
 import pytest
 
 from services.agent.src.agent.main import app as agent_app
+from services.gateway.src.gateway.guardrails.verdict import Verdict
 from services.gateway.src.gateway.main import app as gateway_app
+from tests.gateway_fakes import agent_replies
 
 _REAL_ASYNC_CLIENT = httpx.AsyncClient
 
@@ -82,12 +84,12 @@ def gateway_model_calls_mocked():
         patch(
             "services.gateway.src.gateway.main.check_content_safety",
             new_callable=AsyncMock,
-            return_value=(True, ""),
+            return_value=Verdict.allow(),
         ),
         patch(
             "services.gateway.src.gateway.main.check_completeness",
             new_callable=AsyncMock,
-            return_value=(True, ""),
+            return_value=Verdict.allow(),
         ),
         patch(
             "services.gateway.src.gateway.guardrails.output._call_leak_checker",
@@ -113,7 +115,7 @@ async def test_disconnect_cancels_the_agent_request_and_records_client_cancelled
         await first_chunk.wait()
         disconnect.set()
 
-    with patch("services.gateway.src.gateway.main.httpx.AsyncClient", client_factory):
+    with patch("services.gateway.src.gateway.agent_client.httpx.AsyncClient", client_factory):
         _, sent = await asyncio.gather(
             stop_after_first_chunk(), _drive(gateway_app, "/chat", _BODY, disconnect)
         )
@@ -129,7 +131,7 @@ async def test_a_finished_turn_keeps_its_outcome(turn_log):
     async def agent_reply(payload, meta=None):
         yield b"Done.\n"
 
-    with patch("services.gateway.src.gateway.main._stream_from_agent", agent_reply):
+    with agent_replies(agent_reply):
         await _drive(gateway_app, "/chat", _BODY, asyncio.Event())
 
     assert [r["outcome"] for r in turn_log.read()] == ["ok"]
@@ -139,7 +141,7 @@ async def test_a_blocked_reply_keeps_its_outcome(turn_log):
     async def agent_reply(payload, meta=None):
         yield b"The answer is x = 4.\n"
 
-    with patch("services.gateway.src.gateway.main._stream_from_agent", agent_reply):
+    with agent_replies(agent_reply):
         await _drive(gateway_app, "/chat", _BODY, asyncio.Event())
 
     assert [r["outcome"] for r in turn_log.read()] == ["answer_leak_blocked"]
@@ -163,7 +165,7 @@ async def test_disconnect_before_any_reply_is_recorded_too(turn_log):
         await started.wait()
         disconnect.set()
 
-    with patch("services.gateway.src.gateway.main._stream_from_agent", agent_reply):
+    with agent_replies(agent_reply):
         await asyncio.gather(stop_once_waiting(), _drive(gateway_app, "/chat", _BODY, disconnect))
 
     assert cancelled.is_set()
