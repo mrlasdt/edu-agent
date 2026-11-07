@@ -1,3 +1,4 @@
+import { ApiError, request } from "./request";
 import type { IndependentCheck, Message, Mode, Subject } from "./types";
 
 export interface ChatTurn {
@@ -87,22 +88,19 @@ export async function* streamChat(
   turn: ChatTurn,
   signal?: AbortSignal
 ): AsyncGenerator<ChatEvent> {
-  const res = await fetch("/chat", {
+  const res = await request("/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     signal,
-    body: JSON.stringify({
+    json: {
       candidate_id: turn.candidateId,
       test_type: "gre",
       section: turn.subject,
       message: turn.message,
       mode: turn.mode,
       history: toHistoryPayload(turn.history),
-    }),
+    },
   });
-  if (!res.ok || !res.body) {
-    throw new Error(`Chat request failed (${res.status})`);
-  }
+  if (!res.body) throw new ApiError(res.status, "The server sent no reply");
   const traceId = res.headers?.get(TRACE_ID_HEADER);
   if (traceId) yield { kind: "trace", traceId };
   const reader = res.body.getReader();
@@ -135,12 +133,5 @@ export type Vote = "up" | "down";
 
 /** Send a thumbs up or down for the reply of the turn `traceId` names. */
 export async function sendFeedback(traceId: string, vote: Vote): Promise<void> {
-  const res = await fetch("/feedback", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ trace_id: traceId, vote }),
-  });
-  if (!res.ok) {
-    throw new Error(`Feedback request failed (${res.status})`);
-  }
+  await request("/feedback", { method: "POST", json: { trace_id: traceId, vote } });
 }

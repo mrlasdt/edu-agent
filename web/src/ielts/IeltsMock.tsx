@@ -46,7 +46,7 @@ export function IeltsMock({ pollMs = POLL_MS, autosaveMs }: IeltsMockProps) {
   }, []);
 
   /** Where an attempt belongs on screen, given what the server says about it. */
-  const route = useCallback(async (attempt: Attempt): Promise<View> => {
+  const route = useCallback(async (attempt: Attempt, signal?: AbortSignal): Promise<View> => {
     switch (attempt.status) {
       case "created":
         return { kind: "ready", attempt };
@@ -62,7 +62,7 @@ export function IeltsMock({ pollMs = POLL_MS, autosaveMs }: IeltsMockProps) {
       case "graded":
       case "ungraded":
         try {
-          return { kind: "report", attempt, report: await getReport(attempt.id) };
+          return { kind: "report", attempt, report: await getReport(attempt.id, signal) };
         } catch (err) {
           if (err instanceof ApiError && err.status === 409) return { kind: "marking", attempt };
           throw err;
@@ -70,48 +70,54 @@ export function IeltsMock({ pollMs = POLL_MS, autosaveMs }: IeltsMockProps) {
     }
   }, []);
 
-  const showPicker = useCallback(async () => {
+  const showPicker = useCallback(async (signal?: AbortSignal) => {
     rememberAttempt(null);
     setNotice(null);
     const [list, history, budget] = await Promise.all([
-      prompts.current.length ? Promise.resolve(prompts.current) : listPrompts(),
-      listAttempts().catch(() => [] as Attempt[]),
-      getBudget().catch(() => null),
+      prompts.current.length ? Promise.resolve(prompts.current) : listPrompts(signal),
+      listAttempts(signal).catch(() => [] as Attempt[]),
+      getBudget(signal).catch(() => null),
     ]);
     prompts.current = list;
     setView({ kind: "picker", prompts: list, history: history.slice(0, 5), budget });
   }, []);
 
+  // Leaving the screen aborts the first load; `cancelled` also covers a test double that ignores the signal.
   useEffect(() => {
+    const controller = new AbortController();
+    const { signal } = controller;
     let cancelled = false;
     (async () => {
       try {
         const id = rememberedAttempt();
         if (id) {
           try {
-            const next = await route(await getAttempt(id));
+            const next = await route(await getAttempt(id, signal), signal);
             if (!cancelled) setView(next);
             return;
           } catch (err) {
             if (!(err instanceof ApiError && err.status === 404)) throw err;
           }
         }
-        if (!cancelled) await showPicker();
+        if (!cancelled) await showPicker(signal);
       } catch (err) {
         if (!cancelled) setView({ kind: "failed", message: message(err) });
       }
     })();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [route, showPicker]);
 
   const waitingFor = view.kind === "marking" && view.attempt.status !== "ungraded" ? view.attempt.id : null;
   useEffect(() => {
     if (!waitingFor) return;
+    const controller = new AbortController();
+    const { signal } = controller;
     const id = window.setInterval(async () => {
       try {
-        const next = await route(await getAttempt(waitingFor));
+        const next = await route(await getAttempt(waitingFor, signal), signal);
         setView((current) =>
           current.kind === "marking" && current.attempt.id === waitingFor ? next : current
         );
@@ -119,46 +125,40 @@ export function IeltsMock({ pollMs = POLL_MS, autosaveMs }: IeltsMockProps) {
         // a blip while polling: try again on the next tick
       }
     }, pollMs);
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearInterval(id);
+      controller.abort();
+    };
   }, [waitingFor, route, pollMs]);
 
-  async function pick(prompt: WritingPrompt) {
+  /** Runs a button's request: busy while it runs, one notice (cleared on the next try) if it fails. */
+  async function runAction(work: () => Promise<void>) {
     setBusy(true);
     setNotice(null);
     try {
+      await work();
+    } catch (err) {
+      setNotice(message(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const pick = (prompt: WritingPrompt) =>
+    runAction(async () => {
       const attempt = await createAttempt(prompt.id);
       rememberAttempt(attempt.id);
       setView({ kind: "ready", attempt });
-    } catch (err) {
-      setNotice(message(err));
-    } finally {
-      setBusy(false);
-    }
-  }
+    });
 
-  async function start(attempt: Attempt) {
-    setBusy(true);
-    setNotice(null);
-    try {
+  const start = (attempt: Attempt) =>
+    runAction(async () => {
       const started = await startAttempt(attempt.id);
       setView({ kind: "writing", attempt: started, initialText: started.draft });
-    } catch (err) {
-      setNotice(message(err));
-    } finally {
-      setBusy(false);
-    }
-  }
+    });
 
-  async function retry(attempt: Attempt) {
-    setBusy(true);
-    try {
-      setView({ kind: "marking", attempt: await regradeAttempt(attempt.id) });
-    } catch (err) {
-      setNotice(message(err));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const retry = (attempt: Attempt) =>
+    runAction(async () => setView({ kind: "marking", attempt: await regradeAttempt(attempt.id) }));
 
   async function another() {
     if (view.kind === "report" || view.kind === "marking") forgetDraft(view.attempt.id);
@@ -172,14 +172,11 @@ export function IeltsMock({ pollMs = POLL_MS, autosaveMs }: IeltsMockProps) {
     }
   }
 
-  async function open(attempt: Attempt) {
-    try {
+  const open = (attempt: Attempt) =>
+    runAction(async () => {
       rememberAttempt(attempt.id);
       setView(await route(attempt));
-    } catch (err) {
-      setNotice(message(err));
-    }
-  }
+    });
 
   return (
     <main className="app ielts" data-view={view.kind}>
@@ -215,7 +212,6 @@ export function IeltsMock({ pollMs = POLL_MS, autosaveMs }: IeltsMockProps) {
         <ReadyScreen
           attempt={view.attempt}
           busy={busy}
-          error={notice}
           onStart={() => void start(view.attempt)}
           onBack={() => void another()}
         />

@@ -19,12 +19,18 @@ export interface IndependentCheck {
   solver?: string;
 }
 
+export type ReplyStatus = "thinking" | "streaming" | "stopped" | "empty" | "failed";
+
 export interface Message {
   id: string;
   role: MessageRole;
   content: string;
   citations?: Citation[];
-  status?: string; // "checking" | "retrieving" | null
+  // Where an agent reply stands; absent once it finished normally. "thinking" and "streaming" mean
+  // the turn is still running (see `isBusy`), the rest say how it ended.
+  status?: ReplyStatus;
+  // The reason, when status is "failed".
+  error?: string;
   // Whether the math verifier accepted the final answer; absent when it did not run (tutor mode).
   mathVerified?: boolean;
   // Absent when the check did not run (tutor mode).

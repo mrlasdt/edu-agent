@@ -247,9 +247,19 @@ describe("MessageBubble — feedback", () => {
 });
 
 describe("MessageBubble — status lines", () => {
-  it("renders status line when status is set", () => {
-    const msg = { ...baseMsg, status: "Checking your answer…" };
-    render(<MessageBubble message={msg} />);
-    expect(screen.getByText(/checking your answer/i)).toBeInTheDocument();
+  it("says what a reply that has not started, stopped, or failed is doing", () => {
+    const { rerender } = render(<MessageBubble message={{ ...baseMsg, status: "thinking" }} />);
+    expect(screen.getByRole("status")).toHaveTextContent("thinking...");
+    rerender(<MessageBubble message={{ ...baseMsg, status: "stopped" }} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Stopped");
+    rerender(<MessageBubble message={{ ...baseMsg, status: "empty" }} />);
+    expect(screen.getByRole("status")).toHaveTextContent("No response received");
+    rerender(<MessageBubble message={{ ...baseMsg, status: "failed", error: "Cannot reach the server" }} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Cannot reach the server");
+  });
+
+  it("shows no status line while text is streaming in", () => {
+    render(<MessageBubble message={{ ...baseMsg, status: "streaming" }} />);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });
