@@ -17,7 +17,7 @@ class CorpusChunk:
     score: float
 
 
-class RetrieveCorpusSkill:
+class RetrieveCorpus:
     """
     Calls the Corpus Service to retrieve relevant chunks for a query.
     The _call_corpus seam is patched in unit tests.

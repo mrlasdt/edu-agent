@@ -14,9 +14,9 @@ Accepted. Supersedes the implicit high-school / per-curriculum scoping of CONTEX
 
 ## Why GRE specifically maps so cleanly onto the existing architecture
 
-- **Quant** plays the role the Math content was playing. The sympy verifier and the verify-math Skill apply directly. Quant question types (QC / MC / Numeric Entry / Data Interp) are slightly more varied than the earlier algebra/trig scope, but they're all within sympy's reach.
+- **Quant** plays the role the Math content was playing. The sympy verifier and the verify-math capability apply directly. Quant question types (QC / MC / Numeric Entry / Data Interp) are slightly more varied than the earlier algebra/trig scope, but they're all within sympy's reach.
 - **AW** plays the role the Literature content was playing. The two task types (Issue / Argument) replace the "two literary works" plus "one essay form" structure. The published ETS rubric replaces the canonical-style rubric we'd otherwise have to define ourselves.
-- **The Personal style skill** unchanged in semantics — biases voice toward Candidate's own essay drafts while keeping the high-rubric structure intact.
+- **The Personal style capability** unchanged in semantics — biases voice toward Candidate's own essay drafts while keeping the high-rubric structure intact.
 - **The Global corpus has a sharper definition** — official ETS publicly-released materials. Curation effort drops because the canon is bounded and copyright-clear.
 - **The three-tier corpus design** continues to make sense: Global (ETS public materials) + School (prep-course tenant — a real commercial customer) + Candidate (personal drafts and error logs).
 

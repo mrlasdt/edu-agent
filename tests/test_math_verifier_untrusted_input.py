@@ -136,7 +136,7 @@ async def test_a_solve_turn_whose_final_answer_is_hostile_degrades_and_still_ans
     from typing import Any
     from unittest.mock import AsyncMock, patch
 
-    from evals.agent_eval.runner import in_process_verify_skill
+    from evals.agent_eval.runner import in_process_verify_math
     from services.agent.src.agent.agents.quant import QuantAgent
     from shared.src.shared.models import Mode, Session
 
@@ -150,7 +150,7 @@ async def test_a_solve_turn_whose_final_answer_is_hostile_degrades_and_still_ans
 
     agent = QuantAgent(
         model_config_path="config/model_config.dev.yaml",
-        verify_math_skill=in_process_verify_skill(),
+        verify_math=in_process_verify_math(),
     )
     session = Session(candidate_id="c1", test_type="gre", section="quant", mode=Mode.solve)
     with patch("litellm.acompletion", new=AsyncMock(side_effect=respond)):

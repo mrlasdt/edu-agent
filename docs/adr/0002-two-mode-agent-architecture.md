@@ -20,3 +20,13 @@ Accepted.
 - Tutor mode has different semantics by complexity: in Basic it scaffolds the answer; in Advanced it produces a plan rather than drafted prose. Solve mode produces the full artifact in both.
 - Complexity escalation is suggested, not auto-applied. Students stay in control of complexity, matching the student-controlled mode-switch policy.
 - The Skill registry and sub-agent registration interface are defined and exercised by Basic in v1; Advanced sub-agents register against the same interface in v2 with no contract change.
+
+## Terminology note (added 2026-11-08)
+
+Where this ADR says "Skill" or "Skill registry", the code now uses three separate words (defined in `CONTEXT.md`, section "Agent building blocks"):
+
+- **Tool**: the model chooses it from a declared list (`services/agent/src/agent/tools/`).
+- **Capability**: code always calls it at a fixed point in the flow (`services/agent/src/agent/capabilities/`).
+- **Skill**: an Agent Skill, packaged instructions loaded on demand. The agent service has none today.
+
+The earlier `agent/skills/` package held both tools and capabilities; it was split into `tools/` and `capabilities/` with no behaviour change.

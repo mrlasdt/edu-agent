@@ -15,7 +15,7 @@ from evals.agent_eval.backend import offline_model
 from evals.agent_eval.budget import BudgetExceededError, Ledger
 from evals.agent_eval.judges import HeuristicJudge
 from evals.agent_eval.results import GenerationResult
-from evals.agent_eval.runner import in_process_verify_skill, write_model_config
+from evals.agent_eval.runner import in_process_verify_math, write_model_config
 from evals.agent_eval.transport import MeteredTransport
 from evals.human_review_queue import HumanReviewQueue
 from evals.loader import load_golden_set
@@ -36,7 +36,7 @@ from services.agent.src.agent.pipeline.schema import (
 from shared.src.shared.config import load_model_config
 from tests.llm_fakes import ScriptedRouter
 
-SKILL = in_process_verify_skill()
+VERIFY_MATH = in_process_verify_math()
 
 NUMERIC = {
     "question_type": "numeric_entry",
@@ -131,32 +131,32 @@ def test_rule_based_type():
 
 async def test_solver_accepts_correct_keys_for_every_type():
     for base in (NUMERIC, MC_SINGLE, MC_MULTI, QC):
-        assert all(c.passed for c in await tools.run_checks(item(base), SKILL)), base
+        assert all(c.passed for c in await tools.run_checks(item(base), VERIFY_MATH)), base
 
 
 async def test_solver_rejects_wrong_keys():
     for base, wrong in ((NUMERIC, "3,5"), (MC_SINGLE, "20"), (MC_MULTI, "7,8"), (QC, "B")):
-        checks = await tools.run_checks(item(base, answer=wrong), SKILL)
+        checks = await tools.run_checks(item(base, answer=wrong), VERIFY_MATH)
         assert not all(c.passed for c in checks), base
 
 
 async def test_solver_reports_unsolvable_expression():
-    check = await tools.solve_check(item(NUMERIC, expression="x ** ("), SKILL)
+    check = await tools.solve_check(item(NUMERIC, expression="x ** ("), VERIFY_MATH)
     assert not check.passed and "cannot solve" in check.detail
 
 
 async def test_qc_d_requires_a_genuinely_indeterminate_comparison():
     indeterminate = item(QC, quantity_a="x**2", quantity_b="x", answer="D")  # sign varies with x
-    assert (await tools.solve_check(indeterminate, SKILL)).passed
+    assert (await tools.solve_check(indeterminate, VERIFY_MATH)).passed
     determinate = item(QC, quantity_a="x**2 + 1", quantity_b="x**2", answer="D")  # always A
-    assert not (await tools.solve_check(determinate, SKILL)).passed
+    assert not (await tools.solve_check(determinate, VERIFY_MATH)).passed
 
 
 async def test_distractor_check_flags_equal_and_correct_distractors():
     dup = item(MC_SINGLE, choices=["12", "14", "14.0", "24", "10"])
-    assert "numerically equal" in (await tools.distractor_check(dup, SKILL)).detail
+    assert "numerically equal" in (await tools.distractor_check(dup, VERIFY_MATH)).detail
     also_correct = item(MC_MULTI, answer="7")  # -7 is a valid solution but not keyed
-    check = await tools.distractor_check(also_correct, SKILL)
+    check = await tools.distractor_check(also_correct, VERIFY_MATH)
     assert not check.passed
 
 
@@ -178,7 +178,7 @@ def test_structure_and_leak_checks():
 
 async def test_accepts_a_good_item_and_traces_every_step():
     llm = Scripted([plan_reply("numeric_entry")], [json.dumps(NUMERIC)])
-    result = await QuestionPipeline(llm, SKILL).run(request())
+    result = await QuestionPipeline(llm, VERIFY_MATH).run(request())
     assert result.status == "accepted" and result.item is not None
     assert result.attempts == 1 and result.llm_calls == 3  # planner + generator + critic
     assert steps(result) == ["plan", "generate", "verify", "critic", "accept"]
@@ -197,7 +197,7 @@ async def test_router_sends_each_type_to_its_expert():
     }
     for qtype, (base, marker) in cases.items():
         llm = Scripted([plan_reply(qtype)], [json.dumps(base)])
-        result = await QuestionPipeline(llm, SKILL).run(request(None))
+        result = await QuestionPipeline(llm, VERIFY_MATH).run(request(None))
         assert result.status == "accepted", qtype
         generator_system = next(m for r, m in llm.calls if r == "question_generator")[0]
         assert marker in generator_system["content"]
@@ -207,11 +207,11 @@ async def test_router_sends_each_type_to_its_expert():
 
 async def test_planner_cannot_override_a_fixed_type_and_garbage_falls_back_to_rules():
     llm = Scripted([plan_reply("quantitative_comparison")], [json.dumps(NUMERIC)])
-    fixed = await QuestionPipeline(llm, SKILL).run(request("numeric_entry"))
+    fixed = await QuestionPipeline(llm, VERIFY_MATH).run(request("numeric_entry"))
     assert fixed.plan is not None and fixed.plan.question_type == QuestionType.numeric_entry
 
     llm = Scripted(["I refuse to answer in JSON"], [json.dumps(MC_SINGLE)])
-    result = await QuestionPipeline(llm, SKILL).run(request(None))
+    result = await QuestionPipeline(llm, VERIFY_MATH).run(request(None))
     assert result.trace[0].data["rule_based_fallback"] is True
     assert result.plan is not None and result.plan.question_type == rule_based_type("quadratics")
     assert result.status == "accepted"
@@ -220,7 +220,7 @@ async def test_planner_cannot_override_a_fixed_type_and_garbage_falls_back_to_ru
 async def test_revise_loop_feeds_failures_back_and_recovers():
     wrong = {**NUMERIC, "answer": "3,5"}
     llm = Scripted([plan_reply("numeric_entry")], [json.dumps(wrong), json.dumps(NUMERIC)])
-    result = await QuestionPipeline(llm, SKILL).run(request())
+    result = await QuestionPipeline(llm, VERIFY_MATH).run(request())
     assert result.status == "accepted" and result.attempts == 2
     assert steps(result) == [
         "plan", "generate", "verify", "revise", "generate", "verify", "critic", "accept"
@@ -233,7 +233,7 @@ async def test_revise_loop_feeds_failures_back_and_recovers():
 
 async def test_non_json_reply_is_a_schema_failure_then_recovers():
     llm = Scripted([plan_reply("numeric_entry")], ["Here you go!", json.dumps(NUMERIC)])
-    result = await QuestionPipeline(llm, SKILL).run(request())
+    result = await QuestionPipeline(llm, VERIFY_MATH).run(request())
     assert result.status == "accepted"
     verify = next(e for e in result.trace if e.step == "verify")
     assert verify.data["checks"][0]["name"] == "schema"
@@ -242,7 +242,7 @@ async def test_non_json_reply_is_a_schema_failure_then_recovers():
 async def test_retries_are_bounded_then_escalated_to_review():
     wrong = {**NUMERIC, "answer": "3,5"}
     llm = Scripted([plan_reply("numeric_entry")], [json.dumps(wrong)])
-    result = await QuestionPipeline(llm, SKILL, max_attempts=3).run(request())
+    result = await QuestionPipeline(llm, VERIFY_MATH, max_attempts=3).run(request())
     assert result.status == "needs_review" and result.item is None
     assert result.candidate is not None and result.attempts == 3
     assert result.llm_calls == 1 + 3  # planner + 3 generations, the critic never ran
@@ -254,19 +254,19 @@ async def test_critic_flag_triggers_revision_and_unparseable_critic_fails_closed
     flag = json.dumps({"ambiguous": True, "leaks_answer": False, "issues": ["two readings"]})
     ok = json.dumps({"ambiguous": False, "leaks_answer": False, "issues": []})
     llm = Scripted([plan_reply("numeric_entry")], [json.dumps(NUMERIC)], [flag, ok])
-    result = await QuestionPipeline(llm, SKILL).run(request())
+    result = await QuestionPipeline(llm, VERIFY_MATH).run(request())
     assert result.status == "accepted" and result.attempts == 2
     revise = next(e for e in result.trace if e.step == "revise")
     assert revise.data["feedback"] == ["critic: two readings"]
 
     llm = Scripted([plan_reply("numeric_entry")], [json.dumps(NUMERIC)], ["not json"])
-    result = await QuestionPipeline(llm, SKILL, max_attempts=2).run(request())
+    result = await QuestionPipeline(llm, VERIFY_MATH, max_attempts=2).run(request())
     assert result.status == "needs_review" and result.attempts == 2
     assert "critic" in result.failures[0]
 
     strings = json.dumps({"ambiguous": "false", "leaks_answer": "false"})
     llm = Scripted([plan_reply("numeric_entry")], [json.dumps(NUMERIC)], [strings])
-    assert (await QuestionPipeline(llm, SKILL).run(request())).status == "accepted"
+    assert (await QuestionPipeline(llm, VERIFY_MATH).run(request())).status == "accepted"
 
 
 async def test_baseline_ships_whatever_comes_back_unchecked():
@@ -314,7 +314,7 @@ async def test_pipeline_through_the_metered_transport_aborts_on_budget(tmp_path:
     transport = MeteredTransport(
         Ledger(tmp_path / "l.json", ceiling_usd=1e-9), "run", router=ScriptedRouter(real)
     )
-    pipeline = build_pipeline(SKILL, write_model_config("openai/gpt-4o"))
+    pipeline = build_pipeline(VERIFY_MATH, write_model_config("openai/gpt-4o"))
     with transport.installed(), pytest.raises(BudgetExceededError):
         await pipeline.run(request())
     assert not (tmp_path / "l.json").exists()
@@ -339,8 +339,11 @@ def _offline_run(max_items: int = 12) -> tuple[GenerationResult, list[dict[str, 
         with transport.installed():
             return await generation.run_generation(
                 requests,
-                {"baseline": build_baseline(config), "pipeline": build_pipeline(SKILL, config)},
-                judge, SKILL, transport, queue,
+                {
+                    "baseline": build_baseline(config),
+                    "pipeline": build_pipeline(VERIFY_MATH, config),
+                },
+                judge, VERIFY_MATH, transport, queue,
             )
 
     return asyncio.run(go()), queue.list()

@@ -64,7 +64,7 @@ async def verify_math(expression: str, expected: str) -> dict[str, Any]:
 async def verify_math_http(request: Request) -> JSONResponse:
     """
     Plain-HTTP facade over the verify_math tool, called by the Agent Service's
-    verify-math Skill (POST JSON {expression, expected}). The MCP SSE transport
+    verify-math capability (POST JSON {expression, expected}). The MCP SSE transport
     has no REST tool route, so this exposes the same sympy-backed logic for
     cluster-internal service-to-service calls. Claude Desktop still uses the
     MCP tool above.

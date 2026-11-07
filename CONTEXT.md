@@ -142,6 +142,20 @@ _Avoid_: Failed turn, math fail
 The estimated 0–6 score that a generated or Candidate-submitted AW essay would receive on the ETS rubric, as judged by an LLM judge calibrated against the public sample essays. Used both at eval time (to score canonical-style output) and at runtime (to give Candidates targeted feedback on their own essays).
 _Avoid_: Essay score, score estimate
 
+## Agent building blocks
+
+**Tool**:
+A function the model chooses to call from a declared list during a turn (the Quant agent's math tools, in `services/agent/src/agent/tools/`). Example: the model decides to call `math_evaluate` on "15% of 80". Whether it is called is the model's decision.
+_Avoid_: Skill, capability
+
+**Capability**:
+A client the code always calls at a fixed point in the flow, whatever the model says (in `services/agent/src/agent/capabilities/`: `verify_math`, `retrieve_corpus`, `match_student_style`). Example: every Solve turn runs `verify_math` on the final answer before it is emitted. Whether it is called is the code's decision.
+_Avoid_: Skill, tool
+
+**Skill**:
+An Agent Skill: a package of instructions the model loads on demand (the Anthropic Agent Skills meaning). This repo has no skills in the agent service. The name is not used for the tools or capabilities above, which were called "skills" before the rename.
+_Avoid_: Using "skill" for a tool or a capability
+
 ## IELTS mock
 
 **IELTS mock**:

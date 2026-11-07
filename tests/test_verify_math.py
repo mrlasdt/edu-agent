@@ -1,8 +1,8 @@
 """
-Tests for the verify-math Skill in the Agent Service.
+Tests for the verify-math capability in the Agent Service.
 
-The Skill posts to the math-verifier service's verify_math route. Tests hand it an httpx client
-whose transport answers in process, so the skill's own request code runs and no live server is
+The capability posts to the math-verifier service's verify_math route. Tests hand it an httpx client
+whose transport answers in process, so the capability's own request code runs and no live server is
 needed.
 
 Behaviors under test:
@@ -22,17 +22,17 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from services.agent.src.agent.skills.verify_math import (
-    VerifyMathSkill,
+from services.agent.src.agent.capabilities.verify_math import (
+    VerifyMath,
 )
 from shared.src.shared.events import Verified
 from tests.agent_events import reply_of
 
 
-def skill_answering(
+def verify_math_answering(
     reply: dict[str, Any] | Exception,
-) -> tuple[VerifyMathSkill, list[httpx.Request]]:
-    """A skill whose service replies `reply` (or raises it), and the requests it received."""
+) -> tuple[VerifyMath, list[httpx.Request]]:
+    """A VerifyMath whose service replies `reply` (or raises it), and the requests it received."""
     requests: list[httpx.Request] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -42,16 +42,16 @@ def skill_answering(
         return httpx.Response(200, json=reply)
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handle))
-    return VerifyMathSkill(server_url="http://localhost:8090", client=client), requests
+    return VerifyMath(server_url="http://localhost:8090", client=client), requests
 
 
 # ── 1. Verified = True ────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_skill_returns_verified_true():
-    skill, _ = skill_answering({"verified": True, "computed": "[2, 3]", "error": None})
+async def test_verify_math_returns_verified_true():
+    verify_math, _ = verify_math_answering({"verified": True, "computed": "[2, 3]", "error": None})
 
-    result = await skill.verify("x**2 - 5*x + 6 = 0", "2, 3")
+    result = await verify_math.verify("x**2 - 5*x + 6 = 0", "2, 3")
 
     assert result.verified is True
     assert result.error is None
@@ -60,10 +60,12 @@ async def test_skill_returns_verified_true():
 # ── 2. Verified = False ───────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_skill_returns_verified_false():
-    skill, _ = skill_answering({"verified": False, "computed": "[2I, -2I]", "error": None})
+async def test_verify_math_returns_verified_false():
+    verify_math, _ = verify_math_answering(
+        {"verified": False, "computed": "[2I, -2I]", "error": None}
+    )
 
-    result = await skill.verify("x**2 + 1 = 0", "x=1")
+    result = await verify_math.verify("x**2 + 1 = 0", "x=1")
 
     assert result.verified is False
     assert result.error is None
@@ -72,12 +74,12 @@ async def test_skill_returns_verified_false():
 # ── 3. Server error propagated ────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_skill_propagates_server_error():
-    skill, _ = skill_answering(
+async def test_verify_math_propagates_server_error():
+    verify_math, _ = verify_math_answering(
         {"verified": False, "computed": "", "error": "parse error: invalid syntax"}
     )
 
-    result = await skill.verify("not valid $$", "5")
+    result = await verify_math.verify("not valid $$", "5")
 
     assert result.verified is False
     assert result.error is not None
@@ -87,10 +89,10 @@ async def test_skill_propagates_server_error():
 # ── 4. Timeout propagated ─────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_skill_propagates_timeout():
-    skill, _ = skill_answering({"verified": False, "computed": "", "error": "timeout"})
+async def test_verify_math_propagates_timeout():
+    verify_math, _ = verify_math_answering({"verified": False, "computed": "", "error": "timeout"})
 
-    result = await skill.verify("very_long_computation(x)", "0")
+    result = await verify_math.verify("very_long_computation(x)", "0")
 
     assert result.verified is False
     assert result.error == "timeout"
@@ -99,10 +101,12 @@ async def test_skill_propagates_timeout():
 # ── 5. Tool route called with correct args ───────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_skill_calls_tool_with_correct_args():
-    skill, requests = skill_answering({"verified": True, "computed": "14", "error": None})
+async def test_verify_math_calls_tool_with_correct_args():
+    verify_math, requests = verify_math_answering(
+        {"verified": True, "computed": "14", "error": None}
+    )
 
-    await skill.verify("2 + 3 * 4", "14")
+    await verify_math.verify("2 + 3 * 4", "14")
 
     (request,) = requests
     assert request.method == "POST"
@@ -115,9 +119,9 @@ async def test_skill_calls_tool_with_correct_args():
 @pytest.mark.asyncio
 async def test_unreachable_verifier_returns_an_error_instead_of_raising():
     # Nothing listens on port 9, so this is a real ConnectError, not a mocked one.
-    skill = VerifyMathSkill(server_url="http://127.0.0.1:9")
+    verify_math = VerifyMath(server_url="http://127.0.0.1:9")
 
-    result = await skill.verify("2, 3", "2, 3")
+    result = await verify_math.verify("2, 3", "2, 3")
 
     assert result.verified is False
     assert result.error == "verifier unreachable"
@@ -136,9 +140,9 @@ async def test_unreachable_verifier_returns_an_error_instead_of_raising():
     ],
 )
 async def test_any_http_error_from_the_verifier_is_reported_not_raised(exc):
-    skill, _ = skill_answering(exc)
+    verify_math, _ = verify_math_answering(exc)
 
-    result = await skill.verify("2 + 2", "4")
+    result = await verify_math.verify("2 + 2", "4")
 
     assert result.verified is False
     assert result.error == "verifier unreachable"
@@ -160,7 +164,7 @@ async def test_quant_solve_turn_degrades_when_the_verifier_is_down():
 
     agent = QuantAgent(
         model_config_path="config/model_config.dev.yaml",
-        verify_math_skill=VerifyMathSkill(server_url="http://127.0.0.1:9"),
+        verify_math=VerifyMath(server_url="http://127.0.0.1:9"),
     )
     session = Session(candidate_id="c1", test_type="gre", section="quant", mode=Mode.solve)
     with patch("litellm.acompletion", new=AsyncMock(side_effect=respond)):

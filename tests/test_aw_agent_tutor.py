@@ -3,7 +3,7 @@ Tests for AWAgent Tutor mode.
 
 Behaviors under test (issue 08):
   1. Tutor mode yields a plan, not a full essay (short structured output)
-  2. retrieve-corpus Skill is called for every AW turn
+  2. retrieve-corpus capability is called for every AW turn
   3. Retrieved chunks are injected into the LLM message context
   4. Issue task vs Argument task detected and routed to different prompt sections
   5. Citation checker is called post-generation
@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from services.agent.src.agent.agents.aw import AWAgent
-from services.agent.src.agent.skills.retrieve_corpus import CorpusChunk
+from services.agent.src.agent.capabilities.retrieve_corpus import CorpusChunk
 from shared.src.shared.events import CitationsStripped
 from shared.src.shared.models import Mode, Session
 from tests.agent_events import texts
@@ -74,7 +74,7 @@ async def test_tutor_yields_tokens():
     assert texts(items) == ["Outline:", " 1.", " Introduction"]
 
 
-# ── 2. retrieve-corpus Skill called ──────────────────────────────────────────
+# ── 2. retrieve-corpus capability called ──────────────────────────────────────────
 
 
 @pytest.mark.asyncio

@@ -1,12 +1,12 @@
 """
-One source for the math tools' contract, and skills that reach the real routes.
+One source for the math tools' contract, and the clients that reach the real routes.
 
 Behaviors under test:
   1. the agent's tool specs and the verifier's tools come from one module, so a changed
      parameter is one edit (the two used to be hand-copied and could drift)
   2. every tool function takes exactly the arguments its spec lists, required or optional
-  3. both skills take an `httpx` client, so a test drives the real FastAPI/Starlette routes
-     through `httpx.ASGITransport` instead of subclassing a skill and skipping its `__init__`
+  3. both clients take an `httpx` client, so a test drives the real FastAPI/Starlette routes
+     through `httpx.ASGITransport` instead of subclassing a client and skipping its `__init__`
 """
 
 import inspect
@@ -14,9 +14,9 @@ import inspect
 import httpx
 import pytest
 
-from services.agent.src.agent.skills import math_tools
-from services.agent.src.agent.skills.math_tools import UNAVAILABLE, MathToolsSkill
-from services.agent.src.agent.skills.verify_math import VerifyMathSkill
+from services.agent.src.agent.capabilities.verify_math import VerifyMath
+from services.agent.src.agent.tools import math_tools
+from services.agent.src.agent.tools.math_tools import UNAVAILABLE, MathTools
 from services.math_verifier.src.math_verifier import tools
 from services.math_verifier.src.math_verifier.server import mcp
 from shared.src.shared import math_tool_specs
@@ -56,18 +56,18 @@ def test_every_tool_function_takes_the_arguments_its_spec_lists() -> None:
 # ── 3. a client reaches the real routes ──────────────────────────────────────
 
 
-async def test_the_verify_skill_reaches_the_real_route(client: httpx.AsyncClient) -> None:
-    skill = VerifyMathSkill(client=client)
-    right = await skill.verify("x**2 - 5*x + 6 = 0", "x=2 or x=3")
-    wrong = await skill.verify("x**2 - 5*x + 6 = 0", "x=1")
+async def test_the_verify_math_reaches_the_real_route(client: httpx.AsyncClient) -> None:
+    verify_math = VerifyMath(client=client)
+    right = await verify_math.verify("x**2 - 5*x + 6 = 0", "x=2 or x=3")
+    wrong = await verify_math.verify("x**2 - 5*x + 6 = 0", "x=1")
     assert right.verified is True and right.error is None
     assert wrong.verified is False
 
 
-async def test_the_math_tools_skill_reaches_the_real_route(client: httpx.AsyncClient) -> None:
-    skill = MathToolsSkill(client=client)
-    assert (await skill.call("math_solve", {"equation": "2x + 3 = 11"}))["roots"] == ["4"]
-    assert (await skill.call("math_compare", {"quantity_a": "3^2", "quantity_b": "2^3"}))[
+async def test_the_math_tools_reach_the_real_route(client: httpx.AsyncClient) -> None:
+    tools = MathTools(client=client)
+    assert (await tools.call("math_solve", {"equation": "2x + 3 = 11"}))["roots"] == ["4"]
+    assert (await tools.call("math_compare", {"quantity_a": "3^2", "quantity_b": "2^3"}))[
         "verdict"
     ] == "A"
 
@@ -75,12 +75,12 @@ async def test_the_math_tools_skill_reaches_the_real_route(client: httpx.AsyncCl
 async def test_a_bad_call_comes_back_as_the_services_error_for_the_model(
     client: httpx.AsyncClient,
 ) -> None:
-    result = await MathToolsSkill(client=client).call("math_evaluate", {"expression": "15% of 80"})
+    result = await MathTools(client=client).call("math_evaluate", {"expression": "15% of 80"})
     assert "15/100" in result["error"]
 
 
 async def test_an_unknown_tool_is_the_unavailable_message(client: httpx.AsyncClient) -> None:
-    assert await MathToolsSkill(client=client).call("math_integrate", {}) == {"error": UNAVAILABLE}
+    assert await MathTools(client=client).call("math_integrate", {}) == {"error": UNAVAILABLE}
 
 
 async def test_a_down_service_degrades_through_an_injected_client() -> None:
@@ -88,7 +88,7 @@ async def test_a_down_service_degrades_through_an_injected_client() -> None:
         raise httpx.ConnectError("refused", request=request)
 
     down = httpx.AsyncClient(transport=httpx.MockTransport(refuse))
-    assert (await VerifyMathSkill(client=down).verify("2", "2")).error == "verifier unreachable"
-    assert await MathToolsSkill(client=down).call("math_evaluate", {"expression": "1"}) == {
+    assert (await VerifyMath(client=down).verify("2", "2")).error == "verifier unreachable"
+    assert await MathTools(client=down).call("math_evaluate", {"expression": "1"}) == {
         "error": UNAVAILABLE
     }

@@ -18,8 +18,8 @@ from evals.turn_report import main as report_main
 from evals.turn_report import merge_turns, percentile, summarise
 from services.agent.src.agent.agents.aw import AWAgent
 from services.agent.src.agent.agents.quant import QuantAgent
-from services.agent.src.agent.skills.retrieve_corpus import CorpusChunk
-from services.agent.src.agent.skills.verify_math import VerifyMathResult
+from services.agent.src.agent.capabilities.retrieve_corpus import CorpusChunk
+from services.agent.src.agent.capabilities.verify_math import VerifyMathResult
 from services.gateway.src.gateway.guardrails.verdict import Verdict
 from services.gateway.src.gateway.main import app
 from shared.src.shared.budget import estimate_cost, estimate_tokens
