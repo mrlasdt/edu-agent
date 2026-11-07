@@ -3,13 +3,15 @@
 Run inside a built image (the `compose-smoke` job does, for each service):
     docker compose ... run --rm --no-deps -T --entrypoint python <service> - < infra/import_smoke.py
 
-Starting a service already imports its app, but not the modules loaded lazily, inside a
-function or behind a route. This imports all of them, so a package the service uses but its
-group in pyproject.toml forgot fails here, before merge, as a ModuleNotFoundError.
+Starting a service already imports its app, but not what is loaded lazily, inside a function
+or behind a route. This imports every shipped module, then every third-party package any of
+them imports anywhere (function bodies included), so a package the service uses but its group
+in pyproject.toml forgot fails here, before merge, as a ModuleNotFoundError.
 """
 
 from __future__ import annotations
 
+import ast
 import importlib
 import importlib.util
 import sys
@@ -22,26 +24,45 @@ ROOT = Path.cwd()  # /app in the image: services/ and shared/ sit beside it
 # service group carries langgraph.
 EVAL_ONLY_PREFIXES = ("services.agent.src.agent.pipeline",)
 EVAL_ONLY_PACKAGES = ("langgraph",)
+FIRST_PARTY = {"services", "shared"}
 
 
-def shipped_modules() -> list[str]:
-    names = []
+def shipped_modules() -> dict[str, Path]:
+    modules = {}
     for path in sorted((ROOT / "services").rglob("*.py")):
         parts = path.relative_to(ROOT).with_suffix("").parts
-        names.append(".".join(parts[:-1] if parts[-1] == "__init__" else parts))
-    return names
+        modules[".".join(parts[:-1] if parts[-1] == "__init__" else parts)] = path
+    return modules
+
+
+def imported_packages(path: Path) -> set[str]:
+    """Top-level third-party packages a module imports, wherever the import statement sits."""
+    tree = ast.parse(path.read_text())
+    roots = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            roots.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            roots.add(node.module.split(".")[0])
+    return roots - set(sys.stdlib_module_names) - FIRST_PARTY
 
 
 def main() -> int:
     sys.path.insert(0, str(ROOT))
     failures = []
-    modules = [m for m in shipped_modules() if not m.startswith(EVAL_ONLY_PREFIXES)]
+    modules = {n: p for n, p in shipped_modules().items() if not n.startswith(EVAL_ONLY_PREFIXES)}
     for name in modules:
         try:
             importlib.import_module(name)
         except Exception:
             failures.append(name)
             print(f"FAIL {name}\n{traceback.format_exc()}", file=sys.stderr)
+    for package in sorted(set().union(*map(imported_packages, modules.values()))):
+        try:
+            importlib.import_module(package)
+        except Exception:
+            failures.append(package)
+            print(f"FAIL {package}\n{traceback.format_exc()}", file=sys.stderr)
     for package in EVAL_ONLY_PACKAGES:
         if importlib.util.find_spec(package) is not None:
             failures.append(package)
