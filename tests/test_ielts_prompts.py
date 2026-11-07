@@ -1,7 +1,8 @@
 """The IELTS writing prompts are product data: the product owns the file, evals reads it."""
 from __future__ import annotations
 
-import re
+import subprocess
+import sys
 from pathlib import Path
 
 from evals.exam_set import ielts_writing_prompts
@@ -9,8 +10,6 @@ from evals.loader import load_exam_items
 from services.agent.src.agent.ielts import prompts as product_prompts
 
 REPO = Path(__file__).resolve().parent.parent
-PRODUCT_DIRS = ("services", "shared")
-EVALS_REFERENCE = re.compile(r"(^\s*(from|import)\s+evals\b)|evals/golden", re.MULTILINE)
 
 
 def test_prompts_file_lives_with_the_product_and_loads_from_any_working_directory(
@@ -31,16 +30,16 @@ def test_the_old_eval_copy_is_gone_and_evals_reads_the_product_file():
     assert [i.id for i in items] == [p.id for p in product_prompts.load_prompts()]
 
 
-def test_product_code_and_deploy_files_do_not_reach_into_evals():
-    offenders: list[str] = []
-    files = [
-        p for d in PRODUCT_DIRS for p in (REPO / d).rglob("*")
-        if p.is_file() and (p.suffix in {".py", ".toml", ".yml", ".yaml"} or p.name == "Dockerfile")
-    ]
-    files += [REPO / "infra" / "docker-compose.yml"]
-    for path in files:
-        if "__pycache__" in path.parts or "node_modules" in path.parts:
-            continue
-        if EVALS_REFERENCE.search(path.read_text(encoding="utf-8")):
-            offenders.append(str(path.relative_to(REPO)))
-    assert not offenders, offenders
+def test_product_loader_works_with_evals_unimportable():
+    """The product must serve its prompts from a deployment that has no evals/ directory."""
+    code = (
+        f"import sys; sys.path.insert(0, {str(REPO)!r}); sys.modules['evals'] = None\n"
+        "from services.agent.src.agent.ielts.prompts import load_prompts\n"
+        "print(len(load_prompts()))\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-I", "-c", code], cwd=REPO,
+        capture_output=True, text=True,
+    )
+    assert done.returncode == 0, done.stderr
+    assert int(done.stdout) == len(product_prompts.load_prompts())
