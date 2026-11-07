@@ -44,13 +44,13 @@ def mock_stream(tokens=None):
 def clean_callbacks(monkeypatch):
     import litellm
 
-    from shared.src.shared.config import get_settings
+    from shared.src.shared.config import clear_settings_caches
 
     monkeypatch.setattr(litellm, "success_callback", [])
     monkeypatch.setattr(litellm, "failure_callback", [])
-    get_settings.cache_clear()
+    clear_settings_caches()
     yield litellm
-    get_settings.cache_clear()
+    clear_settings_caches()
 
 
 def test_setup_observability_enables_langfuse_callback(monkeypatch, clean_callbacks):
@@ -104,11 +104,11 @@ def test_agent_service_registers_callback_at_startup(monkeypatch, clean_callback
     import importlib
 
     import services.agent.src.agent.main as agent_main
-    from shared.src.shared.config import get_settings
+    from shared.src.shared.config import clear_settings_caches
 
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    get_settings.cache_clear()
+    clear_settings_caches()
     importlib.reload(agent_main)
 
     assert "langfuse" in clean_callbacks.success_callback
@@ -118,11 +118,11 @@ def test_agent_service_startup_leaves_callbacks_empty_without_keys(monkeypatch, 
     import importlib
 
     import services.agent.src.agent.main as agent_main
-    from shared.src.shared.config import get_settings
+    from shared.src.shared.config import clear_settings_caches
 
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "")
-    get_settings.cache_clear()
+    clear_settings_caches()
     importlib.reload(agent_main)
 
     assert clean_callbacks.success_callback == []
@@ -133,11 +133,11 @@ def test_gateway_service_registers_callback_at_startup(monkeypatch, clean_callba
     import importlib
 
     import services.gateway.src.gateway.main as gateway_main
-    from shared.src.shared.config import get_settings
+    from shared.src.shared.config import clear_settings_caches
 
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
-    get_settings.cache_clear()
+    clear_settings_caches()
     importlib.reload(gateway_main)
 
     assert "langfuse" in clean_callbacks.success_callback

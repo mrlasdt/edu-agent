@@ -21,6 +21,7 @@ import httpx
 import pytest
 
 from services.agent.src.agent.agents.quant import QuantAgent
+from services.agent.src.agent.settings import AgentSettings
 from services.agent.src.agent.skills.math_tools import (
     MATH_TOOL_SPECS,
     TOOL_NAMES,
@@ -28,7 +29,7 @@ from services.agent.src.agent.skills.math_tools import (
     MathToolsSkill,
 )
 from services.agent.src.agent.skills.verify_math import VerifyMathResult
-from shared.src.shared.config import Settings, load_model_config
+from shared.src.shared.config import load_model_config
 from shared.src.shared.events import Event, Token, ToolTrace, Verified
 from shared.src.shared.models import Mode, Session
 from tests.agent_events import reply_of
@@ -277,9 +278,9 @@ def test_the_product_default_is_tools_off_and_one_switch_turns_them_on(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # off: no measured accuracy gain for ~3x the cost per solve turn, and no streaming
-    assert Settings(_env_file=None).math_tools_enabled is False  # type: ignore[call-arg]
+    assert AgentSettings(_env_file=None).math_tools_enabled is False  # type: ignore[call-arg]
     monkeypatch.setenv("MATH_TOOLS_ENABLED", "true")
-    assert Settings(_env_file=None).math_tools_enabled is True  # type: ignore[call-arg]
+    assert AgentSettings(_env_file=None).math_tools_enabled is True  # type: ignore[call-arg]
 
 
 def test_the_tools_prompts_resolve_and_describe_the_tools() -> None:

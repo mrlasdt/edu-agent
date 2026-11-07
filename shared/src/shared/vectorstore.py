@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from qdrant_client import AsyncQdrantClient, models
 
-from shared.src.shared.config import get_settings
 from shared.src.shared.embedder import EMBED_DIM
 
 # Single collection; tier and test_type are payload fields filtered at query
@@ -32,8 +31,8 @@ class CollectionSchemaError(RuntimeError):
     """The existing collection does not have the named dense + sparse layout."""
 
 
-def get_qdrant_client(url: str | None = None) -> AsyncQdrantClient:
-    return AsyncQdrantClient(url=url or get_settings().qdrant_url)
+def get_qdrant_client(url: str) -> AsyncQdrantClient:
+    return AsyncQdrantClient(url=url)
 
 
 async def check_collection_schema(

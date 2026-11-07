@@ -15,7 +15,7 @@ from typing import Any, cast
 
 import httpx
 
-from shared.src.shared.config import get_settings
+from services.agent.src.agent.settings import get_settings
 from shared.src.shared.math_tool_specs import MATH_TOOL_SPECS, TOOL_NAMES
 
 __all__ = ["MATH_TOOL_SPECS", "TOOL_NAMES", "UNAVAILABLE", "MathToolsSkill"]

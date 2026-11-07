@@ -33,7 +33,8 @@ from services.gateway.src.gateway.guardrails.rate_limit import (
     RateLimiter,
 )
 from services.gateway.src.gateway.guardrails.verdict import Verdict
-from shared.src.shared.config import Settings, get_settings
+from services.gateway.src.gateway.settings import GatewaySettings as Settings
+from shared.src.shared.config import clear_settings_caches
 from shared.src.shared.models import Message, MessageRole, Mode, Session
 from shared.src.shared.structured import StructuredOutputError
 from shared.src.shared.turn_meter import TurnMeter
@@ -241,7 +242,7 @@ async def test_a_model_without_schema_support_gets_json_object_and_the_same_vali
 ):
     # The default config's free OpenRouter model: litellm does not list it as schema-capable.
     monkeypatch.setenv("MODEL_CONFIG_PATH", "config/model_config.free.yaml")
-    get_settings.cache_clear()
+    clear_settings_caches()
     with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = _llm_response('{"complete": "false"}')
         with pytest.raises(StructuredOutputError):

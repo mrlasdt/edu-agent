@@ -22,7 +22,7 @@ from mcp.server.fastmcp import FastMCP
 
 from evals.loader import load_golden_set
 from mcp_servers.launch import bind_host, run
-from shared.src.shared.config import get_settings
+from mcp_servers.settings import get_settings
 
 mcp = FastMCP(
     "gre-tutor-candidate",

@@ -13,17 +13,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import sys
 from pathlib import Path
 
 import httpx
 
-from shared.src.shared.config import ADMIN_KEY_HEADER, get_settings
+from services.ingestion.src.ingestion.settings import get_settings
+from shared.src.shared.config import ADMIN_KEY_HEADER
 
 logger = logging.getLogger("seed")
 
-SEED_DIR = Path(os.environ.get("SEED_DIR", "seed"))
 TEST_TYPE = "gre"
 # The first embedding call can wait on a cold model download (BGE-M3 is ~2GB).
 _READY_TIMEOUT_S = 900.0
@@ -67,11 +66,11 @@ async def upload(client: httpx.AsyncClient, base_url: str, path: Path) -> None:
 
 
 async def main() -> int:
-    notes = sorted((SEED_DIR / "gre-quant").glob("*.txt"))
-    if not notes:
-        logger.error("no seed notes found under %s", SEED_DIR)
-        return 1
     settings = get_settings()
+    notes = sorted((Path(settings.seed_dir) / "gre-quant").glob("*.txt"))
+    if not notes:
+        logger.error("no seed notes found under %s", settings.seed_dir)
+        return 1
     if not settings.ingestion_admin_key:
         logger.error("INGESTION_ADMIN_KEY is not set; add it to .env (see .env.example)")
         return 1

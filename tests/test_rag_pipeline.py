@@ -26,8 +26,8 @@ from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedR
 
 from services.corpus.src.corpus.main import app, lifespan, search_corpus
 from services.corpus.src.corpus.retriever import build_search_filter
+from services.corpus.src.corpus.settings import CorpusSettings
 from services.ingestion.src.ingestion.main import chunk_point_id, run_ingestion_pipeline
-from shared.src.shared.config import Settings
 from shared.src.shared.vectorstore import CollectionSchemaError, ensure_collection
 
 # ── 1. filter builder ─────────────────────────────────────────────────────────
@@ -58,8 +58,8 @@ def _point(pid, score, payload):
     return p
 
 
-def _settings(hybrid: bool) -> Settings:
-    return Settings(hybrid_retrieval_enabled=hybrid)
+def _settings(hybrid: bool) -> CorpusSettings:
+    return CorpusSettings(hybrid_retrieval_enabled=hybrid)
 
 
 @patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(False))

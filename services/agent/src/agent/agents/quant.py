@@ -4,19 +4,19 @@ import logging
 import re
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import replace
-from pathlib import Path
 from typing import Any
 
 from services.agent.src.agent import independent_check
 from services.agent.src.agent.answers import extract_final_answer, normalize_answer
 from services.agent.src.agent.base import BaseAgent
 from services.agent.src.agent.independent_check import IndependentCheck
+from services.agent.src.agent.settings import get_settings
 from services.agent.src.agent.skills.math_tools import MATH_TOOL_SPECS, MathToolsSkill
 from services.agent.src.agent.skills.retrieve_corpus import CorpusChunk, RetrieveCorpusSkill
 from services.agent.src.agent.skills.verify_math import VerifyMathResult, VerifyMathSkill
 from services.agent.src.agent.tool_loop import ToolCallRecord, run_tool_loop
 from shared.src.shared import events
-from shared.src.shared.config import get_settings, load_model_config
+from shared.src.shared.config import PROJECT_ROOT, load_model_config
 from shared.src.shared.events import Event, Sources, Token, ToolTrace, Verified
 from shared.src.shared.models import MessageRole, Mode, Session
 from shared.src.shared.observability import build_llm_metadata
@@ -24,7 +24,7 @@ from shared.src.shared.turn_meter import TurnMeter
 
 _log = logging.getLogger(__name__)
 
-_PROMPT_ROOT = Path("prompts")
+_PROMPT_ROOT = PROJECT_ROOT / "prompts"
 _AGENT = "quant_agent"
 # The same prompts plus a "Math tools" section; used only when the math tools are on.
 _TOOLS_AGENT = "quant_agent_math_tools"

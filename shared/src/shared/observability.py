@@ -20,7 +20,7 @@ import os
 from functools import lru_cache
 from typing import Any
 
-from shared.src.shared.config import get_settings
+from shared.src.shared.config import get_langfuse_settings
 
 _log = logging.getLogger(__name__)
 
@@ -36,12 +36,12 @@ def setup_observability() -> None:
     Configure LiteLLM → Langfuse callback if keys are configured (env or .env).
     Safe to call multiple times; idempotent.
     """
-    settings = get_settings()
+    settings = get_langfuse_settings()
     if not (_is_set(settings.langfuse_public_key) and _is_set(settings.langfuse_secret_key)):
         return  # no-op in dev/test without Langfuse
 
     # The LiteLLM Langfuse callback reads its credentials from os.environ, but
-    # Settings may have loaded them from .env; mirror them across.
+    # LangfuseSettings may have loaded them from .env; mirror them across.
     os.environ.setdefault("LANGFUSE_PUBLIC_KEY", settings.langfuse_public_key)
     os.environ.setdefault("LANGFUSE_SECRET_KEY", settings.langfuse_secret_key)
     os.environ.setdefault("LANGFUSE_HOST", settings.langfuse_host)
@@ -56,7 +56,7 @@ def setup_observability() -> None:
 
 def langfuse_enabled() -> bool:
     """True when real Langfuse keys are configured, the same test `setup_observability` uses."""
-    settings = get_settings()
+    settings = get_langfuse_settings()
     return _is_set(settings.langfuse_public_key) and _is_set(settings.langfuse_secret_key)
 
 
@@ -64,7 +64,7 @@ def langfuse_enabled() -> bool:
 def _langfuse_client() -> Any:
     from langfuse import Langfuse
 
-    settings = get_settings()
+    settings = get_langfuse_settings()
     return Langfuse(
         public_key=settings.langfuse_public_key,
         secret_key=settings.langfuse_secret_key,

@@ -20,7 +20,7 @@ import logging
 import time
 from typing import Any, Literal
 
-from shared.src.shared.config import get_settings
+from shared.src.shared.config import get_feedback_settings
 from shared.src.shared.turn_meter import TurnLog
 
 _log = logging.getLogger(__name__)
@@ -34,13 +34,13 @@ Vote = Literal["up", "down"]
 
 def default_feedback_log() -> TurnLog | None:
     """The log at `FEEDBACK_LOG_PATH`; an empty path switches feedback off."""
-    path = get_settings().feedback_log_path.strip()
+    path = get_feedback_settings().feedback_log_path.strip()
     return TurnLog(path) if path else None
 
 
 def default_capture_log() -> TurnLog | None:
     """The capture file, or None while `TURN_CAPTURE_TEXT` is off (the default)."""
-    settings = get_settings()
+    settings = get_feedback_settings()
     path = settings.turn_capture_path.strip()
     return TurnLog(path) if settings.turn_capture_text and path else None
 

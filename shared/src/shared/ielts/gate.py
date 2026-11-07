@@ -14,12 +14,13 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from shared.src.shared.config import PROJECT_ROOT
 from shared.src.shared.ielts.models import Calibration
 from shared.src.shared.ielts.scoring import CRITERIA
 
 Pairs = Sequence[tuple[float, float]]
 
-CALIBRATION_PATH = Path("config/ielts_calibration.json")
+CALIBRATION_PATH = PROJECT_ROOT / "config" / "ielts_calibration.json"
 DECISION_TIERS = ("examiner", "captain_blind")
 DECISION_MIN_N = 60
 TOLERANCE = 0.5

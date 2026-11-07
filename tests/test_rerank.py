@@ -21,15 +21,15 @@ import pytest
 import respx
 
 from services.corpus.src.corpus.main import search_corpus
-from shared.src.shared.config import Settings
+from services.corpus.src.corpus.settings import CorpusSettings
 from shared.src.shared.reranker import rerank_texts
 
 RERANKER_URL = "http://tei-reranker:8080"
 
 
-def _settings(**overrides) -> Settings:
+def _settings(**overrides) -> CorpusSettings:
     base = {"hybrid_retrieval_enabled": True, "tei_reranker_url": RERANKER_URL}
-    return Settings(**{**base, **overrides})
+    return CorpusSettings(**{**base, **overrides})
 
 
 def _point(pid, score, payload):
@@ -238,7 +238,7 @@ async def test_rerank_texts_maps_scores_back_to_input_order():
 
 
 async def test_rerank_texts_empty_input_makes_no_call():
-    assert await rerank_texts("q", []) == []
+    assert await rerank_texts("q", [], url="http://tei") == []
 
 
 @respx.mock
