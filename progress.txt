@@ -66,8 +66,8 @@ Moderation API). See README "Not built yet" for what is still missing.
   redaction, content safety, completeness (enrichment), answer-leak and citation guardrails;
   output content safety is not applied.
 - /generate streams text plus a trailer with the math verifier's verdict (shown under a
-  solved answer) and the sample-essay flag (the web app shows the essay notice for it); sources and citation_stripped metadata are dropped, so SourcesPanel has
-  nothing to show.
+  solved answer) and the sample-essay flag (the web app shows the essay notice for it);
+  sources and citation_stripped metadata are dropped, so SourcesPanel has nothing to show.
 - Evals are small (5 Quant and 2 AW golden items). evals/agent_eval runs the real QuantAgent
   (leak rate, sympy-graded accuracy, judge-vs-golden agreement, cost/latency, shared 5 USD ledger);
   AW is judge calibration only. No baseline is measured/checked in; CI runs it offline only.
