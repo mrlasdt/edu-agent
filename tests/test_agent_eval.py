@@ -370,6 +370,64 @@ def test_coverage_failures_flags_mostly_dropped_suites():
     assert coverage_failures(report, 0.0) == {}
 
 
+def test_a_suite_result_without_units_total_fails_the_coverage_check():
+    """A suite that forgets `units_total` must not read as full coverage."""
+    from evals.agent_eval.runner import coverage_failures
+
+    report = {"suites": {"generation": {"units_dropped_model_unavailable": 7}}}
+    assert coverage_failures(report, 0.8) == {"generation": 0.0}
+    assert coverage_failures(report, 0.0) == {}
+
+
+async def test_generation_run_with_the_model_down_fails_the_coverage_gate():
+    """End to end through run_generation: every unit dropped must trip the real gate."""
+    from evals.agent_eval import generation
+    from evals.agent_eval.runner import coverage_failures
+
+    class Down:
+        async def run(self, request: Any) -> Any:
+            raise AllModelsFailedError("model chain unavailable")
+
+    requests = [
+        generation.GenerationRequest.model_validate(i)
+        for i in cli.load_golden_set("quant_generation")
+    ][:4]
+    transport = MeteredTransport(
+        Ledger(Path("/nonexistent/ledger.json"), 20.0), "t", fake_model=cli._offline_model
+    )
+    skill = cli.runner.InProcessVerifySkill()
+    out = await generation.run_generation(
+        requests, {"baseline": Down(), "pipeline": Down()}, cli._offline_judge(), skill, transport
+    )
+    assert out["units_total"] == 8 and out["units_dropped_model_unavailable"] == 8
+    assert coverage_failures({"suites": {"generation": out}}, 0.8) == {"generation": 0.0}
+
+
+async def test_quant_judge_suite_never_reaches_the_corpus_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, block_network: None
+):
+    """The quant_judge agent gets the same offline notes skill as the quant suite."""
+    from services.agent.src.agent.skills.retrieve_corpus import RetrieveCorpusSkill
+
+    corpus_calls: list[str] = []
+
+    async def corpus(self: Any, query: str, **kw: Any) -> list[dict[str, Any]]:
+        corpus_calls.append(query)
+        return []
+
+    monkeypatch.setattr(RetrieveCorpusSkill, "_call_corpus", corpus)
+    args = cli.argparse.Namespace(
+        mode="offline", suite=["quant_judge"], provider="free", judge="llm", judge_model=None,
+        max_items=3, max_items_given=True, samples=1, model=None, max_tokens=800,
+        ledger=str(tmp_path / "l.json"), ceiling=20.0, out_dir=str(tmp_path),
+        baseline=None, write_baseline=None, min_coverage=0.8,
+        cache_dir=str(tmp_path / "c"), no_cache=True, math_tools="on",
+    )
+    report, code = await cli.run(args)
+    assert code == 0 and report["suites"]["quant_judge"]["n_items"] == 3
+    assert corpus_calls == []
+
+
 async def test_failed_run_exits_nonzero_and_emits_no_regression_metrics(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

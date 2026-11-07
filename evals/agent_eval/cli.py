@@ -271,6 +271,7 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 agent = QuantAgent(
                     model_config_path=runner.write_model_config(model),
                     verify_math_skill=runner.InProcessVerifySkill(),
+                    retrieve_corpus_skill=quant_suite.NotesSkill([]),
                     math_tools_skill=runner.InProcessMathTools(),
                     math_tools_enabled=args.math_tools == "on",
                 )

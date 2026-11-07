@@ -289,8 +289,11 @@ def coverage_failures(report: dict[str, Any], min_coverage: float) -> dict[str, 
     """Suites whose share of completed units is below `min_coverage` (suite -> coverage)."""
     out: dict[str, float] = {}
     for name, suite in report["suites"].items():
-        total = suite.get("units_total", 0)
-        coverage = 1 - suite["units_dropped_model_unavailable"] / total if total else 1.0
+        total = suite.get("units_total")
+        if total is None:  # a suite that cannot say how many units it ran has not proven coverage
+            coverage = 0.0
+        else:
+            coverage = 1 - suite["units_dropped_model_unavailable"] / total if total else 1.0
         if coverage < min_coverage:
             out[name] = coverage
     return out

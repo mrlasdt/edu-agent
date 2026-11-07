@@ -203,6 +203,7 @@ async def run_generation(
         "comparison": comparison,
         "review_queue": queue.count(),
         "judge_errors": len(judge_errors),
+        "units_total": len(work),
         "units_dropped_model_unavailable": len(unavailable),
         "rows": rows,
     }
