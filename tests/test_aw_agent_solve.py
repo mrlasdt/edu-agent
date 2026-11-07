@@ -1,5 +1,5 @@
 """
-Tests for AWAgent Solve mode + Personal style Skill (issue 09).
+Tests for AWAgent Solve mode + Personal style capability (issue 09).
 
 Behaviors under test:
   1. Solve mode yields essay tokens

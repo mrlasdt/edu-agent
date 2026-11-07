@@ -5,8 +5,8 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
 from services.agent.src.agent.base import BaseAgent
-from services.agent.src.agent.skills.match_student_style import MatchStudentStyleSkill
-from services.agent.src.agent.skills.retrieve_corpus import CorpusChunk, RetrieveCorpusSkill
+from services.agent.src.agent.capabilities.match_student_style import MatchStudentStyle
+from services.agent.src.agent.capabilities.retrieve_corpus import CorpusChunk, RetrieveCorpus
 from shared.src.shared.config import PROJECT_ROOT, load_model_config
 from shared.src.shared.critics.citation_checker import check_citations, strip_uncited_claims
 from shared.src.shared.critics.style_critic import run_style_critic
@@ -100,12 +100,12 @@ class AWAgent(BaseAgent):
     def __init__(
         self,
         model_config_path: str | None = None,
-        retrieve_corpus_skill: RetrieveCorpusSkill | None = None,
-        match_style_skill: MatchStudentStyleSkill | None = None,
+        retrieve_corpus_skill: RetrieveCorpus | None = None,
+        match_style_skill: MatchStudentStyle | None = None,
     ) -> None:
         self._model_config = load_model_config(model_config_path)
-        self._retrieve_skill = retrieve_corpus_skill or RetrieveCorpusSkill()
-        self._match_style_skill = match_style_skill or MatchStudentStyleSkill()
+        self._retrieve_skill = retrieve_corpus_skill or RetrieveCorpus()
+        self._match_style_skill = match_style_skill or MatchStudentStyle()
         self._model_config_path = model_config_path
 
     async def run(

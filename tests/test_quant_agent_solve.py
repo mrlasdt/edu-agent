@@ -17,7 +17,7 @@ import pytest
 import yaml
 
 from services.agent.src.agent.agents.quant import QuantAgent
-from services.agent.src.agent.skills.verify_math import VerifyMathResult
+from services.agent.src.agent.capabilities.verify_math import VerifyMathResult
 from shared.src.shared.events import Verified
 from shared.src.shared.models import Mode, Session
 from tests.agent_events import texts

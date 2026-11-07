@@ -106,7 +106,7 @@ Candidate / Admin     ┌──────────────────�
 | `web` | 5173 | React app behind nginx. `/` is the tutor chat, `/ielts-mock` the IELTS Writing mock |
 | `gateway` | 8000 | `POST /chat`, `POST /feedback`, the `/ielts/*` mock API (grader code in `shared/src/shared/ielts/`), orchestrator, guardrails, rate limit |
 | `corpus` | 8001 | `POST /corpus/retrieve`: Qdrant dense + sparse search fused with RRF, ACL filter, optional rerank |
-| `agent` | 8002 | `POST /generate`: Quant and AW agents, skills, critics, question pipeline |
+| `agent` | 8002 | `POST /generate`: Quant and AW agents, capabilities, tools, critics, question pipeline |
 | `ingestion` | 8003 | `/admin/documents` (admin key): parse, chunk, embed, index |
 | `math-verifier` | 8090 | FastMCP server: sympy checks behind an allow-list parser, one killable child process per check; also `POST /tools/{name}` for the math tools |
 | `tei-embedder` | 8080 | BGE-M3 embeddings (Hugging Face TEI) |

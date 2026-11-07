@@ -18,8 +18,8 @@ from sympy.parsing.sympy_parser import (
     standard_transformations,
 )
 
+from services.agent.src.agent.capabilities.verify_math import VerifyMath
 from services.agent.src.agent.pipeline.schema import CheckResult, QuestionItem, QuestionType
-from services.agent.src.agent.skills.verify_math import VerifyMathSkill
 
 _TRANSFORMS = standard_transformations + (implicit_multiplication_application,)
 _QC_LETTERS = {"A", "B", "C", "D"}
@@ -93,7 +93,7 @@ def structure_check(item: QuestionItem) -> CheckResult:
 # ── solver ───────────────────────────────────────────────────────────────────
 
 
-async def solve_check(item: QuestionItem, skill: VerifyMathSkill) -> CheckResult:
+async def solve_check(item: QuestionItem, skill: VerifyMath) -> CheckResult:
     """Recompute the key independently and compare it with the item's claimed answer."""
     if item.question_type == QuestionType.quantitative_comparison:
         return await _solve_qc(item, skill)
@@ -124,7 +124,7 @@ def _qc_signs(diff: sp.Expr) -> set[int] | None:
     return signs or None
 
 
-async def _solve_qc(item: QuestionItem, skill: VerifyMathSkill) -> CheckResult:
+async def _solve_qc(item: QuestionItem, skill: VerifyMath) -> CheckResult:
     diff_expr = f"({item.quantity_a}) - ({item.quantity_b})"
     # The skill returns what it computed whether or not `expected` matches.
     computed = await skill.verify(expression=diff_expr, expected="0")
@@ -148,7 +148,7 @@ async def _solve_qc(item: QuestionItem, skill: VerifyMathSkill) -> CheckResult:
     return CheckResult(name="solver", passed=True, detail=f"comparison gives {correct}")
 
 
-async def distractor_check(item: QuestionItem, skill: VerifyMathSkill) -> CheckResult:
+async def distractor_check(item: QuestionItem, skill: VerifyMath) -> CheckResult:
     """Multiple choice only: the keyed options are exactly the solution values."""
     if item.question_type not in (
         QuestionType.multiple_choice_single,
@@ -198,7 +198,7 @@ def leak_check(item: QuestionItem) -> CheckResult:
     return CheckResult(name="leak", passed=not problems, detail="; ".join(problems))
 
 
-async def run_checks(item: QuestionItem, skill: VerifyMathSkill) -> list[CheckResult]:
+async def run_checks(item: QuestionItem, skill: VerifyMath) -> list[CheckResult]:
     """All deterministic tools, in order. The solver only runs on a structurally sound item."""
     results = [structure_check(item), leak_check(item)]
     if results[0].passed:

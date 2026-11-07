@@ -1,5 +1,5 @@
 """
-verify-math Skill - client for the math-verifier service's verify_math tool.
+verify-math capability - client for the math-verifier service's verify_math tool.
 
 The Agent Service calls this skill during every Quant Solve turn. It posts to the verifier's
 plain-HTTP route (`POST /tools/verify_math`), the REST facade that sits beside the MCP
@@ -31,7 +31,7 @@ class VerifyMathResult:
     error: str | None = None
 
 
-class VerifyMathSkill:
+class VerifyMath:
     """
     Client skill for the math-verifier service's verify_math route.
 

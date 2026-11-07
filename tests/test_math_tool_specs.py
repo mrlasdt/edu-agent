@@ -14,9 +14,9 @@ import inspect
 import httpx
 import pytest
 
-from services.agent.src.agent.skills import math_tools
-from services.agent.src.agent.skills.math_tools import UNAVAILABLE, MathToolsSkill
-from services.agent.src.agent.skills.verify_math import VerifyMathSkill
+from services.agent.src.agent.capabilities.verify_math import VerifyMath
+from services.agent.src.agent.tools import math_tools
+from services.agent.src.agent.tools.math_tools import UNAVAILABLE, MathTools
 from services.math_verifier.src.math_verifier import tools
 from services.math_verifier.src.math_verifier.server import mcp
 from shared.src.shared import math_tool_specs
@@ -57,7 +57,7 @@ def test_every_tool_function_takes_the_arguments_its_spec_lists() -> None:
 
 
 async def test_the_verify_skill_reaches_the_real_route(client: httpx.AsyncClient) -> None:
-    skill = VerifyMathSkill(client=client)
+    skill = VerifyMath(client=client)
     right = await skill.verify("x**2 - 5*x + 6 = 0", "x=2 or x=3")
     wrong = await skill.verify("x**2 - 5*x + 6 = 0", "x=1")
     assert right.verified is True and right.error is None
@@ -65,7 +65,7 @@ async def test_the_verify_skill_reaches_the_real_route(client: httpx.AsyncClient
 
 
 async def test_the_math_tools_skill_reaches_the_real_route(client: httpx.AsyncClient) -> None:
-    skill = MathToolsSkill(client=client)
+    skill = MathTools(client=client)
     assert (await skill.call("math_solve", {"equation": "2x + 3 = 11"}))["roots"] == ["4"]
     assert (await skill.call("math_compare", {"quantity_a": "3^2", "quantity_b": "2^3"}))[
         "verdict"
@@ -75,12 +75,12 @@ async def test_the_math_tools_skill_reaches_the_real_route(client: httpx.AsyncCl
 async def test_a_bad_call_comes_back_as_the_services_error_for_the_model(
     client: httpx.AsyncClient,
 ) -> None:
-    result = await MathToolsSkill(client=client).call("math_evaluate", {"expression": "15% of 80"})
+    result = await MathTools(client=client).call("math_evaluate", {"expression": "15% of 80"})
     assert "15/100" in result["error"]
 
 
 async def test_an_unknown_tool_is_the_unavailable_message(client: httpx.AsyncClient) -> None:
-    assert await MathToolsSkill(client=client).call("math_integrate", {}) == {"error": UNAVAILABLE}
+    assert await MathTools(client=client).call("math_integrate", {}) == {"error": UNAVAILABLE}
 
 
 async def test_a_down_service_degrades_through_an_injected_client() -> None:
@@ -88,7 +88,7 @@ async def test_a_down_service_degrades_through_an_injected_client() -> None:
         raise httpx.ConnectError("refused", request=request)
 
     down = httpx.AsyncClient(transport=httpx.MockTransport(refuse))
-    assert (await VerifyMathSkill(client=down).verify("2", "2")).error == "verifier unreachable"
-    assert await MathToolsSkill(client=down).call("math_evaluate", {"expression": "1"}) == {
+    assert (await VerifyMath(client=down).verify("2", "2")).error == "verifier unreachable"
+    assert await MathTools(client=down).call("math_evaluate", {"expression": "1"}) == {
         "error": UNAVAILABLE
     }

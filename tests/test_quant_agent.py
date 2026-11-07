@@ -108,7 +108,7 @@ async def test_tutor_includes_history_in_llm_messages():
 
 @pytest.mark.asyncio
 async def test_solve_mode_uses_different_system_prompt():
-    from services.agent.src.agent.skills.verify_math import VerifyMathResult
+    from services.agent.src.agent.capabilities.verify_math import VerifyMathResult
 
     agent = QuantAgent(model_config_path="config/model_config.dev.yaml")
 
@@ -137,7 +137,7 @@ async def test_solve_mode_uses_different_system_prompt():
 # ── 5. Corpus grounding ───────────────────────────────────────────────────────
 
 def make_chunks():
-    from services.agent.src.agent.skills.retrieve_corpus import CorpusChunk
+    from services.agent.src.agent.capabilities.retrieve_corpus import CorpusChunk
 
     return [
         CorpusChunk(

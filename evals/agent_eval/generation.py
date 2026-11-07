@@ -34,9 +34,9 @@ from evals.agent_eval.results import (
 from evals.agent_eval.runner import ask_yes_no, guarded, rate_of
 from evals.agent_eval.transport import MeteredTransport, gather_limited, tagged
 from evals.human_review_queue import HumanReviewQueue
+from services.agent.src.agent.capabilities.verify_math import VerifyMath
 from services.agent.src.agent.pipeline.schema import GenerationRequest, PipelineResult, QuestionItem
 from services.agent.src.agent.pipeline.tools import run_checks
-from services.agent.src.agent.skills.verify_math import VerifyMathSkill
 
 GEN_JUDGE_INSTRUCTIONS = (
     "Is the keyed answer of the GRE question below correct, and is the question unambiguous "
@@ -54,7 +54,7 @@ def _item_text(item: QuestionItem) -> str:
     return f"{item.stem}\n{choices}\nKeyed answer: {item.answer}".strip()
 
 
-async def _audit(item: QuestionItem, skill: VerifyMathSkill) -> list[str]:
+async def _audit(item: QuestionItem, skill: VerifyMath) -> list[str]:
     return [c.name for c in await run_checks(item, skill) if not c.passed]
 
 
@@ -62,7 +62,7 @@ async def _run_one(
     name: str,
     target: Target,
     request: GenerationRequest,
-    skill: VerifyMathSkill,
+    skill: VerifyMath,
     judge: Judge,
     judge_errors: list[str],
 ) -> GenerationRow:
@@ -154,7 +154,7 @@ async def run_generation(
     requests: list[GenerationRequest],
     targets: dict[str, Target],
     judge: Judge,
-    skill: VerifyMathSkill,
+    skill: VerifyMath,
     transport: MeteredTransport,
     queue: HumanReviewQueue | None = None,
 ) -> GenerationResult:

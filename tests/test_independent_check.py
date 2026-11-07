@@ -16,10 +16,10 @@ import pytest
 from evals.agent_eval.runner import in_process_verify_skill
 from services.agent.src.agent import independent_check as ic
 from services.agent.src.agent.agents.quant import QuantAgent
-from services.agent.src.agent.skills.verify_math import (
+from services.agent.src.agent.capabilities.verify_math import (
     VERIFIER_UNREACHABLE,
+    VerifyMath,
     VerifyMathResult,
-    VerifyMathSkill,
 )
 from shared.src.shared.events import IndependentCheck, Verified
 from shared.src.shared.models import Mode, Session
@@ -28,7 +28,7 @@ from tests.agent_events import reply_of
 
 
 @pytest.fixture
-def skill() -> VerifyMathSkill:
+def skill() -> VerifyMath:
     return in_process_verify_skill()
 
 
@@ -155,7 +155,7 @@ async def test_not_checkable_is_never_a_verdict_on_the_answer(
 
 
 async def test_a_verifier_outage_is_not_checkable_not_a_disagreement() -> None:
-    class Down(VerifyMathSkill):
+    class Down(VerifyMath):
         async def verify(self, expression: str, expected: str) -> VerifyMathResult:
             return VerifyMathResult(verified=False, computed="", error=VERIFIER_UNREACHABLE)
 

@@ -53,9 +53,9 @@ from evals.agent_eval.transport import (
 from evals.judges.quant_judge import grade_quant_item
 from evals.loader import load_golden_set, sample_golden_set
 from services.agent.src.agent.agents.quant import QuantAgent
-from services.agent.src.agent.skills.math_tools import MathToolsSkill
-from services.agent.src.agent.skills.retrieve_corpus import RetrieveCorpusSkill
-from services.agent.src.agent.skills.verify_math import VerifyMathSkill
+from services.agent.src.agent.capabilities.retrieve_corpus import RetrieveCorpus
+from services.agent.src.agent.capabilities.verify_math import VerifyMath
+from services.agent.src.agent.tools.math_tools import MathTools
 from services.math_verifier.src.math_verifier.server import mcp as math_verifier_mcp
 from shared.src.shared.config import anchor, get_llm_settings
 from shared.src.shared.events import Token, Verified
@@ -83,22 +83,22 @@ def _in_process_client() -> httpx.AsyncClient:
     )
 
 
-def in_process_verify_skill() -> VerifyMathSkill:
+def in_process_verify_skill() -> VerifyMath:
     """The product's verify-math skill, reaching the real verifier routes in this process."""
-    return VerifyMathSkill(client=_in_process_client())
+    return VerifyMath(client=_in_process_client())
 
 
-def in_process_math_tools() -> MathToolsSkill:
+def in_process_math_tools() -> MathTools:
     """The product's math-tools skill, reaching the real verifier routes in this process."""
-    return MathToolsSkill(client=_in_process_client())
+    return MathTools(client=_in_process_client())
 
 
 def build_quant_agent(
     *,
     model_config_path: str,
-    corpus_skill: RetrieveCorpusSkill,
+    corpus_skill: RetrieveCorpus,
     math_tools_enabled: bool = False,
-    verify_skill: VerifyMathSkill | None = None,
+    verify_skill: VerifyMath | None = None,
 ) -> QuantAgent:
     """
     The one way an eval builds the real QuantAgent: the verifier and the math tools reach the

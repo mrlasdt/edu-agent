@@ -21,14 +21,14 @@ import httpx
 import pytest
 
 from services.agent.src.agent.agents.quant import QuantAgent
+from services.agent.src.agent.capabilities.verify_math import VerifyMathResult
 from services.agent.src.agent.settings import AgentSettings
-from services.agent.src.agent.skills.math_tools import (
+from services.agent.src.agent.tools.math_tools import (
     MATH_TOOL_SPECS,
     TOOL_NAMES,
     UNAVAILABLE,
-    MathToolsSkill,
+    MathTools,
 )
-from services.agent.src.agent.skills.verify_math import VerifyMathResult
 from shared.src.shared.config import load_model_config
 from shared.src.shared.events import Event, Token, ToolTrace, Verified
 from shared.src.shared.models import Mode, Session
@@ -77,7 +77,7 @@ class FakeMath:
     def __init__(self, result: Any) -> None:
         self.result = result
         self.posts: list[tuple[str, dict[str, Any]]] = []
-        self.skill = MathToolsSkill(
+        self.skill = MathTools(
             server_url="http://math.test",
             client=httpx.AsyncClient(transport=httpx.MockTransport(self._handle)),
         )

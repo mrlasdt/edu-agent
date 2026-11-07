@@ -32,6 +32,7 @@ from uuid import uuid4
 from langgraph.graph import END, StateGraph
 from pydantic import ValidationError
 
+from services.agent.src.agent.capabilities.verify_math import VerifyMath
 from services.agent.src.agent.pipeline.llm import Completer, extract_json, load_prompt
 from services.agent.src.agent.pipeline.schema import (
     EXPERT_FOR_TYPE,
@@ -45,7 +46,6 @@ from services.agent.src.agent.pipeline.schema import (
     TraceEvent,
 )
 from services.agent.src.agent.pipeline.tools import run_checks
-from services.agent.src.agent.skills.verify_math import VerifyMathSkill
 
 DEFAULT_MAX_ATTEMPTS = 3
 _PREVIOUS_ATTEMPT_CHARS = 1500
@@ -119,7 +119,7 @@ class QuestionPipeline:
     def __init__(
         self,
         completer: Completer,
-        verify_skill: VerifyMathSkill,
+        verify_skill: VerifyMath,
         max_attempts: int = DEFAULT_MAX_ATTEMPTS,
         prompt_versions: dict[str, str] | None = None,
     ) -> None:

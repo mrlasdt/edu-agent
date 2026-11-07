@@ -559,7 +559,7 @@ async def test_quant_judge_suite_never_reaches_the_corpus_service(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, block_network: None
 ):
     """The quant_judge agent gets the same offline notes skill as the quant suite."""
-    from services.agent.src.agent.skills.retrieve_corpus import RetrieveCorpusSkill
+    from services.agent.src.agent.capabilities.retrieve_corpus import RetrieveCorpus
 
     corpus_calls: list[str] = []
 
@@ -567,7 +567,7 @@ async def test_quant_judge_suite_never_reaches_the_corpus_service(
         corpus_calls.append(query)
         return []
 
-    monkeypatch.setattr(RetrieveCorpusSkill, "_call_corpus", corpus)
+    monkeypatch.setattr(RetrieveCorpus, "_call_corpus", corpus)
     args = cli.argparse.Namespace(
         mode="offline", suite=["quant_judge"], provider="free", judge="llm", judge_model=None,
         max_items=3, max_items_given=True, samples=1, model=None, max_tokens=800,

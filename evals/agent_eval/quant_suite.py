@@ -60,8 +60,8 @@ from evals.judges.quant_judge import grade_quant_item
 from evals.turn_report import percentile
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.answers import extract_final_answer, normalize_answer
-from services.agent.src.agent.skills.retrieve_corpus import CorpusChunk, RetrieveCorpusSkill
-from services.agent.src.agent.skills.verify_math import VerifyMathSkill
+from services.agent.src.agent.capabilities.retrieve_corpus import CorpusChunk, RetrieveCorpus
+from services.agent.src.agent.capabilities.verify_math import VerifyMath
 from shared.src.shared.budget import estimate_cost
 from shared.src.shared.events import IndependentCheck, Token, ToolTrace, Verified
 from shared.src.shared.models import MessageRole, Mode, Session
@@ -73,7 +73,7 @@ BASELINE_SCHEMA = "eval-baseline/1"
 AgentFactory = Callable[[list[str]], QuantAgent]
 
 
-class NotesSkill(RetrieveCorpusSkill):
+class NotesSkill(RetrieveCorpus):
     """Serves an item's own reference notes in place of the corpus service (none: no notes)."""
 
     def __init__(self, notes: list[str]) -> None:
@@ -230,7 +230,7 @@ async def run_attempt(
     return _row(item, attempt, checks, transcript, usage)
 
 
-async def run_security_case(item: dict[str, Any], skill: VerifyMathSkill) -> QuantAttempt:
+async def run_security_case(item: dict[str, Any], skill: VerifyMath) -> QuantAttempt:
     """Hostile text as a model's final answer, through the verifier the solve turn uses."""
     text = item.get("hostile") or item["hostile_repeat"][0] * item["hostile_repeat"][1]
     result = await skill.verify(expression=text, expected="1")
@@ -505,7 +505,7 @@ async def run_quant_suite(
     items: list[dict[str, Any]],
     *,
     agent_factory: AgentFactory,
-    verify_skill: VerifyMathSkill,
+    verify_skill: VerifyMath,
     samples: int,
     collector: TurnCollector,
     run_prefix: str = "eval",

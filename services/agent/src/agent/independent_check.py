@@ -25,7 +25,7 @@ import re
 from dataclasses import dataclass
 from typing import Final, get_args
 
-from services.agent.src.agent.skills.verify_math import VerifyMathSkill
+from services.agent.src.agent.capabilities.verify_math import VerifyMath
 from shared.src.shared import events
 from shared.src.shared.events import Verdict
 
@@ -95,7 +95,7 @@ def _display(computed: str) -> str:
 
 
 async def compare(
-    skill: VerifyMathSkill, expression: str | None, claimed: str
+    skill: VerifyMath, expression: str | None, claimed: str
 ) -> IndependentCheck:
     """
     Compute `expression` with the solver and compare it with the `claimed` answer. Never raises.
@@ -124,7 +124,7 @@ async def compare(
     return IndependentCheck(DISAGREES, solver=_display(result.computed))
 
 
-async def _is_rounding_of(skill: VerifyMathSkill, expression: str, claimed: str) -> bool:
+async def _is_rounding_of(skill: VerifyMath, expression: str, claimed: str) -> bool:
     """
     A decimal answer that is the right value rounded to its own number of places ("3.3" for
     10/3) agrees. Asked of the same solver as whole numbers, which compare exactly: is
@@ -143,7 +143,7 @@ async def _is_rounding_of(skill: VerifyMathSkill, expression: str, claimed: str)
     return rounded.verified and not rounded.error
 
 
-async def _is_some_of_the_roots(skill: VerifyMathSkill, computed: str, claimed: str) -> bool:
+async def _is_some_of_the_roots(skill: VerifyMath, computed: str, claimed: str) -> bool:
     """
     True when every claimed value is one of the solver's roots and some root is left over
     ("2" against "-2, 2"): the question may ask for the positive root, so this is no disagreement.
