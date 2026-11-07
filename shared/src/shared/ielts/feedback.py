@@ -12,20 +12,20 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from services.agent.src.agent.ielts import llm
-from services.agent.src.agent.ielts.checks import paragraph_spans
-from services.agent.src.agent.ielts.models import (
+from shared.src.shared.ielts import llm
+from shared.src.shared.ielts.checks import paragraph_spans
+from shared.src.shared.ielts.models import (
     Action,
     ErrorSpan,
     Evidence,
     ParagraphRole,
 )
-from services.agent.src.agent.ielts.scoring import (
+from shared.src.shared.ielts.scoring import (
     CRITERIA,
     GradeParseError,
     extract_json,
 )
-from services.agent.src.agent.ielts.spelling_variants import VARIANT_PAIRS
+from shared.src.shared.ielts.spelling_variants import VARIANT_PAIRS
 
 FEEDBACK_MAX_TOKENS = 6000  # a cap, not a target
 MAX_QUOTE_WORDS = 15

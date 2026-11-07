@@ -1,7 +1,7 @@
 """
 IELTS Writing Task 2 grader as an eval target. It measures the shipped code: the same
 sampled rubric grader, deterministic checks, feedback generator and report builder the
-`/ielts` API uses (`services/agent/src/agent/ielts/`), driven through the metered transport.
+`/ielts` API uses (`shared/src/shared/ielts/`), driven through the metered transport.
 
 Three suites:
   ielts_writing      agreement with the best label tier available (examiner, then
@@ -39,13 +39,13 @@ from evals.exam_set.schema import (
     LabelTier,
     best_label_tier,
 )
-from services.agent.src.agent.ielts import llm
-from services.agent.src.agent.ielts.gate import gate_report
-from services.agent.src.agent.ielts.grading import GradingError, grade_essay
-from services.agent.src.agent.ielts.marking import mark_essay
-from services.agent.src.agent.ielts.models import Calibration
-from services.agent.src.agent.ielts.report_checks import check_report
-from services.agent.src.agent.ielts.scoring import (  # noqa: F401 - re-exported for the CLI/tests
+from shared.src.shared.ielts import llm
+from shared.src.shared.ielts.gate import gate_report
+from shared.src.shared.ielts.grading import GradingError, grade_essay
+from shared.src.shared.ielts.marking import mark_essay
+from shared.src.shared.ielts.models import Calibration
+from shared.src.shared.ielts.report_checks import check_report
+from shared.src.shared.ielts.scoring import (  # noqa: F401 - re-exported for the CLI/tests
     GradeParseError,
     parse_grade,
     round_overall,

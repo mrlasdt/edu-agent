@@ -31,7 +31,7 @@ from evals.exam_set.schema import (
     LabelTier,
     Source,
 )
-from services.agent.src.agent.ielts.scoring import round_overall
+from shared.src.shared.ielts.scoring import round_overall
 
 BLIND_DIR = Path("ielts-local/blind")
 ESSAYS_MD = "essays.md"

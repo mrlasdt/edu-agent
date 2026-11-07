@@ -15,7 +15,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from services.agent.src.agent.bootstrap import build_registry
 from services.gateway.src.gateway.agent_client import AgentClient, get_agent_client
 from services.gateway.src.gateway.feedback_api import router as feedback_router
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
@@ -57,7 +56,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # honour a test's dependency override, so the sweep sees the store the requests will use
     get_attempt_store = app.dependency_overrides.get(get_store, get_store)
     recover_interrupted_attempts(get_attempt_store())
-    # build the registry now, so a broken one fails the start, not the first request
+    # build the orchestrator now, so a broken one fails the start, not the first request
     app.dependency_overrides.get(get_orchestrator, get_orchestrator)()
     yield
 
@@ -82,9 +81,10 @@ async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResp
 
 @lru_cache
 def get_orchestrator() -> Orchestrator:
-    """The orchestrator validates + routes; the registry is the same one the agent service
-    uses, so routing decisions here match what /generate will accept."""
-    return Orchestrator(registry=build_registry())
+    """The orchestrator validates + routes against the shared catalog of supported pairs, the same
+    list the agent service's registry must match, so routing decisions here match what the agent
+    will accept."""
+    return Orchestrator()
 
 
 @lru_cache

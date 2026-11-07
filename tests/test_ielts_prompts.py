@@ -7,7 +7,7 @@ from pathlib import Path
 
 from evals.exam_set import ielts_writing_prompts
 from evals.loader import load_exam_items
-from services.agent.src.agent.ielts import prompts as product_prompts
+from shared.src.shared.ielts import prompts as product_prompts
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -18,7 +18,7 @@ def test_prompts_file_lives_with_the_product_and_loads_from_any_working_director
     monkeypatch.chdir(tmp_path)
     path = product_prompts.PROMPTS_PATH
     assert path.is_absolute() and path.is_file()
-    assert (REPO / "services" / "agent") in path.parents
+    assert (REPO / "shared") in path.parents
     prompts = product_prompts.load_prompts()
     assert len(prompts) == len(ielts_writing_prompts.generate_all()) > 0
     assert {p.essay_type for p in prompts} == set(product_prompts.ESSAY_TYPE_LABELS)
@@ -34,7 +34,7 @@ def test_product_loader_works_with_evals_unimportable():
     """The product must serve its prompts from a deployment that has no evals/ directory."""
     code = (
         f"import sys; sys.path.insert(0, {str(REPO)!r}); sys.modules['evals'] = None\n"
-        "from services.agent.src.agent.ielts.prompts import load_prompts\n"
+        "from shared.src.shared.ielts.prompts import load_prompts\n"
         "print(len(load_prompts()))\n"
     )
     done = subprocess.run(

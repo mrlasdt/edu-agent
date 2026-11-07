@@ -14,8 +14,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from services.agent.src.agent.ielts.models import Calibration
-from services.agent.src.agent.ielts.scoring import CRITERIA
+from shared.src.shared.ielts.models import Calibration
+from shared.src.shared.ielts.scoring import CRITERIA
 
 Pairs = Sequence[tuple[float, float]]
 

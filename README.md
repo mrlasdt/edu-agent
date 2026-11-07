@@ -12,7 +12,7 @@ What it covers today, by exam:
 | IELTS Reading | None | 41 golden items |
 | SAT Math | None | 33 golden items from 11 solver-verified templates |
 
-Only `gre/quant` and `gre/aw` are registered agents (`services/agent/src/agent/bootstrap.py`); any other `test_type` and `section` sent to `/chat` gets a "not set up yet" reply.
+Only `gre/quant` and `gre/aw` are registered agents (`services/agent/src/agent/bootstrap.py`, with the pair list in `shared/src/shared/catalog.py`); any other `test_type` and `section` sent to `/chat` gets a "not set up yet" reply.
 
 ## Quickstart
 
@@ -104,9 +104,9 @@ Candidate / Admin     ┌──────────────────�
 | Service | Port | Role |
 |---|---|---|
 | `web` | 5173 | React app behind nginx. `/` is the tutor chat, `/ielts-mock` the IELTS Writing mock |
-| `gateway` | 8000 | `POST /chat`, `POST /feedback`, the `/ielts/*` mock API, orchestrator, guardrails, rate limit |
+| `gateway` | 8000 | `POST /chat`, `POST /feedback`, the `/ielts/*` mock API (grader code in `shared/src/shared/ielts/`), orchestrator, guardrails, rate limit |
 | `corpus` | 8001 | `POST /corpus/retrieve`: Qdrant dense + sparse search fused with RRF, ACL filter, optional rerank |
-| `agent` | 8002 | `POST /generate`: Quant and AW agents, skills, critics; hosts the IELTS grader and question pipeline code |
+| `agent` | 8002 | `POST /generate`: Quant and AW agents, skills, critics, question pipeline |
 | `ingestion` | 8003 | `/admin/documents` (admin key): parse, chunk, embed, index |
 | `math-verifier` | 8090 | FastMCP server: sympy checks behind an allow-list parser, one killable child process per check; also `POST /tools/{name}` for the math tools |
 | `tei-embedder` | 8080 | BGE-M3 embeddings (Hugging Face TEI) |
@@ -169,7 +169,7 @@ Useful tools: `uv run python -m evals.read_transcripts --worst 5`, `uv run pytho
 
 ### Golden sets for IELTS and SAT
 
-`evals/exam_set/` builds exam items (ADR-0013). Every item has a label tier (`examiner`, `teacher_graded`, `captain_blind`, `site_or_model_weak`, `solver`, `author_key`) and every metric is reported against a tier and a sample size. Committed items are original: `sat_math.jsonl` and `ielts_reading.jsonl` in `evals/golden/`, and `ielts_writing_prompts.jsonl`, which the product serves and so keeps under `services/agent/src/agent/ielts/data/` (evals reads it there). Third-party data is imported only into the gitignored `evals/golden/local/`:
+`evals/exam_set/` builds exam items (ADR-0013). Every item has a label tier (`examiner`, `teacher_graded`, `captain_blind`, `site_or_model_weak`, `solver`, `author_key`) and every metric is reported against a tier and a sample size. Committed items are original: `sat_math.jsonl` and `ielts_reading.jsonl` in `evals/golden/`, and `ielts_writing_prompts.jsonl`, which the product serves and so keeps under `shared/src/shared/ielts/data/` (evals reads it there). Third-party data is imported only into the gitignored `evals/golden/local/`:
 
 ```bash
 uv run python -m evals.exam_set generate-sat      # also generate-reading, generate-writing: rebuild the committed sets
@@ -229,7 +229,7 @@ Docker Compose (`infra/docker-compose.yml`) is the one supported way to run the 
 
 ## Adding an exam or section
 
-`AgentRegistry` is the seam: subclass `BaseAgent`, add one `registry.register(test_type, section, AgentClass)` line in `bootstrap.py`, add prompts under `prompts/`, tag corpus documents with the `test_type`, and add a golden set under `evals/golden/`. The gateway, corpus, ingestion and math verifier need no change. The web subject picker is a hardcoded Quant / AW pair and needs a new button.
+`AgentRegistry` is the seam: subclass `BaseAgent`, add the agent to `bootstrap.py` and its `(test_type, section)` pair to `shared/src/shared/catalog.py` (the gateway routes on the catalog; a test fails if the two differ), add prompts under `prompts/`, tag corpus documents with the `test_type`, and add a golden set under `evals/golden/`. The gateway, corpus, ingestion and math verifier need no change. The web subject picker is a hardcoded Quant / AW pair and needs a new button.
 
 ## Not built yet
 

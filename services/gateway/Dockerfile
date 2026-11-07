@@ -9,7 +9,6 @@ WORKDIR /app
 RUN adduser --disabled-password --gecos "" appuser
 COPY --from=builder /app/.venv /app/.venv
 COPY services/gateway/ services/gateway/
-COPY services/agent/ services/agent/
 COPY shared/ shared/
 COPY config/ config/
 COPY prompts/ prompts/

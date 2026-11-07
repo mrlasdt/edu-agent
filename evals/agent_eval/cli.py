@@ -69,10 +69,10 @@ from evals.loader import load_exam_items, load_golden_set, sample_golden_set
 from evals.read_transcripts import DEFAULT_RUNS_DIR
 from evals.regression import check_regression
 from services.agent.src.agent.agents.quant import QuantAgent
-from services.agent.src.agent.ielts import llm
 from services.agent.src.agent.pipeline.factory import build_baseline, build_pipeline
 from services.agent.src.agent.pipeline.schema import GenerationRequest
 from shared.src.shared.config import load_model_config
+from shared.src.shared.ielts import llm
 
 # Order matters: openrouter/free is OpenRouter's router over whichever free model is up, so it
 # is the most reliable first choice; the pinned models are fallbacks for when it errors.

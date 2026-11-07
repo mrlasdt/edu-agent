@@ -1,19 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
-from services.agent.src.agent.registry import AgentNotRegisteredError, AgentRegistry
+from shared.src.shared.catalog import SUPPORTED_PAIRS, describe_supported, is_supported
 from shared.src.shared.models import Session
-
-if TYPE_CHECKING:
-    from services.agent.src.agent.base import BaseAgent
 
 
 @dataclass(frozen=True)
 class RouteResult:
-    """The Orchestrator resolved a registered agent for this session."""
-    agent_cls: type[BaseAgent]
+    """The Orchestrator accepted this session: its (test_type, section) is supported."""
     session: Session
 
 
@@ -21,7 +17,7 @@ class RouteResult:
 class ClarificationTurn:
     """
     The Orchestrator could not route to an agent — either the message was
-    incomplete, or the (test_type, section) pair is not registered.
+    incomplete, or the (test_type, section) pair is not supported.
     The prompt is shown to the Candidate to guide their next message.
     """
     prompt: str
@@ -34,9 +30,9 @@ class Orchestrator:
 
     Steps (per turn):
       1. Validate — reject blank messages immediately
-      2. Route    — look up (test_type, section) in the registry
+      2. Route    — check (test_type, section) against the catalog of supported pairs
                     On miss → ClarificationTurn (not an exception; the agent service is not called)
-      3. Return   — RouteResult carries the agent class and validated session
+      3. Return   — RouteResult carries the validated session
 
     Step 2b (enrichment — Haiku LLM detecting incomplete questions) runs in the
     gateway's /chat handler via check_completeness, before this class is called.
@@ -44,8 +40,8 @@ class Orchestrator:
     be filled in by issue 10.
     """
 
-    def __init__(self, registry: AgentRegistry) -> None:
-        self._registry = registry
+    def __init__(self, supported: Collection[tuple[str, str]] = SUPPORTED_PAIRS) -> None:
+        self._supported = supported
 
     async def process(self, session: Session, message: str) -> RouteResult | ClarificationTurn:
         # Step 1: validate
@@ -56,22 +52,16 @@ class Orchestrator:
             )
 
         # Step 2: route
-        try:
-            agent_cls = self._registry.get(session.test_type, session.section)
-        except AgentNotRegisteredError:
-            available = [
-                f"{t}/{s}" for (t, s) in sorted(self._registry._registry.keys())
-            ]
-            available_str = ", ".join(available) if available else "none yet"
+        if not is_supported(session.test_type, session.section, self._supported):
             return ClarificationTurn(
                 prompt=(
                     f"I'm not set up to help with {session.test_type.upper()} "
                     f"{session.section} yet. "
-                    f"Currently available: {available_str}. "
+                    f"Currently available: {describe_supported(self._supported)}. "
                     "Please start a new session with one of these."
                 ),
                 reason="agent_not_registered",
             )
 
         # Step 3: return route result
-        return RouteResult(agent_cls=agent_cls, session=session)
+        return RouteResult(session=session)
