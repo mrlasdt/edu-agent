@@ -164,6 +164,43 @@ async def test_a_model_that_keeps_failing_is_skipped_for_the_cooldown():
     assert calls(router) == {A: 3, B: 6}
 
 
+async def test_a_model_with_no_fallback_is_never_cooled_down():
+    """A lone model skipped for 30 s would fail every call; it must be tried every time."""
+    policy = RouterPolicy(num_retries=0, retry_after=0, allowed_fails=2, cooldown_time=60)
+    router = mock_router({A: SERVER_ERROR}, None, policy)
+    for _ in range(6):
+        with pytest.raises(litellm.InternalServerError):
+            await ask(router)
+    assert calls(router) == {A: 6}
+
+
+async def test_a_lone_model_recovers_as_soon_as_the_provider_does():
+    policy = RouterPolicy(num_retries=0, retry_after=0, allowed_fails=2, cooldown_time=60)
+    router = mock_router({A: SERVER_ERROR}, None, policy)
+    for _ in range(4):
+        with pytest.raises(litellm.InternalServerError):
+            await ask(router)
+    for deployment in router.model_list:
+        if deployment["model_name"] == A:
+            deployment["litellm_params"]["mock_response"] = "back"
+    router.set_model_list(router.model_list)
+    assert await ask(router) == A
+
+
+async def test_an_unconfigured_model_is_never_cooled_down():
+    policy = RouterPolicy(num_retries=0, retry_after=0, allowed_fails=2, cooldown_time=60)
+    router = mock_router({A: "ok"}, None, policy)
+    for _ in range(4):
+        with pytest.raises(litellm.InternalServerError):
+            await router.acompletion(
+                model="openai/other", messages=MESSAGES, mock_response=SERVER_ERROR
+            )
+    response = await router.acompletion(
+        model="openai/other", messages=MESSAGES, mock_response="fine"
+    )
+    assert response.choices[0].message.content == "fine"
+
+
 async def test_a_model_inside_its_cooldown_is_tried_again_once_it_ends():
     policy = RouterPolicy(num_retries=0, retry_after=0, allowed_fails=0, cooldown_time=1)
     router = mock_router({A: SERVER_ERROR, B: "from b"}, {A: [B]}, policy)

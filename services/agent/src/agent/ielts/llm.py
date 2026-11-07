@@ -19,7 +19,12 @@ from typing import Any, Protocol
 
 from shared.src.shared.budget import Ledger, estimate_cost, estimate_tokens, spend_ledger
 from shared.src.shared.config import get_settings, load_model_config
-from shared.src.shared.llm_router import Completions, answered_model, get_router
+from shared.src.shared.llm_router import (
+    Completions,
+    answered_model,
+    configured_chain,
+    get_router,
+)
 from shared.src.shared.observability import build_llm_metadata
 
 PROMPT_ROOT = Path("prompts")
@@ -56,10 +61,6 @@ def role_model(role: str) -> str:
     return load_model_config(get_settings().model_config_path).litellm_model(role)
 
 
-def role_fallbacks(role: str) -> list[str]:
-    return load_model_config(get_settings().model_config_path).litellm_fallbacks(role)
-
-
 class LiteLLMCompleter:
     """
     Call the role's model through the Router: a provider failure moves on to the role's
@@ -68,10 +69,11 @@ class LiteLLMCompleter:
     reply is not an error to the Router, so it is handled here: the call continues on the models
     after the one that answered.
 
-    Spend is checked against the cap before the call, once, at the dearest model of the chain
-    (worst case: the whole prompt plus `max_tokens` of output, plus whatever concurrent calls have
-    reserved), so no fallback can take the call past the cap; the reported usage is recorded after
-    it. `BudgetExceededError` is not wrapped: it is not a model outage.
+    Spend is checked against the cap before the call, once, at the dearest model of the chain the
+    Router will actually run (`configured_chain`; worst case: the whole prompt plus `max_tokens`
+    of output, plus whatever concurrent calls have reserved), so no fallback can take the call
+    past the cap; the reported usage is recorded after it.
+    `BudgetExceededError` is not wrapped: it is not a model outage.
     """
 
     def __init__(self, ledger: Ledger | None = None, router: Completions | None = None) -> None:
@@ -91,7 +93,7 @@ class LiteLLMCompleter:
         self, role: str, messages: list[dict[str, str]], *, temperature: float, max_tokens: int,
         trace_id: str = "", prompt_version: str = "",
     ) -> str:
-        chain = [role_model(role), *role_fallbacks(role)]
+        chain = configured_chain(self.router, role_model(role))
         ledger = self.ledger
         prompt_tokens = estimate_tokens("\n".join(m["content"] for m in messages))
         projected = max(estimate_cost(m, prompt_tokens, max_tokens) for m in chain)

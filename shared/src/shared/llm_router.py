@@ -12,6 +12,10 @@ This module only turns the model config into Router settings:
   - a catch-all `*` deployment passes any other model string straight through (an eval pinned to
     one model, a test), with the Router's retry and timeout but no fallback or cooldown.
 
+Cooldown only exists where there is somewhere else to go: a model with a fallback chain is cooled
+down, a model without one (a lone /chat model, the `*` pass-through) is always tried, so a burst
+of transient errors can never turn into 30 seconds of "no deployments available".
+
 Callers ask `get_router()` for the Router and call `acompletion` on it exactly as they called
 `litellm.acompletion`. The eval harness swaps in its metered transport with `use_router`, which
 wraps a Router of its own (`evals.agent_eval.transport`).
@@ -20,7 +24,8 @@ Policy, in plain words (`RouterPolicy`): a transient error (timeout, 429, 500, 5
 the same model a couple of times, then the call moves to the next fallback; any other error
 (a 400, a 401 from a missing key) is not retried but still moves to the next fallback, so a
 missing Google key hands the call to OpenRouter at once. A model that fails more than
-`allowed_fails` times inside `cooldown_time` seconds is skipped until the cooldown ends.
+`allowed_fails` times inside `cooldown_time` seconds is skipped until the cooldown ends, if it has
+fallbacks to skip to.
 Streaming falls back too, as long as the failure comes before the first token (litellm also
 resumes a stream that breaks midway, on the fallback).
 
@@ -60,6 +65,15 @@ class RouterPolicy:
     # litellm ignores a Router-level value equal to its own default (3), hence 5.
     allowed_fails: int = 5
     cooldown_time: float = 30.0
+
+    def cooldown_policy(self) -> dict[str, int]:
+        """
+        Per-deployment cooldown for a model that has fallbacks: the same threshold for every
+        provider error that counts. A 400 is left out, as litellm itself never cools down on one.
+        """
+        kinds = ("Authentication", "Timeout", "RateLimit", "InternalServer", "ServiceUnavailable",
+                 "BadGateway", "NotFound")
+        return {f"{kind}ErrorAllowedFails": self.allowed_fails for kind in kinds}
 
     def retry_policy(self) -> RetryPolicy:
         """Retry only transient errors: timeout, 429, 500 and 503. A 400 or 401 never repeats."""
@@ -105,6 +119,17 @@ def fallback_chains(config: ModelConfig | None) -> dict[str, list[str]]:
     return {primary: backups for primary, backups in chains.items() if backups}
 
 
+def _cooldown_info(has_fallbacks: bool, policy: RouterPolicy) -> dict[str, Any]:
+    """
+    litellm exempts a deployment with its own `allowed_fails` and no policy from cooldown while it
+    is the only one for its model name, and a deployment with an `allowed_fails_policy` is cooled
+    by it. Router-level `allowed_fails` alone would cool every model, lone ones included.
+    """
+    if has_fallbacks:
+        return {"allowed_fails_policy": policy.cooldown_policy()}
+    return {"allowed_fails": policy.allowed_fails}
+
+
 def build_router(
     config: ModelConfig | None = None,
     *,
@@ -134,10 +159,14 @@ def build_router(
         if name.startswith("gemini/") and gemini_key:
             params["api_key"] = gemini_key  # .env is read by Settings, not exported to litellm
         params.update((deployment_params or {}).get(name, {}))
-        model_list.append(
-            {"model_name": name, "litellm_params": params, "model_info": {"id": _ID_PREFIX + name}}
-        )
-    model_list.append({"model_name": _WILDCARD, "litellm_params": {"model": _WILDCARD}})
+        model_list.append({
+            "model_name": name, "litellm_params": params,
+            "model_info": {"id": _ID_PREFIX + name, **_cooldown_info(name in chains, policy)},
+        })
+    model_list.append({
+        "model_name": _WILDCARD, "litellm_params": {"model": _WILDCARD},
+        "model_info": _cooldown_info(False, policy),
+    })
     return Router(
         model_list=model_list,
         fallbacks=[{primary: backups} for primary, backups in chains.items()],

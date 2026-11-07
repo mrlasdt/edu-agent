@@ -27,7 +27,6 @@ MESSAGES = [{"role": "user", "content": "grade this"}]
 @pytest.fixture
 def chain(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(llm, "role_model", lambda role: PRIMARY)
-    monkeypatch.setattr(llm, "role_fallbacks", lambda role: [BACKUP])
 
 
 async def run(router, tmp_path: Path) -> str:
@@ -58,7 +57,6 @@ async def test_an_empty_reply_in_the_middle_of_the_chain_moves_on_to_the_rest(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     monkeypatch.setattr(llm, "role_model", lambda role: PRIMARY)
-    monkeypatch.setattr(llm, "role_fallbacks", lambda role: [BACKUP, LAST])
     router = mock_router(
         {PRIMARY: SERVER_ERROR, BACKUP: "", LAST: "from the last"}, {PRIMARY: [BACKUP, LAST]}
     )
@@ -105,7 +103,6 @@ async def test_google_calls_retry_transient_errors_before_leaving_google(
 ):
     """The ADR-0014 case: Google answers its own blips with a 500/503, about 1 call in 6."""
     monkeypatch.setattr(llm, "role_model", lambda role: GOOGLE)
-    monkeypatch.setattr(llm, "role_fallbacks", lambda role: [PRIMARY])
     router = mock_router({GOOGLE: SERVER_ERROR, PRIMARY: "ok"}, {GOOGLE: [PRIMARY]})
     assert await run(router, tmp_path) == "ok"
     assert calls(router) == {GOOGLE: 1 + FAST.num_retries, PRIMARY: 1}
@@ -118,7 +115,6 @@ async def test_a_missing_google_key_hands_the_call_to_openrouter_at_once(
     from tests.llm_fakes import Unauthorized
 
     monkeypatch.setattr(llm, "role_model", lambda role: GOOGLE)
-    monkeypatch.setattr(llm, "role_fallbacks", lambda role: [PRIMARY])
     router = mock_router({GOOGLE: Unauthorized(), PRIMARY: "ok"}, {GOOGLE: [PRIMARY]})
     assert await run(router, tmp_path) == "ok"
     assert calls(router) == {GOOGLE: 1, PRIMARY: 1}
@@ -128,7 +124,6 @@ async def test_a_google_reply_costs_the_ledger_nothing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     monkeypatch.setattr(llm, "role_model", lambda role: GOOGLE)
-    monkeypatch.setattr(llm, "role_fallbacks", lambda role: [])
     router = mock_router({GOOGLE: "graded"})
     ledger = Ledger(tmp_path / "l.json", ceiling_usd=0.01)
     await LiteLLMCompleter(ledger, router=router)(
@@ -141,7 +136,6 @@ async def test_the_ledger_is_charged_for_the_model_that_answered(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     monkeypatch.setattr(llm, "role_model", lambda role: GOOGLE)
-    monkeypatch.setattr(llm, "role_fallbacks", lambda role: ["openai/gpt-4.1-mini"])
     router = mock_router({GOOGLE: SERVER_ERROR, "openai/gpt-4.1-mini": "paid reply"},
                          {GOOGLE: ["openai/gpt-4.1-mini"]})
     ledger = Ledger(tmp_path / "l.json", ceiling_usd=5.0)
@@ -158,7 +152,6 @@ async def test_a_call_is_refused_before_any_model_when_a_fallback_could_pass_the
     from shared.src.shared.budget import BudgetExceededError
 
     monkeypatch.setattr(llm, "role_model", lambda role: GOOGLE)
-    monkeypatch.setattr(llm, "role_fallbacks", lambda role: ["openai/gpt-4.1-mini"])
     router = mock_router({GOOGLE: SERVER_ERROR, "openai/gpt-4.1-mini": "paid reply"},
                          {GOOGLE: ["openai/gpt-4.1-mini"]})
     ledger = Ledger(tmp_path / "l.json", ceiling_usd=5.0)
@@ -168,3 +161,21 @@ async def test_a_call_is_refused_before_any_model_when_a_fallback_could_pass_the
             llm.GRADER_ROLE, MESSAGES, temperature=0, max_tokens=2000
         )
     assert calls(router) == {}  # the free first model was not tried either
+
+
+async def test_the_cap_is_checked_against_the_chain_the_router_will_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """A fallback the Router would use counts, whatever the role's own list says."""
+    from shared.src.shared.budget import BudgetExceededError
+
+    monkeypatch.setattr(llm, "role_model", lambda role: GOOGLE)
+    router = mock_router({GOOGLE: SERVER_ERROR, "openai/gpt-4.1-mini": "paid reply"},
+                         {GOOGLE: ["openai/gpt-4.1-mini"]})
+    ledger = Ledger(tmp_path / "l.json", ceiling_usd=5.0)
+    ledger.record("earlier", "gpt-4.1-mini", 4.9999)
+    with pytest.raises(BudgetExceededError):
+        await LiteLLMCompleter(ledger, router=router)(
+            llm.GRADER_ROLE, MESSAGES, temperature=0, max_tokens=2000
+        )
+    assert calls(router) == {}

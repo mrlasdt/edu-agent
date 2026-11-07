@@ -51,7 +51,6 @@ class FakeLiteLLM:
 def fake_litellm(monkeypatch: pytest.MonkeyPatch) -> FakeLiteLLM:
     fake = FakeLiteLLM()
     monkeypatch.setattr(llm, "role_model", lambda role: "openai/gpt-4.1-mini")
-    monkeypatch.setattr(llm, "role_fallbacks", lambda role: [])
     return fake
 
 
@@ -117,7 +116,6 @@ async def test_calls_in_flight_count_against_the_cap(
         )
 
     monkeypatch.setattr(llm, "role_model", lambda role: "openai/gpt-4.1-mini")
-    monkeypatch.setattr(llm, "role_fallbacks", lambda role: [])
     # worst case per call here is (200/4 prompt tokens at 0.40 + 2000 out at 1.60)/M = 0.00322
     ledger = Ledger(tmp_path / "l.json", ceiling_usd=0.005)  # room for one call, not two
     completer = completer_on(ledger, slow)
@@ -140,7 +138,6 @@ async def test_a_provider_failure_still_releases_its_reservation(
         raise RuntimeError("provider down")
 
     monkeypatch.setattr(llm, "role_model", lambda role: "openai/gpt-4.1-mini")
-    monkeypatch.setattr(llm, "role_fallbacks", lambda role: [])
     ledger = Ledger(tmp_path / "l.json", ceiling_usd=5.0)
     completer = completer_on(ledger, boom)
     with pytest.raises(llm.ModelUnavailableError):

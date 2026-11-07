@@ -42,7 +42,7 @@ The consequences above say streaming, retry/backoff and rate-limit handling are 
 
 - `num_retries` and `retry_policy`: a timeout, 429, 500 or 503 is retried on the same model twice (three times with a 15 s wait in the evals, where free-tier quotas clear per minute); a 400 or 401 is never retried, but still moves on to the next fallback, so a missing Google key hands the call to OpenRouter at once.
 - `timeout`: 120 s per attempt, on streaming and non-streaming calls alike.
-- `allowed_fails` and `cooldown_time`: a model that fails more than 5 attempts inside 30 s is skipped for 30 s. This replaces the eval transport's process-lifetime `exhausted` set.
+- `allowed_fails` and `cooldown_time`: a model that fails more than 5 attempts inside 30 s is skipped for 30 s. This replaces the eval transport's process-lifetime `exhausted` set. Cooldown applies only to a model that has a fallback chain; a model with nothing to fall back to (a lone `/chat` model, the `*` pass-through) is never cooled down, because skipping it would fail every call for 30 s instead of trying it.
 - Streaming falls back as well, to the next model when the stream fails before its first token, and litellm resumes a stream that breaks midway on the fallback.
 
 `/chat` (`TurnMeter.stream` and `complete`), the IELTS mock, the question pipeline, the judges and the evals all use that policy. The eval harness wraps its own Router in `MeteredTransport` and installs it with `use_router`; its offline mode serves the fake model's reply as litellm's `mock_response`, so offline runs exercise the Router too.
