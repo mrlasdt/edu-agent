@@ -3,7 +3,7 @@ Tests for CI/CD infrastructure (issue 16).
 
 Behaviors under test:
   1. GitHub Actions workflows exist and are valid YAML
-  2. ci.yml has path-gated eval step
+  2. ci.yml runs the offline eval on every change (no path gate)
   3. No Kubernetes manifests or cluster deploy workflow (Docker Compose is the one deploy path)
   4. Each FastAPI service exposes GET /healthz → 200
   5. Dockerfiles exist for all services
@@ -43,13 +43,23 @@ def _commands(job: dict) -> list[list[str]]:
     return commands
 
 
-# ── 2. Path-gated eval in CI ──────────────────────────────────────────────────
+# ── 2. The offline eval always runs in CI ─────────────────────────────────────
 
 
-def test_ci_workflow_has_path_filter_for_eval():
-    content = (ROOT / ".github/workflows/ci.yml").read_text()
-    # Should reference path filters for eval-triggering paths
-    assert "prompts" in content or "paths" in content
+def test_ci_offline_eval_always_runs():
+    """
+    The offline eval takes about 10 s, so it is not path-gated: a change to shared/, the math
+    verifier, pyproject.toml or uv.lock must run it too.
+    """
+    jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
+    assert "changes" not in jobs
+    eval_job = jobs["eval-slice"]
+    assert "if" not in eval_job
+    assert "needs" not in eval_job
+    assert any(
+        argv[:5] == ["uv", "run", "python", "-m", "evals.agent_eval"] and "offline" in argv
+        for argv in _commands(eval_job)
+    )
 
 
 def test_ci_workflow_audits_dependencies_and_scans_for_secrets():

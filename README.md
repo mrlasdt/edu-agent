@@ -68,7 +68,7 @@ uv run pytest tests/ -q                                  # Python tests (mocked 
 uv run python -m evals.agent_eval --mode offline         # eval pipeline on a fake model: no network, no keys
 ```
 
-Live evals call real models and spend against the ledger; see "Evals" below. CI (`.github/workflows/ci.yml`) runs ruff, mypy, pytest, the web typecheck, tests, build and e2e, and the offline evals. It also runs a dependency audit (`pip-audit` on `uv.lock`, `npm audit` at high severity for `web/`) and a gitleaks secret scan over the full history. It never scores a real model.
+Live evals call real models and spend against the ledger; see "Evals" below. CI (`.github/workflows/ci.yml`) runs ruff, mypy, pytest, the web tests, build (which typechecks) and e2e, and the offline evals on every change (no path filter). It also builds every image and starts the services from them (`infra/docker-compose.smoke.yml`). It also runs a dependency audit (`pip-audit` on `uv.lock`, `npm audit` at high severity for `web/`) and a gitleaks secret scan over the full history. It never scores a real model.
 
 ### Run a single piece outside Docker
 
