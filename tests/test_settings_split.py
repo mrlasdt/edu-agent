@@ -81,8 +81,8 @@ def test_load_model_config_works_from_another_working_directory(tmp_path, monkey
 
 def test_agent_prompts_load_from_another_working_directory(tmp_path, monkeypatch):
     from services.agent.src.agent.agents import aw, quant
-    from shared.src.shared.ielts import llm as ielts_llm
     from services.agent.src.agent.pipeline import llm as pipeline_llm
+    from shared.src.shared.ielts import llm as ielts_llm
     from shared.src.shared.models import Mode
 
     monkeypatch.chdir(tmp_path)
