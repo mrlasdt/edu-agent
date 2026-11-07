@@ -34,6 +34,9 @@ _PRICES: dict[str, tuple[float, float]] = {
     "gpt-4.1": (2.00, 8.00),
     "o1": (15.00, 60.00),
     "typesafe/jev-1.14": (0.042, 0.0),
+    # Gemma on the captain's Google AI Studio key (free tier): no charge to the ledger
+    "gemma-4-26b-a4b-it": (0.0, 0.0),
+    "gemma-4-31b-it": (0.0, 0.0),
 }
 _UNKNOWN_PRICE = (10.0, 30.0)
 
@@ -43,7 +46,7 @@ class BudgetExceededError(RuntimeError):
 
 
 def _bare(model: str) -> str:
-    for prefix in ("openrouter/", "openai/"):
+    for prefix in ("openrouter/", "openai/", "gemini/"):
         if model.startswith(prefix):
             return model[len(prefix):]
     return model

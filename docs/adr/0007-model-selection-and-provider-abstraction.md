@@ -28,7 +28,7 @@ Accepted.
 
 ## Amendment: free-model default (2026-11)
 
-The default model config is now `config/model_config.free.yaml` (every role on one free OpenRouter model), because OpenAI retires `gpt-4o`, `gpt-4.1` and their minis on 2027-01-14. `config/model_config.dev.yaml` stays as the selectable paid config (`MODEL_CONFIG_PATH`). The two IELTS mock roles (`ielts_grader`, `ielts_feedback`) are the exception: they run on `google/gemma-4-26b-a4b-it:free` with `google/gemma-4-31b-it:free` as an ordered per-role `fallbacks` entry, because only the Gemma models passed the ADR-0014 development gate. The tests pin the paid one. The next amendment describes that paid config.
+The default model config is now `config/model_config.free.yaml` (every role on one free OpenRouter model), because OpenAI retires `gpt-4o`, `gpt-4.1` and their minis on 2027-01-14. `config/model_config.dev.yaml` stays as the selectable paid config (`MODEL_CONFIG_PATH`). The two IELTS mock roles (`ielts_grader`, `ielts_feedback`) are the exception: they run on `gemini/gemma-4-26b-a4b-it` (Google AI Studio, `GEMINI_API_KEY`) with the OpenRouter free 26b and 31b Gemma models as an ordered per-role `fallbacks` entry, because only the Gemma models passed the ADR-0014 development gate. The tests pin the paid one. The next amendment describes that paid config.
 
 ## Amendment: all-mini dev and local default
 
