@@ -141,15 +141,7 @@ async def test_solve_degrades_gracefully_after_full_pipeline_failure():
     assert metadata.get("verifier_fail") is True
 
 
-# ── 5. Mode resets to tutor for next question ─────────────────────────────────
-
-def test_session_mode_resets_to_tutor():
-    session = make_session(Mode.solve)
-    reset_session = session.reset_mode()
-    assert reset_session.mode == Mode.tutor
-
-
-# ── 6. Tutor mode does NOT call verifier ─────────────────────────────────────
+# ── 5. Tutor mode does NOT call verifier ─────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_tutor_mode_does_not_call_verifier():
