@@ -41,6 +41,34 @@ async function send(user: ReturnType<typeof userEvent.setup>, text: string) {
 
 afterEach(() => vi.unstubAllGlobals());
 
+describe("App candidate id", () => {
+  it("renders on a plain-HTTP origin where crypto.randomUUID is undefined", async () => {
+    // Browsers expose randomUUID only in secure contexts (HTTPS or localhost).
+    const realCrypto = globalThis.crypto;
+    vi.stubGlobal("crypto", {
+      getRandomValues: (bytes: Uint8Array) => realCrypto.getRandomValues(bytes),
+    });
+    const fetchMock = stubGateway();
+    const user = await openQuant();
+    await send(user, "hello");
+    expect(lastRequest(fetchMock).candidate_id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("keeps one candidate id across renders and requests", async () => {
+    const randomUUID = vi.fn(() => "11111111-1111-4111-8111-111111111111");
+    vi.stubGlobal("crypto", {
+      randomUUID,
+      getRandomValues: globalThis.crypto.getRandomValues.bind(globalThis.crypto),
+    });
+    const fetchMock = stubGateway();
+    const user = await openQuant();
+    await send(user, "one");
+    await send(user, "two");
+    expect(randomUUID).toHaveBeenCalledTimes(1);
+    expect(lastRequest(fetchMock).candidate_id).toBe("11111111-1111-4111-8111-111111111111");
+  });
+});
+
 describe("App /chat request limits", () => {
   it("caps the composer at the gateway's message limit", async () => {
     stubGateway();
