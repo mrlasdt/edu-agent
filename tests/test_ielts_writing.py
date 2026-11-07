@@ -30,8 +30,8 @@ from evals.exam_set.schema import (
     Source,
 )
 from evals.loader import load_exam_items
-from services.agent.src.agent.ielts.grading import grade_request
-from services.agent.src.agent.ielts.scoring import GradeParseError
+from shared.src.shared.ielts.grading import grade_request
+from shared.src.shared.ielts.scoring import GradeParseError
 from tests.llm_fakes import ScriptedRouter
 from tests.test_ielts_marking import ESSAY, PROMPT
 

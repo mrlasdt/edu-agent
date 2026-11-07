@@ -12,10 +12,10 @@ import asyncio
 import hashlib
 from dataclasses import dataclass, field
 
-from services.agent.src.agent.ielts import llm
-from services.agent.src.agent.ielts.checks import EssayChecks, cap_task_failure, check_essay
-from services.agent.src.agent.ielts.models import Flag
-from services.agent.src.agent.ielts.scoring import (
+from shared.src.shared.ielts import llm
+from shared.src.shared.ielts.checks import EssayChecks, cap_task_failure, check_essay
+from shared.src.shared.ielts.models import Flag
+from shared.src.shared.ielts.scoring import (
     CRITERIA,
     MAX_ESTIMATED_BAND,
     GradeParseError,

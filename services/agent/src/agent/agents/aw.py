@@ -6,11 +6,11 @@ from pathlib import Path
 from typing import Any
 
 from services.agent.src.agent.base import BaseAgent
-from services.agent.src.agent.critics.citation_checker import check_citations, strip_uncited_claims
-from services.agent.src.agent.critics.style_critic import run_style_critic
 from services.agent.src.agent.skills.match_student_style import MatchStudentStyleSkill
 from services.agent.src.agent.skills.retrieve_corpus import RetrieveCorpusSkill
 from shared.src.shared.config import load_model_config
+from shared.src.shared.critics.citation_checker import check_citations, strip_uncited_claims
+from shared.src.shared.critics.style_critic import run_style_critic
 from shared.src.shared.models import MessageRole, Mode, Session
 from shared.src.shared.observability import build_llm_metadata
 from shared.src.shared.turn_meter import TurnMeter

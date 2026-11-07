@@ -19,7 +19,7 @@ import pytest
 
 from services.agent.src.agent.agents.aw import AWAgent
 from services.agent.src.agent.agents.quant import QuantAgent
-from services.agent.src.agent.critics.style_critic import run_style_critic
+from shared.src.shared.critics.style_critic import run_style_critic
 from shared.src.shared.models import Mode, Session
 from shared.src.shared.observability import build_llm_metadata, setup_observability
 

@@ -22,7 +22,7 @@ A learner types a message in the web app. One message is one **turn**. Here is e
     |  1. rate limit, redact PII in the message
     |  2. content safety          (OpenAI moderation API, no model tokens)
     |  3. completeness check      (one small model call)
-    |  4. route by (test_type, section) with the agent registry
+    |  4. route by (test_type, section) against the catalog of supported pairs
     |  POST /generate
     v
  agent (:8002)  --- QuantAgent or AWAgent
@@ -40,11 +40,11 @@ A learner types a message in the web app. One message is one **turn**. Here is e
 |---|---|---|
 | web | `web/` | React app behind nginx; streams `POST /chat` into message bubbles |
 | gateway | `services/gateway/` | `/chat`, the `Orchestrator`, all guardrails (`guardrails/`) |
-| agent | `services/agent/` | `QuantAgent` and `AWAgent` (`agents/`), skills (`skills/`), critics, the question pipeline |
+| agent | `services/agent/` | `QuantAgent` and `AWAgent` (`agents/`), skills (`skills/`), the question pipeline |
 | corpus | `services/corpus/` | hybrid retrieval over the notes, with a three-tier access filter |
 | ingestion | `services/ingestion/` | parse, chunk, embed, index documents; the `seed` job loads the demo notes |
 | math-verifier | `services/math_verifier/` | sympy sandbox behind a small MCP server |
-| shared | `shared/src/shared/` | config, model roles, budget and pricing, observability, per-turn measurement |
+| shared | `shared/src/shared/` | config, model roles, budget and pricing, observability, per-turn measurement, the supported-pairs catalog, the IELTS mock (`ielts/`), the answer critics (`critics/`) |
 | evals | `evals/` | the offline and live evaluation harness, and the turn report |
 
 Two things to notice, because later chapters lean on them:

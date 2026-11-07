@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import re
 
-from services.agent.src.agent.critics.citation_checker import check_citations
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
 from services.gateway.src.gateway.guardrails.output import detect_answer_leak, redact_pii
+from shared.src.shared.critics.citation_checker import check_citations
 from shared.src.shared.models import Mode
 
 LEAK_NOTICE = (

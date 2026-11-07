@@ -8,23 +8,23 @@ from pathlib import Path
 import pytest
 
 from evals.exam_set import ielts_writing_adversarial as adversarial
-from services.agent.src.agent.ielts import llm
-from services.agent.src.agent.ielts.feedback import (
+from shared.src.shared.ielts import llm
+from shared.src.shared.ielts.feedback import (
     build_feedback,
     generate_feedback,
     locate_quote,
     paragraph_of,
 )
-from services.agent.src.agent.ielts.gate import (
+from shared.src.shared.ielts.gate import (
     calibration_slope,
     gate_report,
     load_calibration,
     wilson_interval,
 )
-from services.agent.src.agent.ielts.grading import GradingError, grade_essay
-from services.agent.src.agent.ielts.marking import mark_essay, top_priorities
-from services.agent.src.agent.ielts.models import Calibration, Timing
-from services.agent.src.agent.ielts.report_checks import check_report
+from shared.src.shared.ielts.grading import GradingError, grade_essay
+from shared.src.shared.ielts.marking import mark_essay, top_priorities
+from shared.src.shared.ielts.models import Calibration, Timing
+from shared.src.shared.ielts.report_checks import check_report
 
 PROMPT = adversarial.PROMPT
 ESSAY = (
@@ -315,7 +315,7 @@ async def test_model_outage_raises_so_the_caller_can_retry():
 
 
 def test_top_priorities_need_an_action_or_a_next_step():
-    from services.agent.src.agent.ielts.models import CriterionReport
+    from shared.src.shared.ielts.models import CriterionReport
 
     bare = [CriterionReport(id=c, name=c, band=b) for c, b in
             (("TR", 5.0), ("CC", 6.0), ("LR", 6.5), ("GRA", 7.0))]

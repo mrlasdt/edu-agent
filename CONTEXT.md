@@ -101,11 +101,11 @@ _Avoid_: Voice profile, writing profile, stylometric profile
 ## Architecture
 
 **Orchestrator**:
-The logic layer inside the Gateway service that every turn passes through before reaching any agent. Performs four steps in order: validate (rules), enrich (Haiku-tier LLM — detects incomplete questions), complexity-classify (Haiku-tier LLM — detects Basic-vs-Advanced mismatch), route. Resolves the target agent via the Agent Registry. Designed as an extension point: in v1 it routes to Basic only; the Advanced router is stubbed.
+The logic layer inside the Gateway service that every turn passes through before reaching any agent. Performs four steps in order: validate (rules), enrich (Haiku-tier LLM — detects incomplete questions), complexity-classify (Haiku-tier LLM — detects Basic-vs-Advanced mismatch), route. Checks the session's `(test_type, section)` against the catalog of supported pairs (`shared/src/shared/catalog.py`); the Agent service resolves the agent class from its own registry. Designed as an extension point: in v1 it routes to Basic only; the Advanced router is stubbed.
 _Avoid_: Router, gateway, dispatcher, controller
 
 **Agent registry**:
-A plugin registry inside the Agent service. Agents register by `(test_type, section)` key; the Orchestrator resolves the correct agent class by looking up the session's `(test_type, section)`. The primary extension seam for adding new test types (IELTS, GMAT, TOEFL) without changing the Orchestrator or other services.
+A plugin registry inside the Agent service. Agents register by `(test_type, section)` key; the Agent service resolves the correct agent class by looking up the request's `(test_type, section)`. The registry must bind exactly the pairs in the shared catalog, which the Orchestrator checks (a test fails if they drift). The primary extension seam for adding new test types (GMAT, TOEFL): one registry line and one catalog entry.
 _Avoid_: Agent factory, agent map, agent pool
 
 **Test type**:

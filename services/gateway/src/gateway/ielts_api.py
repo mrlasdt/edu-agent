@@ -16,12 +16,6 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from services.agent.src.agent.ielts.checks import words
-from services.agent.src.agent.ielts.grading import GradingError
-from services.agent.src.agent.ielts.llm import Completer, LiteLLMCompleter
-from services.agent.src.agent.ielts.marking import mark_essay
-from services.agent.src.agent.ielts.models import DISCLAIMER, Report, Timing
-from services.agent.src.agent.ielts.prompts import WritingPrompt, load_prompts
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
 from services.gateway.src.gateway.ielts_store import (
     ALLOWED_S,
@@ -38,6 +32,12 @@ from shared.src.shared.budget import (
     spend_ledger,
 )
 from shared.src.shared.config import get_settings
+from shared.src.shared.ielts.checks import words
+from shared.src.shared.ielts.grading import GradingError
+from shared.src.shared.ielts.llm import Completer, LiteLLMCompleter
+from shared.src.shared.ielts.marking import mark_essay
+from shared.src.shared.ielts.models import DISCLAIMER, Report, Timing
+from shared.src.shared.ielts.prompts import WritingPrompt, load_prompts
 
 _log = logging.getLogger(__name__)
 
