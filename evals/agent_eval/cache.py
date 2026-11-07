@@ -13,7 +13,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-DEFAULT_CACHE_DIR = Path(".eval-cache")
+from shared.src.shared.config import anchor
+
+DEFAULT_CACHE_DIR = anchor(".eval-cache")
 
 
 def cache_key(**inputs: Any) -> str:
