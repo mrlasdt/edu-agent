@@ -18,9 +18,9 @@ The system is decomposed into five persistent microservices and one CLI tool, al
 
 ## Extensibility contract (IELTS, GMAT, TOEFL, etc.)
 
-The Agent Service uses a **plugin registry** pattern: agents register by `(test_type, section)` key. The Orchestrator routes by looking up `(session.test_type, session.section)` in the registry. Adding a new test type means:
+The Agent Service uses a **plugin registry** pattern: agents register by `(test_type, section)` key. The Orchestrator checks `(session.test_type, session.section)` against the catalog of supported pairs in `shared/src/shared/catalog.py`, and the Agent Service resolves the agent class from its registry (a test fails if the two differ). Adding a new test type means:
 
-1. Register new agent class(es): `IELTSWritingAgent`, `GMATQuantAgent`, etc.
+1. Register new agent class(es): `IELTSWritingAgent`, `GMATQuantAgent`, etc., and add the pair to the catalog
 2. Add prompts under `prompts/{test_type}/{section}/`
 3. Add corpus documents to Global corpus with `test_type` metadata (retrieval ACL already filters by payload)
 4. Add golden set: `evals/golden/{test_type}_{section}.jsonl`
