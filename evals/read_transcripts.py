@@ -24,8 +24,9 @@ from typing import Any
 from pydantic import BaseModel
 
 from evals.agent_eval.results import EvalReport, QuantAttempt, QuantSuiteResult
+from shared.src.shared.config import anchor
 
-DEFAULT_RUNS_DIR = Path(".eval-runs")
+DEFAULT_RUNS_DIR = anchor(".eval-runs")
 DEFAULT_WORST = 5
 _WRAP = 100
 

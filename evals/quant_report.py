@@ -18,8 +18,9 @@ from pathlib import Path
 from evals.agent_eval.quant_suite import compare_with_baseline
 from evals.agent_eval.results import QuantBaseline
 from evals.loader import load_golden_set
+from shared.src.shared.config import anchor
 
-DEFAULT_BASELINE = Path("evals/baselines/quant.json")
+DEFAULT_BASELINE = anchor("evals/baselines/quant.json")
 GROUP_LABELS = {
     "solve": "solve (final answer right and well-formed)",
     "tutor": "tutor, one reply",
