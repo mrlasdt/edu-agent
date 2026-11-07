@@ -232,7 +232,7 @@ services:
   # The gateway also serves the IELTS Writing mock (/ielts/...): attempts are kept in SQLite
   # under ../ielts-local and the AI spend ledger (the 5 USD cap) under ../.eval-ledger, both
   # gitignored (Docker Desktop creates them; on Linux run `mkdir -p ielts-local .eval-ledger`
-  # first so they are owned by you), and the eight original prompts are mounted from the golden set.
+  # first so they are owned by you), and the eight original prompts ship with the agent code under ../services.
   gateway:
     build:
       context: ..
@@ -245,7 +245,6 @@ services:
       - ../config:/app/config:ro
       - ../prompts:/app/prompts:ro
       - ../seed:/app/seed:ro
-      - ../evals/golden/ielts_writing_prompts.jsonl:/app/evals/golden/ielts_writing_prompts.jsonl:ro
       - ../ielts-local:/app/ielts-local
       - ../.eval-ledger:/app/.eval-ledger
       - ../.turn-log:/app/.turn-log

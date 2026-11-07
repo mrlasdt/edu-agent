@@ -29,7 +29,13 @@ from evals.exam_set.schema import (
     Source,
     best_label_tier,
 )
-from evals.loader import _GOLDEN_DIR, EXAM_FAMILIES, load_exam_items, load_golden_set
+from evals.loader import (
+    _GOLDEN_DIR,
+    EXAM_FAMILIES,
+    family_path,
+    load_exam_items,
+    load_golden_set,
+)
 from services.math_verifier.src.math_verifier.sandbox import _sync_verify, verify_expression
 
 REPO = Path(__file__).resolve().parents[1]
@@ -94,7 +100,7 @@ def test_committed_exam_families_load_and_are_committable():
     assert {i.skill for i in items} == {"sat_math", "reading", "writing_t2"}
     assert items and all(i.committable() for i in items)
     for family in EXAM_FAMILIES:
-        assert (_GOLDEN_DIR / f"{family}.jsonl").exists()
+        assert family_path(family).exists()
 
 
 def test_local_items_load_only_when_asked(tmp_path: Path):
@@ -152,6 +158,7 @@ def test_local_only_directories_are_ignored_and_hold_nothing_tracked(directory: 
 def test_no_third_party_text_in_committed_golden_files():
     committed = [p for p in _GOLDEN_DIR.glob("*.jsonl") if p.stem not in {
         "gre_quant", "gre_aw", "gre_quant_generation"}]
+    committed.append(family_path("ielts_writing_prompts"))
     assert committed
     for path in committed:
         for item in read_items(path):

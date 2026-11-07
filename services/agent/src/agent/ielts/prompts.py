@@ -5,7 +5,9 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-PROMPTS_PATH = Path("evals/golden/ielts_writing_prompts.jsonl")
+# The product owns this file; evals reads and regenerates it
+# (python -m evals.exam_set generate-writing).
+PROMPTS_PATH = Path(__file__).resolve().parent / "data" / "ielts_writing_prompts.jsonl"
 
 ESSAY_TYPE_LABELS = {
     "opinion": "Opinion",

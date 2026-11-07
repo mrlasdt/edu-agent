@@ -3,7 +3,7 @@ Golden-set extension CLI.
 
   python -m evals.exam_set generate-sat                     # rewrite sat_math.jsonl
   python -m evals.exam_set generate-reading                 # rewrite ielts_reading.jsonl
-  python -m evals.exam_set generate-writing                 # rewrite ielts_writing_prompts.jsonl
+  python -m evals.exam_set generate-writing                 # rewrite the product's writing prompts
   python -m evals.exam_set generate-adversarial             # rewrite the adversarial writing set
   python -m evals.exam_set import-writing9 --limit 1200     # into evals/golden/local/
   python -m evals.exam_set import-cambridge --dir <folder>  # own book files, local OCR
@@ -84,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
                                     ielts_reading.generate_all())
         print(json.dumps({"file": ielts_reading.FILE_NAME, "items": count, "sha256": digest}))
     elif args.cmd == "generate-writing":
-        count, digest = write_items(GOLDEN_DIR / ielts_writing_prompts.FILE_NAME,
+        count, digest = write_items(ielts_writing_prompts.PATH,
                                     ielts_writing_prompts.generate_all())
         print(json.dumps({"file": ielts_writing_prompts.FILE_NAME, "items": count,
                           "sha256": digest}))

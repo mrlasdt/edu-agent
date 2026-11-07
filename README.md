@@ -169,7 +169,7 @@ Useful tools: `uv run python -m evals.read_transcripts --worst 5`, `uv run pytho
 
 ### Golden sets for IELTS and SAT
 
-`evals/exam_set/` builds exam items (ADR-0013). Every item has a label tier (`examiner`, `teacher_graded`, `captain_blind`, `site_or_model_weak`, `solver`, `author_key`) and every metric is reported against a tier and a sample size. Committed items are original: `sat_math.jsonl`, `ielts_reading.jsonl` and `ielts_writing_prompts.jsonl`. Third-party data is imported only into the gitignored `evals/golden/local/`:
+`evals/exam_set/` builds exam items (ADR-0013). Every item has a label tier (`examiner`, `teacher_graded`, `captain_blind`, `site_or_model_weak`, `solver`, `author_key`) and every metric is reported against a tier and a sample size. Committed items are original: `sat_math.jsonl` and `ielts_reading.jsonl` in `evals/golden/`, and `ielts_writing_prompts.jsonl`, which the product serves and so keeps under `services/agent/src/agent/ielts/data/` (evals reads it there). Third-party data is imported only into the gitignored `evals/golden/local/`:
 
 ```bash
 uv run python -m evals.exam_set generate-sat      # also generate-reading, generate-writing: rebuild the committed sets

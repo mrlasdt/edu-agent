@@ -72,7 +72,7 @@ async def get_question_tool(
         question_type: Optional filter (e.g. "numeric_entry", "issue", "argument")
 
     Returns:
-        A question dict with id, question_type, expression/prompt, and ground_truth
+        A question dict with id, question_type and the question text (no answer key)
     """
     return await _get_random_question(
         test_type=test_type, section=section, question_type=question_type
@@ -111,17 +111,31 @@ async def _search_corpus(
         return cast(list[dict[str, Any]], r.json())
 
 
+# What a candidate may see of a practice question. The golden rows are eval fixtures: they carry
+# the answer key (ground_truth), the eval's internal failure label (failure_source) and tags, so
+# the tool projects onto these fields instead of returning rows as they are.
+_QUANT_FIELDS = ("id", "question_type", "question", "expression")
+_AW_FIELDS = ("id", "task_type", "prompt")
+
+
 async def _get_random_question(
     test_type: str, section: str, question_type: str
 ) -> dict[str, Any]:
-    suite = "quant" if section == "quant" else "aw"
-    items = load_golden_set(suite)
+    if section == "quant":
+        # Only "solve" rows are practice questions; tutor, tutor_multiturn and security rows
+        # are eval scenarios (a security row is a prompt-injection test string).
+        rows = [i for i in load_golden_set("quant") if i.get("kind") == "solve"]
+        fields: tuple[str, ...] = _QUANT_FIELDS
+    else:
+        rows = load_golden_set("aw")
+        fields = _AW_FIELDS
     if question_type:
-        items = [i for i in items if i.get("question_type") == question_type or
-                 i.get("task_type") == question_type]
-    if not items:
+        rows = [i for i in rows if i.get("question_type") == question_type or
+                i.get("task_type") == question_type]
+    if not rows:
         return {"error": f"No questions found for {section}/{question_type}"}
-    return random.choice(items)
+    chosen = random.choice(rows)
+    return {k: chosen[k] for k in fields if k in chosen}
 
 
 async def _get_model_essay(prompt: str, score_tier: int) -> dict[str, Any]:
