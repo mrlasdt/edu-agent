@@ -21,7 +21,7 @@ from evals.agent_eval.cache import ResponseCache
 from evals.agent_eval.judges import HeuristicJudge, Judge, JudgeQuestion, LLMJudge
 from evals.agent_eval.transport import FakeToolCalls, MeteredTransport
 from evals.loader import load_golden_set
-from services.agent.src.agent.ielts import llm
+from shared.src.shared.ielts import llm
 
 OFFLINE_MODEL = "offline/fake"
 

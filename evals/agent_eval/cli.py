@@ -64,7 +64,6 @@ from evals.agent_eval.transport import AllModelsFailedError
 from evals.read_transcripts import DEFAULT_RUNS_DIR
 from evals.regression import check_regression
 from shared.src.shared.config import load_model_config
-from shared.src.shared.ielts import llm
 
 # Order matters: openrouter/free is OpenRouter's router over whichever free model is up, so it
 # is the most reliable first choice; the pinned models are fallbacks for when it errors.
