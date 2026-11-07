@@ -19,11 +19,11 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import httpx
-import litellm
 
 from evals.agent_eval.budget import estimate_cost, estimate_tokens
 from evals.agent_eval.cache import cache_key
 from evals.agent_eval.transport import MeteredTransport, tagged
+from shared.src.shared.llm_router import get_router
 
 JEV_MODEL = "typesafe/jev-1.14"
 JEV_URL = "https://openrouter.ai/api/alpha/decisions"
@@ -63,7 +63,7 @@ class LLMJudge:
 
     async def _ask(self, system: str, q: JudgeQuestion) -> str:
         with tagged("judge"):
-            response = await litellm.acompletion(
+            response = await get_router().acompletion(
                 model=self._model,
                 messages=[
                     {"role": "system", "content": system},

@@ -32,6 +32,7 @@ from evals.exam_set.schema import (
 from evals.loader import load_exam_items
 from services.agent.src.agent.ielts.grading import grade_request
 from services.agent.src.agent.ielts.scoring import GradeParseError
+from tests.llm_fakes import ScriptedRouter
 from tests.test_ielts_marking import ESSAY, PROMPT
 
 # ── metrics ──────────────────────────────────────────────────────────────────
@@ -154,9 +155,9 @@ async def test_cached_reruns_replay_each_grader_sample_and_retry_separately(tmp_
 
     async def run() -> ielts_writing.EvalGrade:
         transport = MeteredTransport(
-            Ledger(tmp_path / "l.json", 20.0), "run", cache=ResponseCache(tmp_path / "cache")
+            Ledger(tmp_path / "l.json", 20.0), "run", cache=ResponseCache(tmp_path / "cache"),
+            router=ScriptedRouter(real),
         )
-        transport._real = real
         with transport.installed():
             grader = ielts_writing.LLMIeltsGrader("openai/gpt-4.1-mini", samples=3)
             return await grader.grade(PROMPT, ESSAY, essay_item("x", 6.0))

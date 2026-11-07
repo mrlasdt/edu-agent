@@ -154,10 +154,9 @@ def _build_blind_pool(args: argparse.Namespace, directory: Path) -> int:
     import asyncio
     import os
 
-    import litellm
-
     from evals.agent_eval.budget import spend_ledger
     from evals.agent_eval.transport import MeteredTransport
+    from shared.src.shared.llm_router import get_router
 
     if not (os.environ.get("OPENAI_API_KEY") or os.environ.get("OPENROUTER_API_KEY")):
         print("ERROR: set OPENAI_API_KEY or OPENROUTER_API_KEY (names only)", file=sys.stderr)
@@ -181,7 +180,7 @@ def _build_blind_pool(args: argparse.Namespace, directory: Path) -> int:
     )
 
     async def complete(messages: list[dict[str, str]]) -> str:
-        response = await litellm.acompletion(
+        response = await get_router().acompletion(
             model=args.model, messages=messages, temperature=0.9, max_tokens=700, stream=False
         )
         return str(response.choices[0].message.content or "")

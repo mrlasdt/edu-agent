@@ -32,6 +32,7 @@ from services.agent.src.agent.pipeline.schema import (
     QuestionType,
 )
 from shared.src.shared.config import load_model_config
+from tests.llm_fakes import ScriptedRouter
 
 SKILL = InProcessVerifySkill()
 
@@ -308,8 +309,9 @@ async def test_pipeline_through_the_metered_transport_aborts_on_budget(tmp_path:
     async def real(**kw: Any) -> Any:
         raise AssertionError("must not be called")
 
-    transport = MeteredTransport(Ledger(tmp_path / "l.json", ceiling_usd=1e-9), "run")
-    transport._real = real
+    transport = MeteredTransport(
+        Ledger(tmp_path / "l.json", ceiling_usd=1e-9), "run", router=ScriptedRouter(real)
+    )
     pipeline = build_pipeline(SKILL, write_model_config("openai/gpt-4o"))
     with transport.installed(), pytest.raises(BudgetExceededError):
         await pipeline.run(request())

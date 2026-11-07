@@ -1,7 +1,7 @@
 """
-Provider layer for the pipeline: role -> model via the shared model config, called through
-litellm so the eval harness's metered transport (budget ledger, free-first fallback chain)
-sits underneath it unchanged.
+Provider layer for the pipeline: role -> model via the shared model config, called through the
+LiteLLM Router (`shared.llm_router`) so the eval harness's metered transport (budget ledger,
+cache) sits underneath it unchanged.
 """
 from __future__ import annotations
 
@@ -10,9 +10,8 @@ import re
 from pathlib import Path
 from typing import Any, Protocol
 
-import litellm
-
 from shared.src.shared.config import ModelConfig, load_model_config
+from shared.src.shared.llm_router import get_router
 from shared.src.shared.observability import build_llm_metadata
 
 _PROMPT_ROOT = Path("prompts/question_pipeline")
@@ -41,7 +40,7 @@ class LiteLLMCompleter:
         return self._config.prompt_version(PROMPT_AGENT, name)
 
     async def complete(self, role: str, messages: list[dict[str, Any]], trace_id: str) -> str:
-        response = await litellm.acompletion(
+        response = await get_router().acompletion(
             model=self._config.litellm_model(role),
             messages=messages,
             temperature=self._config.role(role).temperature,

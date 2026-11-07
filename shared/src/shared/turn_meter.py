@@ -32,10 +32,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-import litellm
-
 from shared.src.shared.budget import estimate_cost, estimate_tokens
 from shared.src.shared.config import get_settings
+from shared.src.shared.llm_router import answered_model, get_router
 
 _log = logging.getLogger(__name__)
 
@@ -191,17 +190,20 @@ class TurnMeter:
         self, *, model: str, messages: list[dict[str, Any]], **kwargs: Any
     ) -> AsyncIterator[Any]:
         """
-        A metered streaming `litellm.acompletion`. Yields the same content chunks the bare call
-        would, so callers stay unchanged; the closing usage-only chunk (no choices) is consumed
-        here. Extra keyword arguments (temperature, metadata, ...) pass through.
+        A metered streaming completion through the Router (`shared.llm_router`): retries,
+        fallbacks and cooldowns apply, and the record names the model that answered. Yields the
+        same content chunks the bare `litellm.acompletion` would, so callers stay unchanged; the
+        closing usage-only chunk (no choices) is consumed here. Extra keyword arguments
+        (temperature, metadata, ...) pass through.
         """
         start = self._clock()
         first_token: float | None = None
         out: list[str] = []
         usage: tuple[int, int] | None = None
         error: str | None = None
+        response: Any = None
         try:
-            response = await litellm.acompletion(
+            response = await get_router().acompletion(
                 model=model,
                 messages=messages,
                 stream=True,
@@ -223,17 +225,19 @@ class TurnMeter:
             raise
         finally:
             ttft = None if first_token is None else (first_token - start) * 1000
-            self._add_call(model, messages, "".join(out), usage, start, ttft, error)
+            self._add_call(
+                answered_model(response, model), messages, "".join(out), usage, start, ttft, error
+            )
 
     async def complete(
         self, *, model: str, messages: list[dict[str, Any]], **kwargs: Any
     ) -> Any:
-        """A metered non-streaming `litellm.acompletion`; returns the response unchanged."""
+        """A metered non-streaming completion through the Router; returns the response unchanged."""
         start = self._clock()
         response: Any = None
         error: str | None = None
         try:
-            response = await litellm.acompletion(
+            response = await get_router().acompletion(
                 model=model, messages=messages, stream=False, **kwargs
             )
             return response
@@ -248,7 +252,10 @@ class TurnMeter:
                     text = content if isinstance(content, str) else ""
                 except (AttributeError, IndexError, TypeError):
                     text = ""
-            self._add_call(model, messages, text, _read_usage(response), start, None, error)
+            self._add_call(
+                answered_model(response, model), messages, text, _read_usage(response),
+                start, None, error,
+            )
 
     def _add_call(
         self,

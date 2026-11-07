@@ -49,6 +49,23 @@ def dev_model_config(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def fresh_router_with_instant_retries(monkeypatch):
+    """
+    Every model call goes through the LiteLLM Router (shared.llm_router). The process Router is
+    built per test (each test has its own event loop), and its backoff between retries of a
+    transient error is skipped so a test that provokes a retry does not sleep.
+    """
+    import litellm
+
+    from shared.src.shared.llm_router import reset_router
+
+    monkeypatch.setattr(litellm, "_calculate_retry_after", lambda *a, **k: 0)
+    reset_router()
+    yield
+    reset_router()
+
+
+@pytest.fixture(autouse=True)
 def fresh_gateway_rate_limiter(monkeypatch):
     """
     The gateway's /chat limiter (60 a minute per candidate) is module state, and the tests share

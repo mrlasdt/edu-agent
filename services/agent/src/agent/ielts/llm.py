@@ -2,9 +2,9 @@
 Model access for the IELTS mock, behind one seam.
 
 `Completer` is what the grader and the feedback generator call. The production completer calls
-the role's model from the model config through litellm; the eval harness passes its own that
-calls `litellm.acompletion` directly so the metered transport (budget ledger, fallbacks, cache)
-sits underneath unchanged.
+the role's model from the model config through the LiteLLM Router (`shared.llm_router`), which
+owns the retries, the fallback order and the cooldowns; the eval harness passes its own that calls
+the same `get_router()` so the metered transport (budget ledger, cache) sits underneath unchanged.
 
 The production completer meters itself in the same budget ledger: a call that could take total
 spend over the cap is refused before it is made (`BudgetExceededError`), and the cost of every
@@ -17,18 +17,19 @@ from collections.abc import Awaitable
 from pathlib import Path
 from typing import Any, Protocol
 
-import litellm
-
 from shared.src.shared.budget import Ledger, estimate_cost, estimate_tokens, spend_ledger
 from shared.src.shared.config import get_settings, load_model_config
+from shared.src.shared.llm_router import (
+    Completions,
+    answered_model,
+    configured_chain,
+    get_router,
+)
 from shared.src.shared.observability import build_llm_metadata
 
 PROMPT_ROOT = Path("prompts")
 GRADER_ROLE = "ielts_grader"
 FEEDBACK_ROLE = "ielts_feedback"
-# Google answers its own transient trouble with HTTP 500/503 (about 1 call in 6 for 26b in the
-# ADR-0014 run); litellm retries those itself, so a blip does not cost the grade its best model.
-GOOGLE_RETRIES = 2
 _SECRET = re.compile(r"(sk-[\w-]{8,}|Bearer\s+\S+)", re.I)
 
 
@@ -60,79 +61,86 @@ def role_model(role: str) -> str:
     return load_model_config(get_settings().model_config_path).litellm_model(role)
 
 
-def role_fallbacks(role: str) -> list[str]:
-    return load_model_config(get_settings().model_config_path).litellm_fallbacks(role)
-
-
 class LiteLLMCompleter:
     """
-    Call the role's model; a provider failure or an empty reply moves on to the role's
-    fallbacks in order, and only when every one has failed is it `ModelUnavailableError`.
+    Call the role's model through the Router: a provider failure moves on to the role's
+    `fallbacks` in order (after the Router's own retry of a transient error such as Google's
+    HTTP 500/503), and only when every one has failed is it `ModelUnavailableError`. An empty
+    reply is not an error to the Router, so it is handled here: the call continues on the models
+    after the one that answered.
 
-    Spend is checked against the cap before each call (worst case: the whole prompt plus
-    `max_tokens` of output, plus whatever concurrent calls have reserved) and the reported
-    usage is recorded after it. `BudgetExceededError` is not wrapped: it is not a model outage.
+    Spend is checked against the cap before every call to the Router, at the dearest model of the
+    chain still ahead (`configured_chain`, the one the Router will actually run; worst case: the
+    whole prompt plus `max_tokens` of output, plus whatever concurrent calls have reserved), so no
+    fallback can take the call past the cap; the reported usage is recorded after each call.
+    `BudgetExceededError` is not wrapped: it is not a model outage.
     """
 
-    def __init__(self, ledger: Ledger | None = None) -> None:
+    def __init__(self, ledger: Ledger | None = None, router: Completions | None = None) -> None:
         self._ledger = ledger
+        self._router = router
         self._reserved = 0.0  # worst-case cost of calls in flight, so concurrent samples add up
 
     @property
     def ledger(self) -> Ledger:
         return self._ledger or spend_ledger()
 
+    @property
+    def router(self) -> Completions:
+        return self._router or get_router()
+
     async def __call__(
         self, role: str, messages: list[dict[str, str]], *, temperature: float, max_tokens: int,
         trace_id: str = "", prompt_version: str = "",
     ) -> str:
-        errors: list[str] = []
-        for model in [role_model(role), *role_fallbacks(role)]:
-            try:
-                return await self._complete(
-                    model, messages, temperature=temperature, max_tokens=max_tokens,
-                    trace_id=trace_id, prompt_version=prompt_version,
-                )
-            except ModelUnavailableError as exc:
-                errors.append(str(exc))
-        raise ModelUnavailableError("; ".join(errors))
+        chain = configured_chain(self.router, role_model(role))
+        prompt_tokens = estimate_tokens("\n".join(m["content"] for m in messages))
+        return await self._complete(
+            chain, messages, temperature=temperature, max_tokens=max_tokens,
+            trace_id=trace_id, prompt_version=prompt_version, prompt_tokens=prompt_tokens,
+        )
 
     async def _complete(
-        self, model: str, messages: list[dict[str, str]], *, temperature: float, max_tokens: int,
-        trace_id: str, prompt_version: str,
+        self, chain: list[str], messages: list[dict[str, str]], *, temperature: float,
+        max_tokens: int, trace_id: str, prompt_version: str, prompt_tokens: int,
     ) -> str:
         extra: dict[str, Any] = (
             build_llm_metadata(trace_id, prompt_version or "v1") if trace_id else {}
         )
-        if model.startswith("gemini/"):
-            extra["num_retries"] = GOOGLE_RETRIES
-            if key := get_settings().gemini_api_key:
-                extra["api_key"] = key  # .env is read by Settings, not exported to litellm
-        ledger = self.ledger
-        prompt_tokens = estimate_tokens("\n".join(m["content"] for m in messages))
-        projected = estimate_cost(model, prompt_tokens, max_tokens)
-        ledger.ensure_capacity(self._reserved + projected)  # raises BudgetExceededError
-        self._reserved += projected
-        try:
-            response = await litellm.acompletion(
-                model=model, messages=messages, temperature=temperature,
-                max_tokens=max_tokens, stream=False, **extra,
+        errors: list[str] = []
+        start = 0
+        while start < len(chain):
+            model = chain[start]
+            projected = max(estimate_cost(m, prompt_tokens, max_tokens) for m in chain[start:])
+            self.ledger.ensure_capacity(self._reserved + projected)  # raises BudgetExceededError
+            # The Router already holds the configured fallbacks for the first model; after an
+            # empty reply the rest of the chain is passed for the model we resume from.
+            resume = {"fallbacks": [{model: chain[start + 1:]}]} if start else {}
+            self._reserved += projected
+            try:
+                response = await self.router.acompletion(
+                    model=model, messages=messages, temperature=temperature,
+                    max_tokens=max_tokens, stream=False, **resume, **extra,
+                )
+                text = str(response.choices[0].message.content or "")
+            except Exception as exc:  # noqa: BLE001 - the Router has already tried the whole chain
+                reason = _SECRET.sub("[redacted]", " ".join(str(exc).split()))[:120]
+                errors.append(f"{' > '.join(chain[start:])}: {type(exc).__name__}: {reason}")
+                break
+            finally:
+                self._reserved -= projected
+            answered = answered_model(response, model)
+            usage = getattr(response, "usage", None)
+            self.ledger.record(
+                f"ielts-mock-{trace_id or 'untraced'}", answered,
+                estimate_cost(
+                    answered,
+                    int(getattr(usage, "prompt_tokens", 0) or prompt_tokens),
+                    int(getattr(usage, "completion_tokens", 0) or estimate_tokens(text)),
+                ),
             )
-            text = str(response.choices[0].message.content or "")
-        except Exception as exc:  # noqa: BLE001 - any provider failure is an unavailable model
-            reason = _SECRET.sub("[redacted]", " ".join(str(exc).split()))[:120]
-            raise ModelUnavailableError(f"{model}: {type(exc).__name__}: {reason}") from exc
-        finally:
-            self._reserved -= projected
-        usage = getattr(response, "usage", None)
-        ledger.record(
-            f"ielts-mock-{trace_id or 'untraced'}", model,
-            estimate_cost(
-                model,
-                int(getattr(usage, "prompt_tokens", 0) or prompt_tokens),
-                int(getattr(usage, "completion_tokens", 0) or estimate_tokens(text)),
-            ),
-        )
-        if not text.strip():
-            raise ModelUnavailableError(f"{model}: empty reply")
-        return text
+            if text.strip():
+                return text
+            errors.append(f"{answered}: empty reply")
+            start = chain.index(answered) + 1 if answered in chain else start + 1
+        raise ModelUnavailableError("; ".join(errors))

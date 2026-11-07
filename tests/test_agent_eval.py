@@ -21,6 +21,15 @@ from evals.agent_eval.probes import (
 from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport
 from evals.judges.quant_judge import grade_quant_item
 from shared.src.shared.config import Settings
+from tests.llm_fakes import (
+    RATE_LIMITED,
+    SERVER_ERROR,
+    BadRequest,
+    RouterPolicy,
+    ScriptedRouter,
+    calls,
+    mock_router,
+)
 
 # ── Quant eval no longer grades the answer key against itself ────────────────
 
@@ -88,48 +97,73 @@ def _resp(text: str) -> Any:
     )
 
 
-def _transport(tmp_path: Path, real: Any, fallbacks: list[str], ceiling: float = 20.0):
-    t = MeteredTransport(Ledger(tmp_path / "l.json", ceiling), "run", fallbacks=fallbacks)
-    t._real = real
-    return t
+FREE, PAID = "openrouter/x:free", "openai/gpt-4o-mini"
 
 
-async def test_transport_falls_back_and_records_cost(tmp_path: Path):
-    calls: list[str] = []
+def _transport(tmp_path: Path, router: Any, ceiling: float = 20.0) -> MeteredTransport:
+    return MeteredTransport(Ledger(tmp_path / "l.json", ceiling), "run", router=router)
 
-    async def real(**kw: Any) -> Any:
-        calls.append(kw["model"])
-        if kw["model"].endswith(":free"):
-            raise RuntimeError("rate limited")
-        return _resp("hi")
 
-    t = _transport(tmp_path, real, ["openai/gpt-4o-mini"])
+async def test_transport_falls_back_and_records_cost_under_the_model_that_answered(tmp_path: Path):
+    router = mock_router({FREE: SERVER_ERROR, PAID: "hi"}, {FREE: [PAID]})
+    t = _transport(tmp_path, router)
     out = await t.acompletion(
-        model="openrouter/x:free", messages=[{"role": "user", "content": "q"}], stream=True
+        model=FREE, messages=[{"role": "user", "content": "q"}], stream=True
     )
     chunks = [c.choices[0].delta.content async for c in out]
     assert chunks == ["hi"]
-    assert calls == ["openrouter/x:free", "openai/gpt-4o-mini"]
+    assert set(calls(router)) == {FREE, PAID}
+    assert t.records[0].model == PAID  # not the free model that was asked for
     assert t.records[0].cost_usd > 0 and t.spent_this_run == t.records[0].cost_usd
     assert Ledger(tmp_path / "l.json").spent() == pytest.approx(t.spent_this_run)
+    assert [(f.model, f.kind) for f in t.failures] == [(FREE, "fallback")]
 
 
 async def test_transport_aborts_on_budget_without_calling(tmp_path: Path):
-    async def real(**kw: Any) -> Any:
-        raise AssertionError("must not be called")
-
-    t = _transport(tmp_path, real, [], ceiling=0.0000001)
+    router = mock_router({"openai/gpt-4o": "dear"})
+    t = _transport(tmp_path, router, ceiling=0.0000001)
     with pytest.raises(BudgetExceededError):
         await t.acompletion(model="openai/gpt-4o", messages=[{"role": "user", "content": "q"}])
+    assert calls(router) == {}
+
+
+async def test_the_budget_is_checked_at_the_dearest_model_of_the_chain(tmp_path: Path):
+    """A free first model does not make the call free: its paid fallback could be reached."""
+    router = mock_router({FREE: "free reply", "openai/gpt-4o": "dear"}, {FREE: ["openai/gpt-4o"]})
+    t = _transport(tmp_path, router, ceiling=0.0000001)
+    with pytest.raises(BudgetExceededError):
+        await t.acompletion(model=FREE, messages=[{"role": "user", "content": "q" * 400}])
+    assert calls(router) == {}
 
 
 async def test_transport_all_models_failed(tmp_path: Path):
-    async def real(**kw: Any) -> Any:
-        raise RuntimeError("down")
+    router = mock_router({FREE: SERVER_ERROR, PAID: SERVER_ERROR}, {FREE: [PAID]})
+    t = _transport(tmp_path, router)
+    with pytest.raises(AllModelsFailedError) as exc:
+        await t.acompletion(model=FREE, messages=[{"role": "user", "content": "q"}])
+    assert FREE in str(exc.value) and PAID in str(exc.value)  # the chain that was tried
+    assert t.failures[0].kind == "error"
 
-    t = _transport(tmp_path, real, ["openai/gpt-4o-mini"])
-    with pytest.raises(AllModelsFailedError):
-        await t.acompletion(model="openrouter/x:free", messages=[{"role": "user", "content": "q"}])
+
+async def test_transport_retries_rate_limits_on_the_same_model_before_falling_back(
+    tmp_path: Path,
+):
+    router = mock_router({FREE: RATE_LIMITED, PAID: "ok"}, {FREE: [PAID]})
+    t = _transport(tmp_path, router)
+    out = await t.acompletion(model=FREE, messages=[{"role": "user", "content": "q"}])
+    assert out.choices[0].message.content == "ok"
+    assert calls(router) == {FREE: 1 + RouterPolicy().num_retries, PAID: 1}
+
+
+async def test_the_default_transport_builds_a_router_with_the_chain_it_was_given(tmp_path: Path):
+    t = MeteredTransport(Ledger(tmp_path / "l.json", 20.0), "run", fallbacks=[PAID])
+    router = t.router_for(FREE)
+    assert router is t.router_for(FREE)  # one per model, kept (and with it the cooldown state)
+    from shared.src.shared.llm_router import EVAL_POLICY, configured_chain
+
+    assert configured_chain(router, FREE) == [FREE, PAID]
+    assert router.num_retries == EVAL_POLICY.num_retries
+    assert router.cooldown_time == EVAL_POLICY.cooldown_time
 
 
 # ── judges ───────────────────────────────────────────────────────────────────
@@ -258,96 +292,56 @@ def test_live_requires_keys_by_name(monkeypatch: pytest.MonkeyPatch):
     assert "OPENROUTER_API_KEY" in str(exc.value)
 
 
-async def test_transport_retries_rate_limit_before_falling_back(tmp_path: Path):
-    class RateLimitError(Exception):
-        pass
-
-    calls: list[str] = []
-
-    async def real(**kw: Any) -> Any:
-        calls.append(kw["model"])
-        if len(calls) < 3:
-            raise RateLimitError("429")
-        return _resp("ok")
-
-    async def no_sleep(_: float) -> None:
-        return None
-
-    t = _transport(tmp_path, real, ["openai/gpt-4o-mini"])
-    t.sleep = no_sleep
-    msgs = [{"role": "user", "content": "q"}]
-    out = await t.acompletion(model="openrouter/x:free", messages=msgs)
-    assert out.choices[0].message.content == "ok"
-    assert calls == ["openrouter/x:free"] * 3
+# ── cooldown, failure reasons, cache ─────────────────────────────────────────
 
 
-# ── daily quota, failure reasons, cache ──────────────────────────────────────
-
-_DAILY = (
-    "RateLimitError: OpenrouterException - Rate limit exceeded: free-models-per-day. "
-    "Add 10 credits to unlock 1000 free model requests per day"
-)
-
-
-class _RateLimitError(Exception):
-    pass
+async def test_a_model_that_keeps_failing_is_skipped_by_later_calls(tmp_path: Path):
+    """Replaces the old process-lifetime `exhausted` set: the Router's cooldown does the job."""
+    policy = RouterPolicy(num_retries=0, retry_after=0, allowed_fails=1, cooldown_time=60)
+    router = mock_router({FREE: RATE_LIMITED, PAID: "ok"}, {FREE: [PAID]}, policy)
+    t = _transport(tmp_path, router)
+    for n in range(4):
+        await t.acompletion(model=FREE, messages=[{"role": "user", "content": f"q{n}"}])
+    assert calls(router) == {FREE: 2, PAID: 4}  # failed twice, then skipped for the cooldown
 
 
-async def test_daily_quota_429_is_not_retried_and_model_is_remembered(tmp_path: Path):
-    calls: list[str] = []
-    slept: list[float] = []
+class _LeakyError(BadRequest):
+    """A provider error whose text carries keys that must never reach a report."""
 
-    async def real(**kw: Any) -> Any:
-        calls.append(kw["model"])
-        if kw["model"].endswith(":free"):
-            raise _RateLimitError(_DAILY)
-        return _resp("ok")
+    def __init__(self) -> None:
+        super().__init__()
+        self.message = "404 guardrail: no endpoints, key sk-abcdef123456789 Bearer tok123"
 
-    async def sleep(s: float) -> None:
-        slept.append(s)
-
-    t = _transport(tmp_path, real, ["openai/gpt-4o-mini"])
-    t.sleep = sleep
-    msgs = [{"role": "user", "content": "q"}]
-    await t.acompletion(model="openrouter/x:free", messages=msgs)
-    await t.acompletion(model="openrouter/x:free", messages=[{"role": "user", "content": "q2"}])
-    assert slept == []  # no backoff for a quota that will not clear
-    assert calls == ["openrouter/x:free", "openai/gpt-4o-mini", "openai/gpt-4o-mini"]
-    assert t.failures[0].kind == "daily_quota"
+    def __str__(self) -> str:
+        return self.message
 
 
 async def test_failure_reason_is_recorded_and_redacted(tmp_path: Path):
-    async def real(**kw: Any) -> Any:
-        raise RuntimeError("404 guardrail: no endpoints, key sk-abcdef123456789 Bearer tok123")
-
-    t = _transport(tmp_path, real, [])
+    router = mock_router({FREE: _LeakyError()})
+    t = _transport(tmp_path, router)
     with pytest.raises(AllModelsFailedError) as exc:
-        await t.acompletion(model="openrouter/x:free", messages=[{"role": "user", "content": "q"}])
-    assert "guardrail" in str(exc.value) and "RuntimeError" in str(exc.value)
+        await t.acompletion(model=FREE, messages=[{"role": "user", "content": "q"}])
+    assert "guardrail" in str(exc.value) and "_LeakyError" in str(exc.value)
     assert "sk-abcdef" not in str(exc.value) and "tok123" not in str(exc.value)
     summary = t.failure_summary()
-    assert summary["openrouter/x:free [error]"]["count"] == 1
+    assert summary[f"{FREE} [error]"]["count"] == 1
+    assert "sk-abcdef" not in json.dumps(summary)
 
 
 async def test_response_cache_serves_repeat_calls_without_calling_or_spending(tmp_path: Path):
-    calls: list[str] = []
-
-    async def real(**kw: Any) -> Any:
-        calls.append(kw["model"])
-        return _resp("cached text")
-
-    t = _transport(tmp_path, real, [])
+    router = mock_router({PAID: "cached text"})
+    t = _transport(tmp_path, router)
     t.cache = ResponseCache(tmp_path / "cache")
     msgs = [{"role": "user", "content": "q"}]
-    first = await t.acompletion(model="openai/gpt-4o-mini", messages=msgs, temperature=0)
+    first = await t.acompletion(model=PAID, messages=msgs, temperature=0)
     spent = t.spent_this_run
-    second = await t.acompletion(model="openai/gpt-4o-mini", messages=msgs, temperature=0)
+    second = await t.acompletion(model=PAID, messages=msgs, temperature=0)
     assert first.choices[0].message.content == second.choices[0].message.content
-    assert calls == ["openai/gpt-4o-mini"] and t.spent_this_run == spent
+    assert calls(router) == {PAID: 1} and t.spent_this_run == spent
     assert t.cache.hits == 1
     other = [{"role": "user", "content": "different"}]
-    await t.acompletion(model="openai/gpt-4o-mini", messages=other, temperature=0)
-    assert len(calls) == 2
+    await t.acompletion(model=PAID, messages=other, temperature=0)
+    assert calls(router) == {PAID: 2}
 
 
 def test_cache_dir_is_gitignored():
@@ -466,9 +460,9 @@ async def test_transport_replays_a_tool_call_and_caches_it(tmp_path: Path):
         return asks_for_a_tool()
 
     t = MeteredTransport(
-        Ledger(tmp_path / "l.json", 1.0), "run", cache=ResponseCache(tmp_path / "c")
+        Ledger(tmp_path / "l.json", 1.0), "run", cache=ResponseCache(tmp_path / "c"),
+        router=ScriptedRouter(real),
     )
-    t._real = real
     tools = [{"type": "function", "function": {"name": "math_evaluate"}}]
     messages = [{"role": "user", "content": "1+1?"}]
     live = await t.acompletion(model="openai/gpt-4o-mini", messages=messages, tools=tools)

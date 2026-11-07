@@ -190,4 +190,5 @@ async def test_model_options_reach_every_request() -> None:
     model = ScriptedModel(reply(calls=[call("c1")]), reply("ok"))
     await run(model, echo, temperature=0.2, metadata={"trace_id": "t"})
     for request in model.requests:
-        assert request["temperature"] == 0.2 and request["metadata"] == {"trace_id": "t"}
+        # the Router adds its own routing keys to `metadata`; ours must still be in it
+        assert request["temperature"] == 0.2 and request["metadata"]["trace_id"] == "t"
