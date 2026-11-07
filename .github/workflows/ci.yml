@@ -53,7 +53,7 @@ jobs:
         with:
           sync: "false"
       - name: Export the locked dependency set
-        run: uv export --frozen --no-hashes --no-emit-project --extra dev -o requirements-audit.txt
+        run: uv export --frozen --no-hashes --no-emit-project --all-groups -o requirements-audit.txt
       - name: pip-audit against the OSV and PyPI advisory data
         # Fails on any known vulnerability in uv.lock. A finding with no fixed version yet can be
         # allowed with --ignore-vuln <ID> plus a comment here saying why and until when.
@@ -137,6 +137,15 @@ jobs:
         # no source mounts, see the overlay). Left out on purpose: `tei-embedder` (a ~2 GB model
         # download) and so `seed` and `web`, which wait on it; their images are still built above.
         run: $COMPOSE up --wait --wait-timeout 240 qdrant math-verifier corpus ingestion agent gateway
+      - name: Import every module of each image with only its own dependency group
+        # Starting a service imports its app, not what loads lazily. infra/import_smoke.py imports
+        # all of a service's modules inside its image, so a package missing from the service's
+        # group in pyproject.toml fails here as a ModuleNotFoundError.
+        run: |
+          for service in gateway agent corpus ingestion math-verifier; do
+            echo "== $service"
+            $COMPOSE run --rm --no-deps -T --entrypoint python "$service" - < infra/import_smoke.py
+          done
       - name: Show service logs on failure
         if: failure()
         run: $COMPOSE logs --no-color --tail 80

@@ -3,45 +3,72 @@ name = "edu-agent"
 version = "0.1.0"
 description = "Multi-exam tutor (GRE Quant and AW chat, IELTS Writing mock) - agentic AI engineering reference implementation"
 requires-python = ">=3.12"
-dependencies = [
-    # LLM
-    "litellm>=1.103.10",  # Router retry_policy / cooldown / mid-stream fallback, as verified
-    "openai>=1.30.0",
-    # Web framework
+# No runtime dependency lives here. Each service installs its own group below, so an image
+# carries what that service imports and nothing else (infra/Dockerfile:
+# `uv sync --frozen --no-default-groups --group <service>`). One lock covers every group.
+dependencies = []
+
+[dependency-groups]
+# What every FastAPI service (gateway, agent, corpus, ingestion) imports. uvicorn[standard]
+# brings watchfiles, which the compose `--reload` dev loop needs.
+app = [
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.30.0",
     "httpx>=0.27.0",
-    # Data / validation
     "pydantic>=2.11",
     "pydantic-settings>=2.3.0",
-    # Vector store
-    "qdrant-client>=1.9.0",
-    # MCP
-    "mcp>=1.0.0,<2",
-    # Observability
+    "pyyaml>=6.0",
+]
+# The gateway imports the agent code (services/agent), so both need the same model stack.
+gateway = [
+    {include-group = "app"},
+    "litellm>=1.103.10",  # Router retry_policy / cooldown / mid-stream fallback, as verified
     "langfuse>=2.30.0,<3",
-    # Math verification
-    "sympy>=1.12",
-    # Document parsing
+]
+agent = [
+    {include-group = "app"},
+    "litellm>=1.103.10",
+    "langfuse>=2.30.0,<3",
+]
+corpus = [
+    {include-group = "app"},
+    "qdrant-client>=1.9.0",
+]
+ingestion = [
+    {include-group = "app"},
+    "qdrant-client>=1.9.0",
     "pypdf>=4.2.0",
     "python-docx>=1.1.0",
-    # Utilities
-    "python-dotenv>=1.0.0",
-    "pyyaml>=6.0",
-    "langgraph>=1.0.0,<2",
+    "python-multipart>=0.0.9",  # FastAPI imports it at startup for the Form/UploadFile upload route
 ]
-
-[project.optional-dependencies]
+# Imports nothing third-party except the MCP server and the sympy sandbox; mcp brings
+# uvicorn and starlette (the REST routes use starlette directly).
+math-verifier = [
+    "mcp>=1.0.0,<2",
+    "starlette",
+    "sympy>=1.12",
+]
+# Local development, tests and evals: every service group plus what only they use.
+# `uv sync` installs this group by default (default-groups below).
 dev = [
+    {include-group = "gateway"},
+    {include-group = "agent"},
+    {include-group = "corpus"},
+    {include-group = "ingestion"},
+    {include-group = "math-verifier"},
+    "langgraph>=1.0.0,<2",  # services/agent pipeline/graph.py, imported only by evals/
+    "python-dotenv>=1.0.0",  # tests/test_observability.py
     "numpy>=1.26",  # evals.qdrant_filter_check (exact ground truth)
     "pytest>=8.2.0",
     "pytest-asyncio>=0.23.0",
     "pytest-mock>=3.14.0",
-    "httpx>=0.27.0",
     "respx>=0.21.0",
     "ruff>=0.4.0",
     "mypy>=1.10.0",
 ]
+
+[tool.uv]
+default-groups = ["dev"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

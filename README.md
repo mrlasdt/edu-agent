@@ -20,7 +20,7 @@ Prerequisites: Python 3.12+, `uv`, Node 20.19+, Docker (running).
 
 ```bash
 git clone <repo> && cd edu-agent
-uv sync --extra dev                 # Python deps
+uv sync                             # Python deps (the dev group: every service plus test tools)
 (cd web && npm install)             # frontend deps
 
 cp .env.example .env                # then edit .env (below)
