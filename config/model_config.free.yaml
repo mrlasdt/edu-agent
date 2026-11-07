@@ -2,7 +2,7 @@
 # model, so the whole stack (tutor, solve, guardrail checks, critics, graders) works with no
 # OpenAI key and zero spend.
 #
-#   MODEL_CONFIG_PATH=config/model_config.free.yaml      (in .env; needs only OPENROUTER_API_KEY)
+#   MODEL_CONFIG_PATH=config/model_config.free.yaml      (the default; needs only OPENROUTER_API_KEY)
 #
 # recursive/flint-v1.0:free was picked from OpenRouter's live model list (GET /api/v1/models):
 # prompt and completion price are 0, and it supports tools, tool_choice, response_format and
