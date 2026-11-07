@@ -20,6 +20,7 @@ ROOT = Path(__file__).parent.parent
 
 # ── 1. GitHub Actions workflows ───────────────────────────────────────────────
 
+
 def test_ci_workflow_exists():
     assert (ROOT / ".github/workflows/ci.yml").exists()
 
@@ -43,6 +44,7 @@ def _commands(job: dict) -> list[list[str]]:
 
 
 # ── 2. Path-gated eval in CI ──────────────────────────────────────────────────
+
 
 def test_ci_workflow_has_path_filter_for_eval():
     content = (ROOT / ".github/workflows/ci.yml").read_text()
@@ -70,6 +72,7 @@ def test_ci_workflow_audits_dependencies_and_scans_for_secrets():
 
 # ── 3. No cluster deploy ─────────────────────────────────────────────────────
 
+
 def test_docker_compose_is_the_only_deploy_path():
     """
     The k8s manifests and the deploy workflow were removed unapplied because they disagreed with
@@ -82,8 +85,10 @@ def test_docker_compose_is_the_only_deploy_path():
 
 # ── 4. Health check endpoints ─────────────────────────────────────────────────
 
+
 def test_gateway_healthz():
     from services.gateway.src.gateway.main import app
+
     client = TestClient(app)
     response = client.get("/healthz")
     assert response.status_code == 200
@@ -92,6 +97,7 @@ def test_gateway_healthz():
 
 def test_agent_healthz():
     from services.agent.src.agent.main import app
+
     client = TestClient(app)
     response = client.get("/healthz")
     assert response.status_code == 200
@@ -99,6 +105,7 @@ def test_agent_healthz():
 
 def test_corpus_healthz():
     from services.corpus.src.corpus.main import app
+
     client = TestClient(app)
     response = client.get("/healthz")
     assert response.status_code == 200
@@ -106,12 +113,14 @@ def test_corpus_healthz():
 
 def test_ingestion_healthz():
     from services.ingestion.src.ingestion.main import app
+
     client = TestClient(app)
     response = client.get("/healthz")
     assert response.status_code == 200
 
 
 # ── 5. Dockerfiles ────────────────────────────────────────────────────────────
+
 
 def test_dockerfiles_exist_for_all_services():
     services = ["gateway", "agent", "corpus", "ingestion", "math_verifier"]
@@ -122,9 +131,7 @@ def test_dockerfiles_exist_for_all_services():
 
 def _steps(workflow: dict) -> list[tuple[str, dict]]:
     return [
-        (job_id, step)
-        for job_id, job in workflow["jobs"].items()
-        for step in job.get("steps", [])
+        (job_id, step) for job_id, job in workflow["jobs"].items() for step in job.get("steps", [])
     ]
 
 
@@ -134,9 +141,7 @@ def test_live_eval_workflow_is_manual_only_and_fails_when_the_cli_fails():
     live = yaml.safe_load((ROOT / ".github/workflows/eval-live.yml").read_text())
     triggers = live.get("on", live.get(True))  # YAML reads a bare `on` key as True
     assert list(triggers) == ["workflow_dispatch"]
-    (run_step,) = [
-        step for _, step in _steps(live) if "--mode live" in step.get("run", "")
-    ]
+    (run_step,) = [step for _, step in _steps(live) if "--mode live" in step.get("run", "")]
     # `shell: bash` is what turns on pipefail; without it `... | tee` reports tee's exit code
     # and a regression (exit 1) or aborted run (exit 2) would show as a green job.
     assert run_step.get("shell") == "bash" or "pipefail" in run_step["run"]
@@ -146,9 +151,7 @@ def test_ci_runs_only_the_offline_quant_suite():
     import yaml
 
     ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
-    offline_runs = [
-        step.get("run", "") for step in ci["jobs"]["quant-suite-offline"]["steps"]
-    ]
+    offline_runs = [step.get("run", "") for step in ci["jobs"]["quant-suite-offline"]["steps"]]
     assert any("--mode offline --suite quant" in run for run in offline_runs)
     for _, step in _steps(ci):
         assert "--mode live" not in step.get("run", "")
