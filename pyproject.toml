@@ -5,7 +5,7 @@ description = "Multi-exam tutor (GRE Quant and AW chat, IELTS Writing mock) - ag
 requires-python = ">=3.12"
 dependencies = [
     # LLM
-    "litellm>=1.40.0",
+    "litellm>=1.103.10",  # Router retry_policy / cooldown / mid-stream fallback, as verified
     "openai>=1.30.0",
     # Web framework
     "fastapi>=0.111.0",

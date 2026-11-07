@@ -4,9 +4,8 @@ import json
 from dataclasses import dataclass
 from typing import Any, cast
 
-import litellm
-
 from shared.src.shared.config import load_model_config
+from shared.src.shared.llm_router import get_router
 
 _RUBRIC = """You are an expert GRE Analytical Writing scorer calibrated to the ETS 6-point rubric.
 
@@ -73,7 +72,7 @@ async def _call_aw_judge_llm(
         f"## Candidate essay to score\n{essay}"
     )
 
-    response = await litellm.acompletion(
+    response = await get_router().acompletion(
         model=model,
         messages=[
             {"role": "system", "content": _RUBRIC},

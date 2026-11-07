@@ -21,8 +21,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-import litellm
-
 from evals.agent_eval.agreement import agreement_report, quadratic_weighted_kappa
 from evals.agent_eval.cache import cache_key
 from evals.agent_eval.judges import JudgeError
@@ -48,6 +46,7 @@ from services.agent.src.agent.ielts.scoring import (  # noqa: F401 - re-exported
     round_overall,
     snap_band,
 )
+from shared.src.shared.llm_router import get_router
 
 TOLERANCE = 0.5
 DEFAULT_SAMPLES = 3
@@ -72,7 +71,8 @@ class IeltsGrader(Protocol):
 
 class EvalCompleter:
     """
-    Calls `litellm.acompletion` so the metered transport (budget, fallbacks, cache) is underneath.
+    Calls the installed Router (`get_router()`), so the metered transport (budget, cache) is
+    underneath.
     Repeats of one request (grader samples, retries) each get their own cache slot, so a rerun
     replays independent samples instead of one reply copied into all of them.
     """
@@ -90,7 +90,7 @@ class EvalCompleter:
         self._repeats[request] += 1
         with tagged("judge" if role == llm.GRADER_ROLE else "feedback"):
             try:
-                response = await litellm.acompletion(
+                response = await get_router().acompletion(
                     model=self.model, messages=messages, temperature=temperature,
                     max_tokens=max_tokens, stream=False, cache_slot=slot,
                 )

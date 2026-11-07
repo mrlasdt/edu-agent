@@ -583,7 +583,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27.0" },
     { name = "langfuse", specifier = ">=2.30.0,<3" },
     { name = "langgraph", specifier = ">=1.0.0,<2" },
-    { name = "litellm", specifier = ">=1.40.0" },
+    { name = "litellm", specifier = ">=1.103.10" },
     { name = "mcp", specifier = ">=1.0.0,<2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10.0" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=1.26" },

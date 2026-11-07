@@ -21,6 +21,7 @@ from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport, c
 from evals.judges.quant_judge import grade_quant_item
 from evals.loader import load_golden_set
 from services.agent.src.agent.agents.quant import QuantAgent
+from tests.llm_fakes import ScriptedRouter
 
 ITEMS = load_golden_set("quant")
 KINDS = {"solve", "tutor", "tutor_multiturn", "security"}
@@ -343,9 +344,9 @@ async def test_cost_and_latency_come_from_the_turn_meter(tmp_path: Path):
 
 
 def _transport(tmp_path: Path, real: Any, cache: Any = None) -> MeteredTransport:
-    t = MeteredTransport(Ledger(tmp_path / "l.json", 20.0), "r", cache=cache)
-    t._real = real
-    return t
+    return MeteredTransport(
+        Ledger(tmp_path / "l.json", 20.0), "r", cache=cache, router=ScriptedRouter(real)
+    )
 
 
 async def test_provider_token_report_reaches_the_turn_meter_only_when_asked_for(tmp_path: Path):

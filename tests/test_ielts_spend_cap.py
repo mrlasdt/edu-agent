@@ -18,6 +18,7 @@ from services.gateway.src.gateway.ielts_store import AttemptStore
 from services.gateway.src.gateway.main import app
 from shared.src.shared.budget import DEFAULT_CEILING_USD, BudgetExceededError, Ledger
 from shared.src.shared.config import Settings
+from tests.llm_fakes import ScriptedRouter
 from tests.test_ielts_marking import ESSAY, Scripted, feedback_reply, grade_reply
 
 MESSAGES = [{"role": "system", "content": "s" * 400}, {"role": "user", "content": "u" * 400}]
@@ -49,17 +50,21 @@ class FakeLiteLLM:
 @pytest.fixture
 def fake_litellm(monkeypatch: pytest.MonkeyPatch) -> FakeLiteLLM:
     fake = FakeLiteLLM()
-    monkeypatch.setattr(llm.litellm, "acompletion", fake)
     monkeypatch.setattr(llm, "role_model", lambda role: "openai/gpt-4.1-mini")
     monkeypatch.setattr(llm, "role_fallbacks", lambda role: [])
     return fake
+
+
+def completer_on(ledger: Ledger, model: Any) -> LiteLLMCompleter:
+    """The production completer, its Router replaced by a scripted one (reports its own usage)."""
+    return LiteLLMCompleter(ledger, router=ScriptedRouter(model))
 
 
 async def test_a_paid_call_is_recorded_from_the_reported_usage(
     tmp_path: Path, fake_litellm: FakeLiteLLM
 ):
     ledger = Ledger(tmp_path / "l.json", ceiling_usd=5.0)
-    text = await LiteLLMCompleter(ledger)(
+    text = await completer_on(ledger, fake_litellm)(
         llm.GRADER_ROLE, MESSAGES, temperature=0, max_tokens=500, trace_id="a1"
     )
     assert text == "ok"
@@ -73,7 +78,9 @@ async def test_a_free_model_costs_nothing(
 ):
     monkeypatch.setattr(llm, "role_model", lambda role: "openrouter/openrouter/free")
     ledger = Ledger(tmp_path / "l.json", ceiling_usd=0.0)
-    await LiteLLMCompleter(ledger)(llm.GRADER_ROLE, MESSAGES, temperature=0, max_tokens=500)
+    await completer_on(ledger, fake_litellm)(
+        llm.GRADER_ROLE, MESSAGES, temperature=0, max_tokens=500
+    )
     assert ledger.spent() == 0 and fake_litellm.calls == 1
 
 
@@ -82,7 +89,7 @@ async def test_a_call_that_could_pass_the_cap_is_refused_before_it_is_made(
 ):
     ledger = Ledger(tmp_path / "l.json", ceiling_usd=5.0)
     ledger.record("earlier", "gpt-4.1-mini", 4.9999)
-    completer = LiteLLMCompleter(ledger)
+    completer = completer_on(ledger, fake_litellm)
     with pytest.raises(BudgetExceededError):  # not wrapped as a model outage
         await completer(llm.GRADER_ROLE, MESSAGES, temperature=0, max_tokens=2000)
     assert fake_litellm.calls == 0
@@ -109,12 +116,11 @@ async def test_calls_in_flight_count_against_the_cap(
             usage=SimpleNamespace(prompt_tokens=10, completion_tokens=10),
         )
 
-    monkeypatch.setattr(llm.litellm, "acompletion", slow)
     monkeypatch.setattr(llm, "role_model", lambda role: "openai/gpt-4.1-mini")
     monkeypatch.setattr(llm, "role_fallbacks", lambda role: [])
     # worst case per call here is (200/4 prompt tokens at 0.40 + 2000 out at 1.60)/M = 0.00322
     ledger = Ledger(tmp_path / "l.json", ceiling_usd=0.005)  # room for one call, not two
-    completer = LiteLLMCompleter(ledger)
+    completer = completer_on(ledger, slow)
     first = asyncio.create_task(
         completer(llm.GRADER_ROLE, MESSAGES[:1], temperature=0, max_tokens=2000)
     )
@@ -133,11 +139,10 @@ async def test_a_provider_failure_still_releases_its_reservation(
     async def boom(**kw: Any) -> Any:
         raise RuntimeError("provider down")
 
-    monkeypatch.setattr(llm.litellm, "acompletion", boom)
     monkeypatch.setattr(llm, "role_model", lambda role: "openai/gpt-4.1-mini")
     monkeypatch.setattr(llm, "role_fallbacks", lambda role: [])
     ledger = Ledger(tmp_path / "l.json", ceiling_usd=5.0)
-    completer = LiteLLMCompleter(ledger)
+    completer = completer_on(ledger, boom)
     with pytest.raises(llm.ModelUnavailableError):
         await completer(llm.GRADER_ROLE, MESSAGES, temperature=0, max_tokens=500)
     assert completer._reserved == 0 and ledger.spent() == 0
