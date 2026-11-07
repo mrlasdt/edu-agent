@@ -12,22 +12,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
-        with:
-          version: latest
-      - run: uv sync --extra dev
+      - uses: ./.github/actions/setup-python
       - run: uv run ruff check .
-      - run: uv run mypy services/ shared/ evals/ mcp_servers/ --ignore-missing-imports
+      - run: uv run mypy services/ shared/ evals/ mcp_servers/
 
   unit-tests:
     name: Unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
-        with:
-          version: latest
-      - run: uv sync --extra dev
+      - uses: ./.github/actions/setup-python
       - run: uv run pytest tests/ -q
 
   web:
@@ -44,8 +38,8 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
-      - run: npm run typecheck
       - run: npm test
+      # `build` runs tsc first, so this is also the typecheck.
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
@@ -55,9 +49,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
+      - uses: ./.github/actions/setup-python
         with:
-          version: latest
+          sync: "false"
       - name: Export the locked dependency set
         run: uv export --frozen --no-hashes --no-emit-project --extra dev -o requirements-audit.txt
       - name: pip-audit against the OSV and PyPI advisory data
@@ -99,19 +93,11 @@ jobs:
         run: ./gitleaks detect --source . --redact --no-banner --verbose
 
   eval-slice:
-    name: Eval slice (path-gated)
+    name: Eval slice (offline)
     runs-on: ubuntu-latest
-    # Only run when files that affect agent behaviour change. The path filter lives in the
-    # `changes` job below. (`github.event.pull_request.changed_files` is a file count, not a
-    # list of paths, so a `contains()` test on it is never true.)
-    needs: changes
-    if: needs.changes.outputs.eval-relevant == 'true'
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
-        with:
-          version: latest
-      - run: uv sync --extra dev
+      - uses: ./.github/actions/setup-python
       - name: Eval pipeline check (offline, fake model, no network, no secrets)
         # Exercises the real agent code path against a deterministic fake model. It proves
         # the harness (quant, aw and question-generation suites) works; it says nothing about model quality. Real runs are manual
@@ -123,30 +109,37 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v3
-        with:
-          version: latest
-      - run: uv sync --extra dev
+      - uses: ./.github/actions/setup-python
       - name: Failure-seeded Quant suite on a fake model
         # Proves the suite runs end to end: the real agent, rule graders, the real math verifier
         # on the hostile strings, pass@k / pass^k and the report. Scores nothing about a real
         # model. The live run is manual: .github/workflows/eval-live.yml.
         run: uv run python -m evals.agent_eval --mode offline --suite quant --samples 3
 
-  # More precise path-gating via dorny/paths-filter
-  changes:
+  compose-smoke:
+    name: Docker images build + start
     runs-on: ubuntu-latest
-    outputs:
-      eval-relevant: ${{ steps.filter.outputs.eval-relevant }}
+    timeout-minutes: 20
+    env:
+      COMPOSE: docker compose -f infra/docker-compose.yml -f infra/docker-compose.smoke.yml
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            eval-relevant:
-              - 'prompts/**'
-              - 'services/agent/**'
-              - 'services/gateway/**'
-              - 'evals/**'
-              - 'config/**'
+      - name: Prepare a dummy env file
+        # No real key is needed: the services only start, they never call a model. Compose
+        # requires .env (env_file); the ingestion admin key must be non-empty for the seed job.
+        run: |
+          cp .env.example .env
+          sed -i 's/^INGESTION_ADMIN_KEY=$/INGESTION_ADMIN_KEY=ci-smoke-key/' .env
+      - name: Build every image (the five services and the web app)
+        run: $COMPOSE build
+      - name: Start the stack and wait until every health check passes
+        # Started: qdrant, math-verifier, corpus, ingestion, agent, gateway (each from its image,
+        # no source mounts, see the overlay). Left out on purpose: `tei-embedder` (a ~2 GB model
+        # download) and so `seed` and `web`, which wait on it; their images are still built above.
+        run: $COMPOSE up --wait --wait-timeout 240 qdrant math-verifier corpus ingestion agent gateway
+      - name: Show service logs on failure
+        if: failure()
+        run: $COMPOSE logs --no-color --tail 80
+      - name: Stop the stack
+        if: always()
+        run: $COMPOSE down --volumes

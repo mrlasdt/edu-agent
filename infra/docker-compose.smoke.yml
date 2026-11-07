@@ -1,0 +1,19 @@
+# CI smoke overlay (the `compose-smoke` job in .github/workflows/ci.yml):
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.smoke.yml ...
+#
+# The base file bind-mounts host source over each image and runs `uvicorn --reload`, which hides
+# anything the Dockerfile forgot to COPY. This overlay drops those mounts and the command, so
+# each service starts from its image alone, exactly what deploy.yml builds and ships.
+services:
+  corpus:
+    volumes: !reset []
+    command: !reset []
+  ingestion:
+    volumes: !reset []
+    command: !reset []
+  agent:
+    volumes: !reset []
+    command: !reset []
+  gateway:
+    volumes: !reset []
+    command: !reset []

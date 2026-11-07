@@ -13,6 +13,10 @@ COPY services/agent/ services/agent/
 COPY shared/ shared/
 COPY config/ config/
 COPY prompts/ prompts/
+# The gateway writes these relative to /app (IELTS attempts, the AI spend ledger, the turn log).
+# /app is root-owned, so without them the non-root user cannot create the directories and the
+# gateway exits at startup. docker-compose bind-mounts host directories over them in dev.
+RUN mkdir ielts-local .eval-ledger .turn-log && chown appuser ielts-local .eval-ledger .turn-log
 ENV PYTHONPATH=/app PATH="/app/.venv/bin:$PATH"
 USER appuser
 EXPOSE 8000
