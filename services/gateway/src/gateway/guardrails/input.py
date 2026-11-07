@@ -9,12 +9,18 @@ import httpx
 from pydantic import BaseModel, StrictBool
 
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
-from services.gateway.src.gateway.guardrails.supportive import flagged_reason
+from services.gateway.src.gateway.guardrails.supportive import (
+    SUPPORTIVE_MESSAGE,
+    flagged_reason,
+    is_self_harm_reason,
+)
+from services.gateway.src.gateway.guardrails.verdict import Verdict
 from shared.src.shared.config import get_settings, load_model_config
 from shared.src.shared.models import MessageRole, Session
 from shared.src.shared.observability import build_llm_metadata
 from shared.src.shared.structured import parse_structured, response_format_for
 from shared.src.shared.turn_meter import TurnMeter
+from shared.src.shared.turn_outcome import Outcome
 
 _log = logging.getLogger(__name__)
 
@@ -27,6 +33,9 @@ _HISTORY_TURNS = 6
 # reply is cut off it does not validate: check_completeness raises, and /chat skips the check
 # and answers the turn (flag `completeness_check_failed`), same as any other failure of it.
 COMPLETENESS_MAX_TOKENS = 512
+
+# Sent when the check finds the question incomplete but writes no clarifying question.
+DEFAULT_CLARIFICATION = "Could you share the full question so I can help?"
 
 
 class CompletenessVerdict(BaseModel):
@@ -41,6 +50,13 @@ class ModerationUnavailableError(RuntimeError):
     """The moderation call failed and the fail policy is "closed": the turn must not proceed."""
 
 
+def _blocked(reason: str) -> Verdict:
+    """The verdict for a moderation hit: the supportive text for self-harm, a refusal otherwise."""
+    if is_self_harm_reason(reason):
+        return Verdict.stop(Outcome.supportive_reply, SUPPORTIVE_MESSAGE)
+    return Verdict.stop(Outcome.content_blocked, f"I can't help with that request ({reason}).")
+
+
 def _moderation_fails_open() -> bool:
     """MODERATION_ON_ERROR, defaulting to closed everywhere except ENV=dev."""
     settings = get_settings()
@@ -51,10 +67,11 @@ def _moderation_fails_open() -> bool:
 
 async def check_content_safety(
     text: str, trace_id: str, meter: TurnMeter | None = None
-) -> tuple[bool, str]:
+) -> Verdict:
     """
     Call the OpenAI Moderation API.
-    Returns (safe, reason) — reason is empty when safe=True.
+    Returns `Verdict.allow()` when safe. A hit stops the turn: `supportive_reply` with the fixed
+    supportive text for a self-harm category, `content_blocked` with a refusal for any other.
 
     In ENV=dev with no OpenAI key (a free-model setup, see config/model_config.free.yaml) the
     call is skipped, the turn goes on, and `moderation_skipped` is recorded in the turn record
@@ -75,14 +92,14 @@ async def check_content_safety(
         emit_guardrail_event(
             "input", "content_safety", "fail", trace_id, reason=reason, source="test_trigger"
         )
-        return False, reason
+        return _blocked(reason)
     if settings.env.lower() == "dev" and not settings.openai_api_key:
         emit_guardrail_event(
             "input", "content_safety", "skipped", trace_id, reason="no_openai_key_in_dev"
         )
         if meter is not None:
             meter.annotate(moderation_skipped=True)
-        return True, ""
+        return Verdict.allow()
     try:
         result = await _call_moderation_api(text)
     except Exception as exc:
@@ -97,22 +114,24 @@ async def check_content_safety(
             raise ModerationUnavailableError("content-safety check unavailable") from exc
         if meter is not None:
             meter.annotate(moderation_failed_open=True)
-        return True, ""
+        return Verdict.allow()
     if result.get("flagged"):
         flagged_cats = [k for k, v in result.get("categories", {}).items() if v]
         reason = flagged_reason(flagged_cats)
         emit_guardrail_event("input", "content_safety", "fail", trace_id, reason=reason)
-        return False, reason
+        return _blocked(reason)
     emit_guardrail_event("input", "content_safety", "pass", trace_id)
-    return True, ""
+    return Verdict.allow()
 
 
 async def check_completeness(
     text: str, session: Session, trace_id: str, meter: TurnMeter | None = None
-) -> tuple[bool, str]:
+) -> Verdict:
     """
     Haiku-tier LLM check: is the question complete enough to answer?
-    Returns (complete, clarification_prompt). With a `meter`, its model call is measured.
+    Returns `Verdict.allow()` when it is, else a `clarification_requested` stop whose message is
+    the clarifying question (DEFAULT_CLARIFICATION when the model wrote none). With a `meter`,
+    its model call is measured.
 
     A reply that is not valid JSON of the CompletenessVerdict shape never counts as complete:
     the failure is logged as a guardrail "error" event and raised, like any other failure of the
@@ -127,7 +146,11 @@ async def check_completeness(
         raise
     label = "pass" if verdict.complete else "fail"
     emit_guardrail_event("input", "completeness", label, trace_id)
-    return verdict.complete, verdict.clarification
+    if verdict.complete:
+        return Verdict.allow()
+    return Verdict.stop(
+        Outcome.clarification_requested, verdict.clarification or DEFAULT_CLARIFICATION
+    )
 
 
 async def _call_moderation_api(text: str) -> dict[str, Any]:

@@ -20,10 +20,13 @@ from services.agent.src.agent.agents.aw import AWAgent
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.skills.retrieve_corpus import CorpusChunk
 from services.agent.src.agent.skills.verify_math import VerifyMathResult
+from services.gateway.src.gateway.guardrails.verdict import Verdict
 from services.gateway.src.gateway.main import app
 from shared.src.shared.budget import estimate_cost, estimate_tokens
 from shared.src.shared.models import Mode, Session
 from shared.src.shared.turn_meter import TurnLog, TurnMeter
+from shared.src.shared.turn_outcome import Outcome
+from tests.gateway_fakes import agent_replies
 
 MODEL = "openai/gpt-4o-mini"
 
@@ -358,19 +361,21 @@ def post_chat(tokens: list[str], *, safe: bool = True, body: dict[str, Any] | No
         patch(
             "services.gateway.src.gateway.main.check_content_safety",
             new_callable=AsyncMock,
-            return_value=(safe, "" if safe else "content flagged: x"),
+            return_value=Verdict.allow()
+            if safe
+            else Verdict.stop(Outcome.content_blocked, "I can't help with that request (x)."),
         ),
         patch(
             "services.gateway.src.gateway.main.check_completeness",
             new_callable=AsyncMock,
-            return_value=(True, ""),
+            return_value=Verdict.allow(),
         ),
         patch(
             "services.gateway.src.gateway.guardrails.output._call_leak_checker",
             new_callable=AsyncMock,
             return_value=False,
         ),
-        patch("services.gateway.src.gateway.main._stream_from_agent", agent_stream),
+        agent_replies(agent_stream),
     ):
         return client.post("/chat", json={**_BODY, **(body or {})})
 
@@ -408,8 +413,8 @@ async def test_guardrail_model_calls_are_counted_on_the_gateway_record(turn_log)
     )
     meter = TurnMeter("trace-g", "gateway", "gre/quant", "tutor")
     with patch("litellm.acompletion", new_callable=AsyncMock, return_value=response):
-        complete, _ = await check_completeness("Solve it", session(), "trace-g", meter)
-    assert complete is True
+        verdict = await check_completeness("Solve it", session(), "trace-g", meter)
+    assert verdict.allowed is True
     record = meter.finish()
     assert (record["llm_calls"], record["input_tokens"], record["output_tokens"]) == (1, 250, 8)
 

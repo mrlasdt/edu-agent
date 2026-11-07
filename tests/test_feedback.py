@@ -29,11 +29,13 @@ from evals.feedback_to_item import main as to_item_main
 from evals.turn_report import main as report_main
 from services.gateway.src.gateway import feedback_api
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
+from services.gateway.src.gateway.guardrails.verdict import Verdict
 from services.gateway.src.gateway.main import app
 from shared.src.shared import observability
 from shared.src.shared.config import Settings, get_settings
 from shared.src.shared.feedback import default_capture_log, default_feedback_log
 from shared.src.shared.turn_meter import TurnLog
+from tests.gateway_fakes import agent_replies, rate_limiter_of
 
 client = TestClient(app)
 
@@ -53,20 +55,20 @@ def offline_gateway():
         patch(
             "services.gateway.src.gateway.main.check_content_safety",
             new_callable=AsyncMock,
-            return_value=(True, ""),
+            return_value=Verdict.allow(),
         ),
         patch(
             "services.gateway.src.gateway.main.check_completeness",
             new_callable=AsyncMock,
-            return_value=(True, ""),
+            return_value=Verdict.allow(),
         ),
         patch(
             "services.gateway.src.gateway.guardrails.output._call_leak_checker",
             new_callable=AsyncMock,
             return_value=False,
         ),
-        patch("services.gateway.src.gateway.main._stream_from_agent", fake_stream),
-        patch("services.gateway.src.gateway.main._rate_limiter", RateLimiter()),
+        agent_replies(fake_stream),
+        rate_limiter_of(RateLimiter()),
         patch.object(feedback_api, "_rate_limiter", RateLimiter()),
         patch.object(feedback_api, "post_user_feedback") as langfuse,
     ):

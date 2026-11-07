@@ -13,8 +13,11 @@ from services.gateway.src.gateway.guardrails.supportive import (
     SUPPORTIVE_MESSAGE,
     is_self_harm_reason,
 )
+from services.gateway.src.gateway.guardrails.verdict import Verdict
 from services.gateway.src.gateway.main import app
 from shared.src.shared.config import Settings
+from shared.src.shared.turn_outcome import Outcome
+from tests.gateway_fakes import agent_replies
 
 _INPUT = "services.gateway.src.gateway.guardrails.input"
 _MAIN = "services.gateway.src.gateway.main"
@@ -43,14 +46,14 @@ def _post(
     message: str = "hello",
 ) -> Any:
     """POST /chat; returns (response, completeness mock, agent mock)."""
-    completeness = AsyncMock(return_value=(True, ""))
+    completeness = AsyncMock(return_value=Verdict.allow())
     agent = _agent()
     settings = settings or Settings(openai_api_key="k", env="prod")
     with (
         patch(f"{_INPUT}.get_settings", return_value=settings),
         patch(f"{_INPUT}._call_moderation_api", new_callable=AsyncMock, return_value=moderation),
         patch(f"{_MAIN}.check_completeness", completeness),
-        patch(f"{_MAIN}._stream_from_agent", agent),
+        agent_replies(agent),
         patch(
             "services.gateway.src.gateway.guardrails.output._call_leak_checker",
             new_callable=AsyncMock, return_value=False,
@@ -130,9 +133,8 @@ async def test_trigger_reports_a_self_harm_hit_in_dev_without_a_moderation_call(
     settings = Settings(env="dev", safety_test_trigger=_TRIGGER)
     with patch(f"{_INPUT}.get_settings", return_value=settings), \
          patch(f"{_INPUT}._call_moderation_api", new_callable=AsyncMock) as moderation:
-        safe, reason = await check_content_safety(f"help {_TRIGGER.upper()}", "t")
-    assert safe is False
-    assert is_self_harm_reason(reason)
+        verdict = await check_content_safety(f"help {_TRIGGER.upper()}", "t")
+    assert verdict == Verdict.stop(Outcome.supportive_reply, SUPPORTIVE_MESSAGE)
     moderation.assert_not_called()
 
 
@@ -143,7 +145,7 @@ async def test_trigger_is_inert_outside_dev(env):
     clean = {"flagged": False, "categories": {}}
     with patch(f"{_INPUT}.get_settings", return_value=settings), \
          patch(f"{_INPUT}._call_moderation_api", new_callable=AsyncMock, return_value=clean) as mod:
-        assert await check_content_safety(f"help {_TRIGGER}", "t") == (True, "")
+        assert await check_content_safety(f"help {_TRIGGER}", "t") == Verdict.allow()
     mod.assert_awaited_once()
 
 
@@ -151,7 +153,7 @@ async def test_trigger_is_inert_outside_dev(env):
 async def test_trigger_is_off_when_unset():
     settings = Settings(env="dev")
     with patch(f"{_INPUT}.get_settings", return_value=settings):
-        assert await check_content_safety("help __test_self_harm__", "t") == (True, "")
+        assert await check_content_safety("help __test_self_harm__", "t") == Verdict.allow()
 
 
 def test_chat_with_the_trigger_in_dev_gets_the_supportive_reply(client, turn_log):
@@ -160,7 +162,7 @@ def test_chat_with_the_trigger_in_dev_gets_the_supportive_reply(client, turn_log
     with (
         patch(f"{_INPUT}.get_settings", return_value=settings),
         patch(f"{_MAIN}.check_completeness", completeness),
-        patch(f"{_MAIN}._stream_from_agent", agent),
+        agent_replies(agent),
     ):
         response = client.post("/chat", json={**_BODY, "message": f"{_TRIGGER} please"})
     assert response.text == SUPPORTIVE_MESSAGE

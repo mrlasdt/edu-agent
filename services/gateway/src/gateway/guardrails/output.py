@@ -5,6 +5,7 @@ import logging
 import re
 
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
+from services.gateway.src.gateway.guardrails.verdict import Verdict
 from shared.src.shared.config import get_settings, load_model_config
 from shared.src.shared.models import Mode
 from shared.src.shared.turn_meter import TurnMeter
@@ -74,19 +75,21 @@ def detect_answer_leak(text: str) -> bool:
 
 async def check_answer_leak(
     text: str, mode: Mode, trace_id: str, meter: TurnMeter | None = None
-) -> bool:
+) -> Verdict:
     """
     In Tutor mode: regex stage, then a Haiku-tier check for answer leakage.
-    In Solve mode: always returns False (leaking the answer is the point).
+    In Solve mode: always allows (leaking the answer is the point).
+    A leak is `Verdict(allowed=False)` with the turn's outcome unchanged: the reply has already
+    streamed, so the caller can only flag it.
     With a `meter`, the LLM stage's model call is measured.
     """
     if mode != Mode.tutor:
-        return False
+        return Verdict.allow()
 
     leaked = detect_answer_leak(text) or await _call_leak_checker(text, meter)
     result = "fail" if leaked else "pass"
     emit_guardrail_event("generation", "tutor_mode_answer_leak", result, trace_id)
-    return leaked
+    return Verdict(allowed=False) if leaked else Verdict.allow()
 
 
 async def _call_leak_checker(text: str, meter: TurnMeter | None = None) -> bool:

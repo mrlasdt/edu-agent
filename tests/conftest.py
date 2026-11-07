@@ -90,16 +90,18 @@ def routers_unhook_from_litellm(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def fresh_gateway_rate_limiter(monkeypatch):
+def fresh_gateway_rate_limiter():
     """
-    The gateway's /chat limiter (60 a minute per candidate) is module state, and the tests share
-    one candidate id: with it shared, the whole suite sat a few requests under the limit and the
-    next added /chat test made unrelated crisis-path and moderation tests answer "Too many
-    requests". Each test gets its own.
+    The gateway's /chat limiter (60 a minute per candidate) is one shared object, and the tests
+    share one candidate id: with it shared, the whole suite sat a few requests under the limit
+    and the next added /chat test made unrelated crisis-path and moderation tests answer "Too
+    many requests". Each test gets its own.
     """
     from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
+    from tests.gateway_fakes import rate_limiter_of
 
-    monkeypatch.setattr("services.gateway.src.gateway.main._rate_limiter", RateLimiter())
+    with rate_limiter_of(RateLimiter()):
+        yield
 
 
 @pytest.fixture(autouse=True)

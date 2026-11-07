@@ -27,6 +27,7 @@ import pytest
 import respx
 
 from services.gateway.src.gateway.guardrails.input import (
+    DEFAULT_CLARIFICATION,
     CompletenessVerdict,
     ModerationUnavailableError,
     _call_moderation_api,
@@ -34,10 +35,13 @@ from services.gateway.src.gateway.guardrails.input import (
     check_content_safety,
 )
 from services.gateway.src.gateway.guardrails.output import check_answer_leak
+from services.gateway.src.gateway.guardrails.supportive import SUPPORTIVE_MESSAGE
+from services.gateway.src.gateway.guardrails.verdict import Verdict
 from shared.src.shared.config import Settings
 from shared.src.shared.llm_router import use_router
 from shared.src.shared.models import Message, MessageRole, Mode, Session
 from shared.src.shared.structured import StructuredOutputError
+from shared.src.shared.turn_outcome import Outcome
 from tests.llm_fakes import SERVER_ERROR, ScriptedRouter, calls, mock_router
 
 _INPUT = "services.gateway.src.gateway.guardrails.input"
@@ -104,9 +108,8 @@ async def test_flagged_message_is_blocked_with_its_categories_as_the_reason(mode
             True, violence=False, **{"self-harm": True, "self-harm/intent": True}
         )
     )
-    safe, reason = await check_content_safety("I want to hurt myself", "t-flagged")
-    assert safe is False
-    assert reason == "content flagged: self-harm, self-harm/intent"
+    verdict = await check_content_safety("I want to hurt myself", "t-flagged")
+    assert verdict == Verdict.stop(Outcome.supportive_reply, SUPPORTIVE_MESSAGE)
 
 
 @pytest.mark.asyncio
@@ -115,7 +118,7 @@ async def test_clean_message_passes(moderation_settings):
     route = respx.post(_MODERATIONS_URL).mock(
         return_value=_moderation_reply(False, violence=False, **{"self-harm": False})
     )
-    assert await check_content_safety("Solve x + 1 = 2", "t-clean") == (True, "")
+    assert await check_content_safety("Solve x + 1 = 2", "t-clean") == Verdict.allow()
     assert route.call_count == 1
 
 
@@ -161,7 +164,7 @@ async def test_a_bad_status_fails_open_when_the_policy_says_open():
     settings = Settings(openai_api_key="k", env="prod", moderation_on_error="open")
     respx.post(_MODERATIONS_URL).mock(return_value=httpx.Response(500))
     with patch(f"{_INPUT}.get_settings", return_value=settings):
-        assert await check_content_safety("Solve x + 1 = 2", "t-open") == (True, "")
+        assert await check_content_safety("Solve x + 1 = 2", "t-open") == Verdict.allow()
 
 
 def _reply(content: str) -> Any:
@@ -190,7 +193,7 @@ async def test_leak_verdict_is_read_from_the_model_reply(leak_settings, verdict,
         got = await check_answer_leak(
             "Try isolating the variable.", Mode.tutor, "t-verdict"
         )
-    assert got is leaked
+    assert got.allowed is not leaked
     assert calls(router) == {_MODEL: 1}  # the orchestrator model answered, once
 
 
@@ -204,7 +207,7 @@ async def test_leak_check_sends_the_reply_under_review_with_the_leak_instruction
 
     text = "Try isolating the variable."
     with use_router(ScriptedRouter(behave)):
-        assert await check_answer_leak(text, Mode.tutor, "t-request") is False
+        assert (await check_answer_leak(text, Mode.tutor, "t-request")).allowed
     (request,) = seen
     assert request["model"] == _MODEL
     assert request["temperature"] == 0
@@ -219,7 +222,7 @@ async def test_leak_check_sends_the_reply_under_review_with_the_leak_instruction
 async def test_a_provider_error_in_the_leak_check_is_not_a_leak(leak_settings):
     router = mock_router({_MODEL: SERVER_ERROR})
     with use_router(router):
-        assert await check_answer_leak("Try isolating the variable.", Mode.tutor, "t-err") is False
+        assert (await check_answer_leak("Try isolating the variable.", Mode.tutor, "t-err")).allowed
 
 
 # ── completeness check: a Router call, faked with a mock_response ────────────
@@ -232,9 +235,15 @@ def _session() -> Session:
 @pytest.mark.parametrize(
     ("reply", "expected"),
     [
-        ('{"complete": false, "clarification": "Which problem?"}', (False, "Which problem?")),
-        ('{"complete": true, "clarification": ""}', (True, "")),
-        ('{"complete": false}', (False, "")),
+        (
+            '{"complete": false, "clarification": "Which problem?"}',
+            Verdict.stop(Outcome.clarification_requested, "Which problem?"),
+        ),
+        ('{"complete": true, "clarification": ""}', Verdict.allow()),
+        (
+            '{"complete": false}',
+            Verdict.stop(Outcome.clarification_requested, DEFAULT_CLARIFICATION),
+        ),
     ],
 )
 async def test_completeness_reply_is_parsed_from_the_model_reply(reply, expected):
