@@ -5,7 +5,8 @@ bias and quadratic weighted kappa (QWK) on the half-band scale.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+
+from evals.agent_eval.results import AgreementReport
 
 HALF_BAND_LEVELS = 19  # 0, 0.5, ... 9
 
@@ -52,16 +53,16 @@ def quadratic_weighted_kappa(
 
 def agreement_report(
     pairs: Sequence[tuple[float, float]], tolerance: float = 0.5
-) -> dict[str, Any]:
+) -> AgreementReport:
     """`pairs` are (predicted, gold). Every figure is computed over exactly these n pairs."""
     n = len(pairs)
     diffs = [p - g for p, g in pairs]
-    return {
-        "n": n,
-        "tolerance": tolerance,
-        "within_tolerance": within_tolerance(pairs, tolerance),
-        "exact": (sum(1 for d in diffs if abs(d) < 1e-9) / n) if n else None,
-        "mae": (sum(abs(d) for d in diffs) / n) if n else None,
-        "bias": (sum(diffs) / n) if n else None,
-        "qwk": quadratic_weighted_kappa(pairs),
-    }
+    return AgreementReport(
+        n=n,
+        tolerance=tolerance,
+        within_tolerance=within_tolerance(pairs, tolerance),
+        exact=(sum(1 for d in diffs if abs(d) < 1e-9) / n) if n else None,
+        mae=(sum(abs(d) for d in diffs) / n) if n else None,
+        bias=(sum(diffs) / n) if n else None,
+        qwk=quadratic_weighted_kappa(pairs),
+    )

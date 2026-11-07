@@ -588,7 +588,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10.0" },
     { name = "numpy", marker = "extra == 'dev'", specifier = ">=1.26" },
     { name = "openai", specifier = ">=1.30.0" },
-    { name = "pydantic", specifier = ">=2.7.0" },
+    { name = "pydantic", specifier = ">=2.11" },
     { name = "pydantic-settings", specifier = ">=2.3.0" },
     { name = "pypdf", specifier = ">=4.2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.2.0" },

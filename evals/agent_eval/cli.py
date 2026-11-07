@@ -50,6 +50,19 @@ from evals.agent_eval.budget import (
 )
 from evals.agent_eval.cache import DEFAULT_CACHE_DIR, ResponseCache
 from evals.agent_eval.judges import HeuristicJudge, Judge, JudgeQuestion, LLMJudge
+from evals.agent_eval.results import (
+    AwResult,
+    CoverageGate,
+    EvalReport,
+    GenerationResult,
+    IeltsAdversarialResult,
+    IeltsReportResult,
+    IeltsWritingResult,
+    QuantBaseline,
+    QuantJudgeResult,
+    QuantSuiteResult,
+    RunMeta,
+)
 from evals.agent_eval.transport import AllModelsFailedError, FakeToolCalls, MeteredTransport
 from evals.exam_set.schema import ExamItem
 from evals.loader import load_exam_items, load_golden_set, sample_golden_set
@@ -222,12 +235,10 @@ def plan(args: argparse.Namespace, chain: list[str], ledger: Ledger) -> dict[str
     }
 
 
-async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+async def run(args: argparse.Namespace) -> tuple[EvalReport, int]:
+    """Run the chosen suites (offline on a fake model, or live); never called for a dry run."""
     ledger = spend_ledger(args.ledger, args.ceiling)
     chain = provider_chain(args.provider, args.model)
-    if args.mode == "dry-run":
-        return plan(args, chain, ledger), 0
-
     offline = args.mode == "offline"
     if not offline:
         needed = required_keys(args.provider, args.model)
@@ -251,35 +262,33 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     else:
         judge = LLMJudge(args.judge_model or chain[0])
 
-    report: dict[str, Any] = {
-        "run_id": run_id, "mode": args.mode, "model_chain": chain if not offline else [model],
-        "judge": judge.name, "seed": SEED, "suites": {},
-        "run_meta": run_meta(args, model, chain if not offline else [model]),
-    }
+    report = EvalReport(
+        run_id=run_id, mode=args.mode, model_chain=chain if not offline else [model],
+        judge=judge.name, seed=SEED,
+        run_meta=run_meta(args, model, chain if not offline else [model]),
+    )
     exit_code = 0
     with transport.installed():
         try:
             if "quant" in args.suite:
-                report["suites"]["quant"] = await _run_quant(
+                report.suites["quant"] = await _run_quant(
                     args, model, run_id, selected_quant_items(args, load_golden_set("quant"))
                 )
             if "quant_judge" in args.suite:
-                agent = QuantAgent(
+                agent = runner.build_quant_agent(
                     model_config_path=runner.write_model_config(model),
-                    verify_math_skill=runner.in_process_verify_skill(),
-                    retrieve_corpus_skill=quant_suite.NotesSkill([]),
-                    math_tools_skill=runner.in_process_math_tools(),
+                    corpus_skill=quant_suite.NotesSkill([]),
                     math_tools_enabled=args.math_tools == "on",
                 )
                 solve_items = [i for i in load_golden_set("quant") if i["kind"] == "solve"]
                 rate = min(1.0, args.max_items / len(solve_items))
                 items = sample_golden_set(solve_items, rate, seed=SEED)
-                report["suites"]["quant_judge"] = await runner.run_quant(items, agent, judge)
+                report.suites["quant_judge"] = await runner.run_quant(items, agent, judge)
             if "aw" in args.suite:
                 items = runner.select_items("aw", args.max_items, SEED)
-                report["suites"]["aw"] = await runner.run_aw(items, judge)
+                report.suites["aw"] = await runner.run_aw(items, judge)
             if "generation" in args.suite:
-                report["suites"]["generation"] = await _run_generation(
+                report.suites["generation"] = await _run_generation(
                     args.max_items, model, judge, transport
                 )
             ielts_model = args.judge_model or chain[0]
@@ -293,55 +302,50 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                     if offline
                     else ielts_writing.LLMIeltsGrader(ielts_model, args.samples)
                 )
-                report["suites"]["ielts_writing"] = await ielts_writing.run_ielts_writing(
+                report.suites["ielts_writing"] = await ielts_writing.run_ielts_writing(
                     _ielts_items(args), grader, tier=args.ielts_tier,
                     max_items=args.max_items, seed=SEED,
                 )
             if "ielts_report" in args.suite:
-                report["suites"]["ielts_report"] = await ielts_writing.run_ielts_report(
+                report.suites["ielts_report"] = await ielts_writing.run_ielts_report(
                     _ielts_items(args), completer, tier=args.ielts_tier,
                     max_items=min(args.max_items, ielts_writing.REPORT_CHECK_ITEMS), seed=SEED,
                     samples=args.samples,
                 )
             if "ielts_adversarial" in args.suite:
-                report["suites"]["ielts_adversarial"] = await ielts_writing.run_ielts_adversarial(
+                report.suites["ielts_adversarial"] = await ielts_writing.run_ielts_adversarial(
                     _ielts_items(args), completer, samples=args.samples
                 )
         except (BudgetExceededError, AllModelsFailedError) as exc:
-            report["aborted"] = f"{type(exc).__name__}: {exc}"
+            report.aborted = f"{type(exc).__name__}: {exc}"
             exit_code = 2
-    rows = [r for s in report["suites"].values() for r in s.get("rows", {}).get("solve", [])]
-    rows += [r for s in report["suites"].values() for r in s.get("rows", {}).get("tutor", [])]
-    report["cost_latency"] = runner.latency_cost_summary(
-        transport, [r["latency_s"] for r in rows]
-    )
-    report["models_used"] = dict(Counter(r.model for r in transport.records))
-    report["ledger_spent_usd"] = ledger.spent()
-    report["call_failures"] = transport.failure_summary()
+    report.cost_latency = runner.latency_cost_summary(transport, report.agent_latencies())
+    report.models_used = dict(Counter(r.model for r in transport.records))
+    report.ledger_spent_usd = ledger.spent()
+    report.call_failures = transport.failure_summary()
     if cache:
-        report["cache"] = {"hits": cache.hits, "misses": cache.misses}
-    low = runner.coverage_failures(report, args.min_coverage)
+        report.cache = {"hits": cache.hits, "misses": cache.misses}
+    low = report.coverage_failures(args.min_coverage)
     if low:
         # Tiny-n metrics from a mostly-dropped run would pass or trip a baseline arbitrarily.
-        report["coverage_gate"] = {"passed": False, "min": args.min_coverage, "coverage": low}
-        report["regression_metrics"] = {}
+        report.coverage_gate = CoverageGate(passed=False, min=args.min_coverage, coverage=low)
+        report.regression_metrics = {}
         return report, 2
-    report["regression_metrics"] = regression_metrics(report)
+    report.regression_metrics = regression_metrics(report)
     return report, exit_code
 
 
 async def _run_quant(
     args: argparse.Namespace, model: str, run_id: str, items: list[dict[str, Any]]
-) -> dict[str, Any]:
+) -> QuantSuiteResult:
     """The failure-seeded suite on `model`: real agent, rule graders, `--samples` attempts."""
     config = runner.write_model_config(model)
     skill = runner.in_process_verify_skill()
 
     def factory(notes: list[str]) -> QuantAgent:
-        return QuantAgent(
-            model_config_path=config, verify_math_skill=skill,
-            retrieve_corpus_skill=quant_suite.NotesSkill(notes),
-            math_tools_skill=runner.in_process_math_tools(),
+        return runner.build_quant_agent(
+            model_config_path=config, verify_skill=skill,
+            corpus_skill=quant_suite.NotesSkill(notes),
             math_tools_enabled=args.math_tools == "on",
         )
 
@@ -352,7 +356,7 @@ async def _run_quant(
         )
 
 
-def run_meta(args: argparse.Namespace, model: str, chain: list[str]) -> dict[str, Any]:
+def run_meta(args: argparse.Namespace, model: str, chain: list[str]) -> RunMeta:
     """Provenance of a run: which model produced the numbers, and whether it is the default."""
     config = load_model_config()
     role = config.role("quant_agent")
@@ -360,29 +364,29 @@ def run_meta(args: argparse.Namespace, model: str, chain: list[str]) -> dict[str
     commit = subprocess.run(
         ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=False
     ).stdout.strip()
-    return {
-        "model": model,
-        "model_chain": chain,
-        "samples": args.samples,
-        "max_tokens": args.max_tokens,
-        "product_default_model": product_default,
-        "is_product_default_model": model == product_default,
-        "math_tools": args.math_tools,
-        "prompt_versions": {
+    return RunMeta(
+        model=model,
+        model_chain=chain,
+        samples=args.samples,
+        max_tokens=args.max_tokens,
+        product_default_model=product_default,
+        is_product_default_model=model == product_default,
+        math_tools=args.math_tools,
+        prompt_versions={
             mode: config.prompt_version(
                 "quant_agent_math_tools" if args.math_tools == "on" else "quant_agent", mode
             )
             for mode in ("tutor", "solve")
         },
-        "temperature": role.temperature,
-        "git_commit": commit or None,
-        "date_utc": time.strftime("%Y-%m-%d", time.gmtime()),
-    }
+        temperature=role.temperature,
+        git_commit=commit or None,
+        date_utc=time.strftime("%Y-%m-%d", time.gmtime()),
+    )
 
 
 async def _run_generation(
     max_items: int, model: str, judge: Judge, transport: MeteredTransport
-) -> dict[str, Any]:
+) -> GenerationResult:
     """Baseline vs LangGraph pipeline, both routed to `model`, on the same requests."""
     config = runner.write_model_config(model)
     skill = runner.in_process_verify_skill()
@@ -397,52 +401,51 @@ async def _run_generation(
     return await generation.run_generation(requests, targets, judge, skill, transport)
 
 
-def regression_metrics(report: dict[str, Any]) -> dict[str, float]:
+def regression_metrics(report: EvalReport) -> dict[str, float]:
     """Higher-is-better metrics suitable for check_regression."""
     out: dict[str, float] = {}
-    quant = report["suites"].get("quant_judge")
-    if quant:
+    if quant := report.suite("quant_judge", QuantJudgeResult):
+        no_leak = (
+            None if quant.tutor.leak_rate_rule is None else 1 - quant.tutor.leak_rate_rule
+        )
         pairs = {
-            "quant_solve_accuracy": quant["solve"]["accuracy"],
-            "quant_tutor_no_leak_rate": None
-            if quant["tutor"]["leak_rate_rule"] is None
-            else 1 - quant["tutor"]["leak_rate_rule"],
-            "judge_leak_agreement": quant["judge_calibration"]["leak_labels"]["agreement"],
-            "judge_correctness_agreement": quant["judge_calibration"]["correctness_labels"][
-                "agreement"
-            ],
+            "quant_solve_accuracy": quant.solve.accuracy,
+            "quant_tutor_no_leak_rate": no_leak,
+            "judge_leak_agreement": quant.judge_calibration.leak_labels.agreement,
+            "judge_correctness_agreement": quant.judge_calibration.correctness_labels.agreement,
         }
         out.update({k: v for k, v in pairs.items() if v is not None})
-    aw = report["suites"].get("aw")
-    if aw and aw["within_tolerance"] is not None:
-        out["judge_aw_within_tolerance"] = aw["within_tolerance"]
-    ielts = report["suites"].get("ielts_writing")
-    if ielts and ielts["n_items"] and ielts["overall"]["within_tolerance"] is not None:
+    aw = report.suite("aw", AwResult)
+    if aw and aw.within_tolerance is not None:
+        out["judge_aw_within_tolerance"] = aw.within_tolerance
+    ielts = report.suite("ielts_writing", IeltsWritingResult)
+    if (
+        ielts and ielts.n_items and ielts.overall is not None
+        and ielts.overall.within_tolerance is not None
+    ):
         # keyed by tier so a weak-label baseline is never compared with an examiner one
-        out[f"ielts_overall_within_half_band__{ielts['label_tier']}"] = ielts["overall"][
-            "within_tolerance"
-        ]
-    adversarial = report["suites"].get("ielts_adversarial")
-    if adversarial and adversarial["n_cases"]:
-        out["ielts_adversarial_pass_rate"] = adversarial["passed"] / adversarial["n_cases"]
-    reports = report["suites"].get("ielts_report")
-    if reports and reports["n_items"]:
-        out["ielts_report_sound_rate"] = 1 - reports["reports_with_problems"] / reports["n_items"]
-    gen = report["suites"].get("generation")
-    if gen:
-        pipe = gen["targets"].get("pipeline", {})
-        if pipe.get("valid_yield") is not None:
-            out["gen_pipeline_valid_yield"] = pipe["valid_yield"]
-        if pipe.get("shipped_defect_rate") is not None:
-            out["gen_pipeline_no_defect_rate"] = 1 - pipe["shipped_defect_rate"]
+        out[f"ielts_overall_within_half_band__{ielts.label_tier}"] = (
+            ielts.overall.within_tolerance
+        )
+    adversarial = report.suite("ielts_adversarial", IeltsAdversarialResult)
+    if adversarial and adversarial.n_cases:
+        out["ielts_adversarial_pass_rate"] = adversarial.passed / adversarial.n_cases
+    reports = report.suite("ielts_report", IeltsReportResult)
+    if reports and reports.n_items:
+        out["ielts_report_sound_rate"] = 1 - reports.reports_with_problems / reports.n_items
+    if gen := report.suite("generation", GenerationResult):
+        pipe = gen.targets.get("pipeline")
+        if pipe is not None and pipe.valid_yield is not None:
+            out["gen_pipeline_valid_yield"] = pipe.valid_yield
+        if pipe is not None and pipe.shipped_defect_rate is not None:
+            out["gen_pipeline_no_defect_rate"] = 1 - pipe.shipped_defect_rate
     return out
 
 
-def summary(report: dict[str, Any]) -> dict[str, Any]:
+def summary(report: EvalReport) -> dict[str, Any]:
     """Aggregate-only view (no model outputs) for printing and sharing."""
-    if report.get("mode") == "dry-run":
-        return report
-    return {k: v for k, v in _strip_rows(report).items()}
+    stripped: dict[str, Any] = _strip_rows(report.model_dump(mode="json"))
+    return stripped
 
 
 def _strip_rows(obj: Any) -> Any:
@@ -502,16 +505,19 @@ def main(argv: list[str] | None = None) -> int:
     if not Path("prompts/quant_agent").exists():
         raise SystemExit("run from the repository root (prompts/ not found)")
 
+    if args.mode == "dry-run":
+        ledger = spend_ledger(args.ledger, args.ceiling)
+        print(json.dumps(plan(args, provider_chain(args.provider, args.model), ledger), indent=2))
+        return 0
     try:
         report, code = asyncio.run(run(args))
     except BudgetExceededError as exc:
         print(f"ABORT: {exc}", file=sys.stderr)
         return 2
-    if args.mode != "dry-run":
-        out_dir = Path(args.out_dir)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        run_id = re.sub(r"[^\w-]", "", report["run_id"])
-        (out_dir / f"{run_id}.json").write_text(json.dumps(report, indent=2))
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    run_id = re.sub(r"[^\w-]", "", report.run_id)
+    (out_dir / f"{run_id}.json").write_text(report.model_dump_json(indent=2))
     print(json.dumps(summary(report), indent=2))
     if args.mode == "live" and code == 0:
         if args.write_baseline:
@@ -519,42 +525,46 @@ def main(argv: list[str] | None = None) -> int:
         if args.baseline and Path(args.baseline).exists():
             baseline = json.loads(Path(args.baseline).read_text())
             if baseline.get("schema") == quant_suite.BASELINE_SCHEMA:
-                return compare_quant_baseline(report, baseline)
-            reg = check_regression(report["regression_metrics"], baseline)
+                return compare_quant_baseline(report, QuantBaseline.model_validate(baseline))
+            reg = check_regression(report.regression_metrics, baseline)
             if reg.has_regression:
                 print(f"REGRESSION: {reg.details}", file=sys.stderr)
                 return 1
     return code
 
 
-def write_baseline(path: str, report: dict[str, Any]) -> None:
+def write_baseline(path: str, report: EvalReport) -> None:
     """
     A quant-only run writes the interval-carrying baseline (`evals/baselines/quant.json`);
     any other run writes the flat metric dict the older suites compare against.
     """
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    if "quant" in report["suites"]:
-        if set(report["suites"]) != {"quant"}:
+    if "quant" in report.suites:
+        if set(report.suites) != {"quant"}:
             raise SystemExit("write the quant baseline from a run with --suite quant only")
-        doc = quant_suite.baseline_document(report["suites"]["quant"], report["run_meta"])
-        Path(path).write_text(json.dumps(doc, indent=2) + "\n")
+        quant = report.suite("quant", QuantSuiteResult)
+        assert quant is not None
+        if report.run_meta is None:
+            raise SystemExit("this run recorded no provenance to pin a baseline to")
+        doc = quant_suite.baseline_document(quant, report.run_meta)
+        Path(path).write_text(doc.model_dump_json(indent=2) + "\n")
     else:
-        Path(path).write_text(json.dumps(report["regression_metrics"], indent=2))
+        Path(path).write_text(json.dumps(report.regression_metrics, indent=2))
 
 
-def compare_quant_baseline(report: dict[str, Any], baseline: dict[str, Any]) -> int:
+def compare_quant_baseline(report: EvalReport, baseline: QuantBaseline) -> int:
     """Print current vs baseline; exit 1 on a drop outside its interval (any security drop)."""
-    suite = report["suites"].get("quant")
+    suite = report.suite("quant", QuantSuiteResult)
     if suite is None:
         raise SystemExit("this baseline is for the quant suite; run with --suite quant")
     rows = quant_suite.compare_with_baseline(suite, baseline)
     for row in rows:
         print(
-            f"{row['metric']}: baseline {row['baseline']:.3f} (n={row['baseline_n']}, "
-            f"95% {row['baseline_ci95']}) -> now {row['current']:.3f}: {row['verdict']}",
+            f"{row.metric}: baseline {row.baseline:.3f} (n={row.baseline_n}, "
+            f"95% {row.baseline_ci95}) -> now {row.current:.3f}: {row.verdict}",
             file=sys.stderr,
         )
-    if any(r["verdict"] == "regression" for r in rows):
+    if any(r.verdict == "regression" for r in rows):
         print("REGRESSION: a metric fell below the interval its baseline carries", file=sys.stderr)
         return 1
     return 0

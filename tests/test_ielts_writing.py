@@ -71,10 +71,10 @@ def test_qwk_matches_a_hand_computed_value():
 
 def test_agreement_report_fields():
     report = agreement_report([(6.0, 6.0), (7.0, 6.0)])
-    assert report["n"] == 2 and report["exact"] == 0.5 and report["bias"] == 0.5
-    assert report["mae"] == 0.5 and report["tolerance"] == 0.5
-    assert report["within_tolerance"] == 0.5  # a full-band miss is outside 0.5
-    assert agreement_report([])["n"] == 0
+    assert report.n == 2 and report.exact == 0.5 and report.bias == 0.5
+    assert report.mae == 0.5 and report.tolerance == 0.5
+    assert report.within_tolerance == 0.5  # a full-band miss is outside 0.5
+    assert agreement_report([]).n == 0
 
 
 # ── parsing and scoring ──────────────────────────────────────────────────────
@@ -235,17 +235,19 @@ def offset_grader(offset: float) -> ielts_writing.HeuristicIeltsGrader:
 async def test_run_reports_tier_n_and_agreement_per_criterion():
     items = [essay_item(f"s{i}", b) for i, b in enumerate([4.0, 5.0, 6.0, 7.0, 8.0])]
     report = await ielts_writing.run_ielts_writing(items, offset_grader(0.5), max_items=5)
-    assert report["label_tier"] == "site_or_model_weak" and report["n_items"] == 5
-    assert "NOT agreement with an examiner" in report["label_tier_caveat"]
-    assert report["overall"]["n"] == 5 and report["overall"]["within_tolerance"] == 1.0
-    assert report["overall"]["exact"] == 0.0 and report["overall"]["bias"] == pytest.approx(0.5)
-    assert report["overall"]["qwk"] is not None and report["overall"]["qwk"] > 0.9
-    assert set(report["per_criterion"]) == {
+    assert report.label_tier == "site_or_model_weak" and report.n_items == 5
+    assert report.label_tier_caveat is not None
+    assert "NOT agreement with an examiner" in report.label_tier_caveat
+    assert report.overall is not None and report.per_criterion is not None
+    assert report.overall.n == 5 and report.overall.within_tolerance == 1.0
+    assert report.overall.exact == 0.0 and report.overall.bias == pytest.approx(0.5)
+    assert report.overall.qwk is not None and report.overall.qwk > 0.9
+    assert set(report.per_criterion) == {
         "Task Response", "Coherence and Cohesion", "Lexical Resource",
         "Grammatical Range and Accuracy",
     }
-    assert all(v["n"] == 5 for v in report["per_criterion"].values())
-    assert report["units_total"] == 5 and report["units_dropped_model_unavailable"] == 0
+    assert all(v.n == 5 for v in report.per_criterion.values())
+    assert report.units_total == 5 and report.units_dropped == 0
 
 
 async def test_run_scores_overall_from_the_criteria_not_the_model():
@@ -254,7 +256,8 @@ async def test_run_scores_overall_from_the_criteria_not_the_model():
         lambda item: {"TR": 6.0, "CC": 6.0, "LR": 6.0, "GRA": 6.5}
     )
     report = await ielts_writing.run_ielts_writing(items, grader)
-    assert report["rows"]["grade"][0]["pred_overall"] == 6.0  # mean 6.125 rounds down
+    assert report.rows is not None
+    assert report.rows["grade"][0]["pred_overall"] == 6.0  # mean 6.125 rounds down
 
 
 async def test_run_without_per_criterion_labels_only_scores_overall():
@@ -266,8 +269,10 @@ async def test_run_without_per_criterion_labels_only_scores_overall():
         lambda item: {c: 6.5 for c in ielts_writing.CRITERIA}
     )
     report = await ielts_writing.run_ielts_writing(items, grader)
-    assert report["label_tier"] == "examiner" and report["overall"]["n"] == 2
-    assert all(v["n"] == 0 for v in report["per_criterion"].values())
+    assert report.label_tier == "examiner"
+    assert report.overall is not None and report.overall.n == 2
+    assert report.per_criterion is not None
+    assert all(v.n == 0 for v in report.per_criterion.values())
 
 
 async def test_run_counts_judge_errors_and_unavailable_models():
@@ -287,13 +292,14 @@ async def test_run_counts_judge_errors_and_unavailable_models():
 
     items = [essay_item(f"s{i}", 6.0) for i in range(3)]
     report = await ielts_writing.run_ielts_writing(items, Flaky(), max_items=3)
-    assert report["n_items"] == 1 and report["errors"] == 1
-    assert report["units_total"] == 3 and report["units_dropped_model_unavailable"] == 1
+    assert report.n_items == 1 and report.errors == 1
+    assert report.units_total == 3 and report.units_dropped == 1
 
 
 async def test_run_with_no_labelled_items_says_so():
     report = await ielts_writing.run_ielts_writing([], offset_grader(0))
-    assert report["n_items"] == 0 and report["label_tier"] is None and "note" in report
+    assert report.n_items == 0 and report.label_tier is None and report.note
+    assert report.units_total == 0 and report.units_dropped == 0
 
 
 # ── CLI wiring ───────────────────────────────────────────────────────────────
@@ -377,8 +383,8 @@ def test_ielts_writing_is_opt_in(
 async def test_run_includes_the_calibration_gate_with_spreads():
     items = [essay_item(f"s{i}", b) for i, b in enumerate([4.0, 5.0, 6.0, 7.0, 8.0])]
     report = await ielts_writing.run_ielts_writing(items, offset_grader(0.0), max_items=5)
-    gate = report["calibration_gate"]
-    assert gate["n"] == 5 and gate["tier"] == "site_or_model_weak"
+    gate = report.calibration_gate
+    assert gate is not None and gate["n"] == 5 and gate["tier"] == "site_or_model_weak"
     assert gate["development_gate"]["passed"] is True
     assert gate["decision_gate"]["passed"] is False  # n < 60 and a weak tier cannot certify
     assert "test-retest spread <= 0.5" in gate["decision_gate"]["unmeasured"]
@@ -389,8 +395,8 @@ async def test_adversarial_suite_holds_even_when_the_model_scores_everything_a_9
     report = await ielts_writing.run_ielts_adversarial(
         items, ielts_writing.OfflineCompleter(), samples=1
     )
-    assert report["n_cases"] >= 10 and report["failed_cases"] == []
-    assert report["max_band_given"] is not None and report["max_band_given"] < 9
+    assert report.n_cases >= 10 and report.failed_cases == []
+    assert report.max_band_given is not None and report.max_band_given < 9
 
 
 async def test_report_suite_runs_the_mechanical_checks_on_a_full_offline_report():
@@ -402,8 +408,8 @@ async def test_report_suite_runs_the_mechanical_checks_on_a_full_offline_report(
     report = await ielts_writing.run_ielts_report(
         items, ielts_writing.OfflineCompleter(), samples=1
     )
-    assert report["n_items"] == 2 and report["reports_with_problems"] == 0
-    assert report["feedback_status"] == {"partial": 2}  # the fake invents one quote each
+    assert report.n_items == 2 and report.reports_with_problems == 0
+    assert report.feedback_status == {"partial": 2}  # the fake invents one quote each
 
 
 def test_offline_cli_runs_the_adversarial_and_report_suites(
