@@ -67,18 +67,18 @@ The eval found a product bug while it was being built. Writing leak items showed
 
 **Before:** 5 golden items, no failure sources, no repeated attempts, no intervals, no checked-in baseline.
 
-**After:** 34 items, 3 attempts each (114 agent turns), one command per result:
+**After:** 40 items now, 3 attempts each (the first baseline had 34 items and 114 agent turns), one command per result:
 
 ```bash
 uv run python -m evals.agent_eval --mode live --suite quant --samples 3 \
-  --model openrouter/cohere/north-mini-code:free --max-tokens 3000 --ceiling 0.5 \
+  --model openrouter/recursive/flint-v1.0:free --max-tokens 3000 --ceiling 0.5 \
   --write-baseline evals/baselines/quant.json
 uv run python -m evals.quant_report > docs/walkthrough/results/02-quant-baseline.md
 ```
 
 Full report: [02-quant-baseline.md](results/02-quant-baseline.md). The baseline file is [evals/baselines/quant.json](../../evals/baselines/quant.json).
 
-**Read this first: the model is not the product default.** The numbers were measured on OpenRouter's free `cohere/north-mini-code:free`, routed for this run only. The committed config still uses `gpt-4o-mini`. The baseline file says so (`is_product_default_model: false` and a note). Re-run the baseline on the default model before using it to judge any change to the default setup. The free model also spends hidden reasoning tokens, so its token counts and latencies overstate the default model, and its cost as run is 0 (the report also prices the same tokens at `gpt-4o-mini` rates, an upper bound).
+**Read this first: the checked-in baseline was re-measured on 2026-11-06 on the product default, the free `recursive/flint-v1.0:free` (40 items, 104 units, none dropped, 0 USD).** It replaces the first baseline, which was measured on `cohere/north-mini-code:free` while the default was still `gpt-4o-mini`; no baseline was ever measured on a paid model. The paid config (`config/model_config.dev.yaml`) is still selectable but has no baseline. The free model spends hidden reasoning tokens, so its token counts and latencies overstate a non-reasoning model, and its cost as run is 0 (the report also prices the same tokens at `gpt-4o-mini` rates, an upper bound).
 
 | Group | Items | One attempt (95% interval) | pass@3 | pass^3 |
 |---|---|---|---|---|

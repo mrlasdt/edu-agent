@@ -529,8 +529,9 @@ def test_checked_in_baseline_names_its_model_and_renders_as_a_report(capsys):
 
     doc = json.loads(Path("evals/baselines/quant.json").read_text())
     meta = doc["meta"]
-    assert meta["model"].endswith(":free") and meta["is_product_default_model"] is False
-    assert "NOT the product default" in doc["note"]
+    # measured on the product default (the free config); a baseline on any other model must say so
+    assert meta["model"] == meta["product_default_model"] == "openrouter/recursive/flint-v1.0:free"
+    assert meta["is_product_default_model"] is True
     assert quant_report.main([]) == 0
     out = capsys.readouterr().out
     assert meta["model"] in out and "pass^k" in out and "95% interval" in out

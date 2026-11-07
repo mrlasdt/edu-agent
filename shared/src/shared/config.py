@@ -16,6 +16,7 @@ class ModelRoleConfig(BaseModel):
     provider: str
     model: str
     temperature: float = 0.0
+    fallbacks: list[str] = []
 
 
 class ModelConfig(BaseModel):
@@ -36,6 +37,10 @@ class ModelConfig(BaseModel):
         cfg = self.role(role)
         return f"{cfg.provider}/{cfg.model}"
 
+    def litellm_fallbacks(self, role: str) -> list[str]:
+        """LiteLLM model strings tried in order after the role's own model fails."""
+        return list(self.role(role).fallbacks)
+
     def prompt_version(self, agent: str, mode: str) -> str:
         """Active prompt version for (agent, mode). Defaults to 'v1' when unset."""
         return self.prompts.get(agent, {}).get(mode, "v1")
@@ -44,8 +49,8 @@ class ModelConfig(BaseModel):
 def load_model_config(path: str | None = None) -> ModelConfig:
     """
     The model config at `path`; without one, the file named by MODEL_CONFIG_PATH (default
-    config/model_config.dev.yaml), so every service honours the same switch (for example
-    config/model_config.free.yaml to run the stack on a free OpenRouter model).
+    config/model_config.free.yaml, every role on a free OpenRouter model), so every service
+    honours the same switch (config/model_config.dev.yaml is the paid OpenAI config).
     """
     return _load_model_config(path or get_settings().model_config_path)
 
@@ -114,7 +119,7 @@ class Settings(BaseSettings):
     # Dev-only: a message containing this text is treated as a self-harm moderation hit, so the
     # supportive reply can be tried without a paid moderation key. Ignored unless ENV=dev.
     safety_test_trigger: str = ""
-    model_config_path: str = "config/model_config.dev.yaml"
+    model_config_path: str = "config/model_config.free.yaml"
 
 
 @lru_cache

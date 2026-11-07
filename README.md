@@ -37,16 +37,16 @@ Open http://localhost:5173, pick Quant or AW and ask a question. The first start
   sed -i.bak '/^INGESTION_ADMIN_KEY=/d' .env && rm .env.bak
   echo "INGESTION_ADMIN_KEY=$(openssl rand -hex 24)" >> .env
   ```
-- **Models.** Every service reads the config named by `MODEL_CONFIG_PATH` (default `config/model_config.dev.yaml`, every role on `gpt-4o-mini`, needs `OPENAI_API_KEY`). Other roles and providers are one config line each (LiteLLM). Services read it once at startup: after a change run `docker compose -f infra/docker-compose.yml restart gateway agent`.
-- **No OpenAI key: free-model config.** `config/model_config.free.yaml` puts every role on one OpenRouter `:free` model that supports tool calling:
+- **Models.** Every service reads the config named by `MODEL_CONFIG_PATH` (default `config/model_config.free.yaml`: every role on one free OpenRouter model, needs `OPENROUTER_API_KEY`; `config/model_config.dev.yaml` is the paid OpenAI config, every role on `gpt-4o-mini`, needs `OPENAI_API_KEY`; OpenAI retires `gpt-4o` and `gpt-4.1` and their minis on 2027-01-14). Other roles and providers are one config line each (LiteLLM). Services read it once at startup: after a change run `docker compose -f infra/docker-compose.yml restart gateway agent`.
+- **Free-model default.** `config/model_config.free.yaml` puts every role on one OpenRouter `:free` model that supports tool calling. It is the default, so with no OpenAI key:
   ```bash
   # in .env: set OPENROUTER_API_KEY, leave OPENAI_API_KEY unset, and add
   ENV=dev
-  MODEL_CONFIG_PATH=config/model_config.free.yaml
   ```
+  To use the paid OpenAI models instead, set `OPENAI_API_KEY` and `MODEL_CONFIG_PATH=config/model_config.dev.yaml`.
   With `ENV=dev` and no OpenAI key the gateway skips the OpenAI Moderation call and records `moderation_skipped: true` on the turn; in any other `ENV` a missing key makes the turn answer "safety check unavailable". `MODERATION_ON_ERROR=closed|open` sets the policy for a moderation outage (default closed, open in `ENV=dev`). To try the supportive reply for a self-harm message without a moderation key, set `SAFETY_TEST_TRIGGER` (for example `SAFETY_TEST_TRIGGER=__test_self_harm__`) and send a message containing that text; it works only with `ENV=dev`. Free models are rate limited and slow: use them for development, not for judging quality.
 - **Math tools.** `MATH_TOOLS_ENABLED=true` lets the Quant agent call `math_evaluate`, `math_solve` and `math_compare` (served by `math-verifier`, at most 4 tool rounds per turn). Default `false`: tool turns are not streamed and cost more tokens.
-- **IELTS mock.** Needs `OPENAI_API_KEY`. `AI_SPEND_CAP_USD` (default 5) caps AI spend of the mock and the evals in one shared ledger (`AI_LEDGER_PATH`); the tutor's `/chat` is not capped. Compose creates `./ielts-local` and `./.eval-ledger`; on Linux run `mkdir -p ielts-local .eval-ledger` first.
+- **IELTS mock.** Needs `OPENROUTER_API_KEY` with the default config (grader and feedback roles on `google/gemma-4-26b-a4b-it:free`, falling back to `google/gemma-4-31b-it:free` when it is rate limited or fails), and `OPENAI_API_KEY` only with `config/model_config.dev.yaml` (`gpt-4.1-mini`). Both Gemma models passed the ADR-0014 development gate (within-0.5 at least 0.75 and |bias| at most 0.3) on the 19 `teacher_graded` IELTS Buddy essays, 3 samples each, max 4000 completion tokens, one instructor's labels: 26b 0.83 and -0.14, 31b 0.82 and -0.26, against 0.84 and -0.03 for `gpt-4.1-mini`; `recursive/flint-v1.0` (the default for every other role) failed with 0.62 and -0.62. This is the development gate only: the decision gate is still not met, so every mock score stays an uncalibrated estimate. Full table in ADR-0014. `AI_SPEND_CAP_USD` (default 5) caps AI spend of the mock and the evals in one shared ledger (`AI_LEDGER_PATH`); the tutor's `/chat` is not capped. Compose creates `./ielts-local` and `./.eval-ledger`; on Linux run `mkdir -p ielts-local .eval-ledger` first.
 - **Observability.** Langfuse is opt-in (`--profile observability`); leave the `LANGFUSE_*` keys commented out unless it is running. Retrieval reranking is opt-in (`--profile reranker` plus `TEI_RERANKER_URL=http://tei-reranker:8080`); a down or slow reranker falls back to the RRF order.
 
 ### Add documents
@@ -138,7 +138,7 @@ Each `/chat` turn is metered (model calls, tokens, estimated USD, time to first 
 
 A timed Task 2 mock for the General Training test (40 minutes, server-side clock, 250+ words): pick one of 8 original prompts, write with a live word counter and autosave, submit (or time out), and get a mock score for each of the four criteria with evidence from your essay, next steps and an error table. Marking is three independent passes whose per-criterion median is the score, deterministic checks (length, paragraphs, off-topic or copied text, instructions aimed at the marker) and a written review whose quotes are verified against the essay. Every score is labelled an estimate, not an official IELTS result, and "uncalibrated" until the ADR-0014 gate is met. Attempts are stored in SQLite under `./ielts-local`.
 
-Without Docker: run the gateway (`uv run uvicorn services.gateway.src.gateway.main:app --port 8000`, `OPENAI_API_KEY` in the environment) and `cd web && npm run dev`, then open http://localhost:5173/ielts-mock. The mock does not need Qdrant or the embedder.
+Without Docker: run the gateway (`uv run uvicorn services.gateway.src.gateway.main:app --port 8000`, `OPENROUTER_API_KEY` in the environment, or `OPENAI_API_KEY` with `MODEL_CONFIG_PATH=config/model_config.dev.yaml`) and `cd web && npm run dev`, then open http://localhost:5173/ielts-mock. The mock does not need Qdrant or the embedder.
 
 To calibrate against your own scores: `uv run python -m evals.exam_set build-blind-pool`, fill `ielts-local/blind/scores.csv`, then `import-blind-scores` and the `ielts_writing` eval below (ADR-0014).
 
@@ -221,11 +221,11 @@ The math verifier (port 8090) is a cluster-internal service, not a client-facing
 
 ## Models
 
-`config/model_config.dev.yaml` maps roles (orchestrator, `quant_agent`, `aw_agent`, math escalation, critics, graders, question-pipeline roles) to models; swapping a role to another provider is one line. `config/model_config.free.yaml` is the zero-spend variant. Prompts are versioned under `prompts/`.
+`config/model_config.free.yaml` (the default) maps roles (orchestrator, `quant_agent`, `aw_agent`, math escalation, critics, graders, question-pipeline roles) to models; swapping a role to another provider is one line. `config/model_config.dev.yaml` is the paid OpenAI variant. Prompts are versioned under `prompts/`.
 
 ## Deployment
 
-`infra/k8s/` holds Deployment and Service manifests for gateway, agent, corpus, ingestion and math-verifier; unit tests check their structure. `.github/workflows/deploy.yml` builds images to GHCR on merge to main and deploys to staging only when the repo variable `DEPLOY_ENABLED` is `true` and the `KUBE_CONFIG_STAGING` secret is set. There is no production deploy job, canary or automatic rollback: the workflow stops at staging, and there is no metrics backend to judge a canary by.
+`infra/k8s/` holds Deployment and Service manifests for gateway, agent, corpus, ingestion and math-verifier; unit tests check their structure. The gateway and agent read their model keys from the `edu-agent-secrets` Secret (`openai-api-key`, `openrouter-api-key`); the default model config needs `openrouter-api-key`. `.github/workflows/deploy.yml` builds images to GHCR on merge to main and deploys to staging only when the repo variable `DEPLOY_ENABLED` is `true` and the `KUBE_CONFIG_STAGING` secret is set. There is no production deploy job, canary or automatic rollback: the workflow stops at staging, and there is no metrics backend to judge a canary by.
 
 ## Adding an exam or section
 

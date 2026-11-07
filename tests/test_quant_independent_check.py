@@ -137,7 +137,8 @@ def test_the_offline_cli_run_reports_wrong_but_verified_and_the_report_renders_i
 
 def test_the_quant_report_has_a_wrong_but_verified_section_when_the_run_measured_it():
     baseline = json.loads(Path("evals/baselines/quant.json").read_text())
-    assert "Wrong but verified" not in quant_report.render(baseline)  # an older baseline
+    baseline["summary"].pop("wrong_but_verified", None)  # an older baseline did not measure it
+    assert "Wrong but verified" not in quant_report.render(baseline)
 
     baseline["summary"]["wrong_but_verified"] = {
         "seeded": {"count": 0, "n": 16, "ci95": [0.0, 0.19], "disagrees": 14,

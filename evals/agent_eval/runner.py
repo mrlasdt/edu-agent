@@ -82,12 +82,13 @@ class InProcessMathTools(MathToolsSkill):
         return await run_math_tool(name, arguments)
 
 
-def write_model_config(model: str, base_path: str = "config/model_config.dev.yaml") -> str:
-    """A model config identical to the dev one but with every role routed to `model`."""
+def write_model_config(model: str, base_path: str = "config/model_config.free.yaml") -> str:
+    """A model config identical to the default one but with every role routed to `model`."""
     raw = yaml.safe_load(Path(base_path).read_text())
     provider, _, name = model.partition("/")
     for role in raw["roles"].values():
         role["provider"], role["model"] = provider, name
+        role.pop("fallbacks", None)
     fd = Path(tempfile.mkdtemp(prefix="eval-config-")) / "model_config.yaml"
     fd.write_text(yaml.safe_dump(raw))
     return str(fd)

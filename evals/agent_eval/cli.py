@@ -74,6 +74,14 @@ SEED = 42
 DEFAULT_MIN_COVERAGE = 0.8
 
 
+def free_chain() -> list[str]:
+    """The product's default model first (so a baseline is measured on it), then the fallbacks."""
+    default = load_model_config().litellm_model("quant_agent")
+    if not default.startswith("openrouter/"):
+        return list(FREE_MODELS)
+    return [default, *(m for m in FREE_MODELS if m != default)]
+
+
 def provider_chain(provider: str, model: str | None = None) -> list[str]:
     """
     Ordered model chain: free OpenRouter first, OpenAI only where the provider allows it.
@@ -82,10 +90,10 @@ def provider_chain(provider: str, model: str | None = None) -> list[str]:
     if model:
         return [model]
     if provider == "free":
-        return list(FREE_MODELS)
+        return free_chain()
     if provider == "openai":
         return [OPENAI_MODEL]
-    return [*FREE_MODELS, OPENAI_MODEL]  # "free+openai": free first, OpenAI as the fallback
+    return [*free_chain(), OPENAI_MODEL]  # "free+openai": free first, OpenAI as the fallback
 
 
 def required_keys(provider: str, judge: str, model: str | None = None) -> list[str]:

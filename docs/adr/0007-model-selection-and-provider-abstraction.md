@@ -26,6 +26,10 @@ Accepted.
 - **The escalation tier is a known cost outlier.** `o1` is expensive per token; the escalation policy (Quant verifier-fail after 2 retries) keeps the rate near 1% of Quant turns. Watch the rate as a cost-alert signal.
 - **Anthropic-hybrid is one config line.** If `claude-opus-4-7` outperforms `o1` on Quant escalation in our eval, swap `math_escalation.provider: anthropic, model: claude-opus-4-7`. No code change.
 
+## Amendment: free-model default (2026-11)
+
+The default model config is now `config/model_config.free.yaml` (every role on one free OpenRouter model), because OpenAI retires `gpt-4o`, `gpt-4.1` and their minis on 2027-01-14. `config/model_config.dev.yaml` stays as the selectable paid config (`MODEL_CONFIG_PATH`). The two IELTS mock roles (`ielts_grader`, `ielts_feedback`) are the exception: they run on `google/gemma-4-26b-a4b-it:free` with `google/gemma-4-31b-it:free` as an ordered per-role `fallbacks` entry, because only the Gemma models passed the ADR-0014 development gate. The tests pin the paid one. The next amendment describes that paid config.
+
 ## Amendment: all-mini dev and local default
 
 The shipped dev/local configuration (`config/model_config.dev.yaml`, also used by the docker compose MVP stack) runs every role, including `math_escalation`, on `gpt-4o-mini` to stay within the project's spend budget. The `gpt-4o` / `o1` tiering described above remains the intended production shape; the per-turn cost figures above assume that tiering, not the dev default.

@@ -57,9 +57,14 @@ def role_model(role: str) -> str:
     return load_model_config(get_settings().model_config_path).litellm_model(role)
 
 
+def role_fallbacks(role: str) -> list[str]:
+    return load_model_config(get_settings().model_config_path).litellm_fallbacks(role)
+
+
 class LiteLLMCompleter:
     """
-    Call the role's model; a provider failure or an empty reply is `ModelUnavailableError`.
+    Call the role's model; a provider failure or an empty reply moves on to the role's
+    fallbacks in order, and only when every one has failed is it `ModelUnavailableError`.
 
     Spend is checked against the cap before each call (worst case: the whole prompt plus
     `max_tokens` of output, plus whatever concurrent calls have reserved) and the reported
@@ -78,7 +83,21 @@ class LiteLLMCompleter:
         self, role: str, messages: list[dict[str, str]], *, temperature: float, max_tokens: int,
         trace_id: str = "", prompt_version: str = "",
     ) -> str:
-        model = role_model(role)
+        errors: list[str] = []
+        for model in [role_model(role), *role_fallbacks(role)]:
+            try:
+                return await self._complete(
+                    model, messages, temperature=temperature, max_tokens=max_tokens,
+                    trace_id=trace_id, prompt_version=prompt_version,
+                )
+            except ModelUnavailableError as exc:
+                errors.append(str(exc))
+        raise ModelUnavailableError("; ".join(errors))
+
+    async def _complete(
+        self, model: str, messages: list[dict[str, str]], *, temperature: float, max_tokens: int,
+        trace_id: str, prompt_version: str,
+    ) -> str:
         extra: dict[str, Any] = (
             build_llm_metadata(trace_id, prompt_version or "v1") if trace_id else {}
         )
