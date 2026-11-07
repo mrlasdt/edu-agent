@@ -43,7 +43,7 @@ Accepted. Supersedes the monolithic service implied by the earlier ADRs; all ser
 
 ## Consequences
 
-- **Each service has its own Dockerfile and its own entry in Docker Compose.** (k8s manifests were planned and later removed unapplied, ADR-0009.)
+- **Each service has its own image and its own entry in Docker Compose.** One parametrized `infra/Dockerfile` builds them all, each from its own dependency group in `pyproject.toml` (one lock). (k8s manifests were planned and later removed unapplied, ADR-0009.)
 - **Services share one Postgres instance** (different schemas or tables; no cross-schema foreign keys). Alembic migrations are per-service under `services/{name}/migrations/`.
 - **Services share one Qdrant instance** (one collection, ACL via payload filters — ADR-0004).
 - **The Agent Service calls the Math Verifier over HTTP, one request per check** (see "Amendment: the Agent Service calls the REST routes"). If the Math Verifier is unreachable, Quant turns degrade to "unable to verify" (verifier-fail event) rather than failing the whole service.

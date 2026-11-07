@@ -6,10 +6,14 @@ Behaviors under test:
   2. ci.yml runs the offline eval on every change (no path gate)
   3. No Kubernetes manifests or cluster deploy workflow (Docker Compose is the one deploy path)
   4. Each FastAPI service exposes GET /healthz → 200
-  5. Dockerfiles exist for all services
+  5. One parametrized Dockerfile, one dependency group per service, a pinned uv
 """
 
+import os
+import re
 import shlex
+import subprocess
+import tomllib
 from pathlib import Path
 
 import yaml
@@ -129,14 +133,165 @@ def test_ingestion_healthz():
     assert response.status_code == 200
 
 
-# ── 5. Dockerfiles ────────────────────────────────────────────────────────────
+# ── 5. One Dockerfile, one dependency group per service ──────────────────────
+
+SERVICES = ["gateway", "agent", "corpus", "ingestion", "math_verifier"]
 
 
-def test_dockerfiles_exist_for_all_services():
-    services = ["gateway", "agent", "corpus", "ingestion", "math_verifier"]
-    for svc in services:
-        df = ROOT / "services" / svc / "Dockerfile"
-        assert df.exists(), f"Missing Dockerfile for {svc}"
+def _compose_service_args() -> dict[str, str]:
+    """Compose service name -> the SERVICE build arg of every service built from the Dockerfile."""
+    compose = yaml.safe_load((ROOT / "infra/docker-compose.yml").read_text())
+    return {
+        name: service["build"]["args"]["SERVICE"]
+        for name, service in compose["services"].items()
+        if "build" in service and service["build"]["dockerfile"] == "infra/Dockerfile"
+    }
+
+
+def test_one_dockerfile_builds_every_python_service():
+    assert (ROOT / "infra/Dockerfile").is_file()
+    assert not list((ROOT / "services").glob("*/Dockerfile")), "per-service Dockerfiles are gone"
+    assert sorted(set(_compose_service_args().values())) == sorted(SERVICES)
+
+
+def _resolve_group(groups: dict, name: str) -> set[str]:
+    """Package names a dependency group installs, following every `include-group`."""
+    packages = set()
+    for entry in groups[name]:
+        if isinstance(entry, dict):
+            packages |= _resolve_group(groups, entry["include-group"])
+        else:
+            packages.add(re.match(r"[A-Za-z0-9_.-]+", entry)[0].lower())
+    return packages
+
+
+APP_PACKAGES = {"fastapi", "uvicorn", "httpx", "pydantic", "pydantic-settings", "pyyaml"}
+EXPECTED_GROUP_PACKAGES = {
+    "gateway": APP_PACKAGES | {"litellm", "langfuse"},
+    "agent": APP_PACKAGES | {"litellm", "langfuse"},
+    "corpus": APP_PACKAGES | {"qdrant-client"},
+    "ingestion": APP_PACKAGES | {"qdrant-client", "pypdf", "python-docx", "python-multipart"},
+    "math-verifier": {"mcp", "starlette", "sympy"},
+}
+EVAL_ONLY_PACKAGES = {"langgraph", "python-dotenv", "pytest", "numpy"}
+
+
+def test_every_service_group_resolves_to_exactly_the_packages_it_imports():
+    """
+    `dependencies` stays empty so an image never installs what its service does not import,
+    and the eval-only packages sit in `dev` only.
+    """
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    groups = pyproject["dependency-groups"]
+    assert pyproject["project"]["dependencies"] == []
+    assert pyproject["tool"]["uv"]["default-groups"] == ["dev"]
+    for service in SERVICES:
+        group = service.replace("_", "-")
+        assert _resolve_group(groups, group) == EXPECTED_GROUP_PACKAGES[group], group
+    dev = _resolve_group(groups, "dev")
+    assert EVAL_ONLY_PACKAGES <= dev
+    for group, packages in EXPECTED_GROUP_PACKAGES.items():
+        assert packages <= dev, group
+
+
+def _fake_repo(root: Path) -> Path:
+    """A minimal repo: every service, shared/ with several modules, config/ and prompts/."""
+    repo = root / "repo"
+    (repo / "services").mkdir(parents=True)
+    (repo / "services/__init__.py").write_text("")
+    for service in SERVICES:
+        package = repo / "services" / service / "src" / service
+        (package / "__pycache__").mkdir(parents=True)
+        (package / "__init__.py").write_text("")
+        (package / "__pycache__/x.pyc").write_bytes(b"")
+    shared = repo / "shared/src/shared"
+    shared.mkdir(parents=True)
+    for module in SHARED_MODULES:
+        (shared / f"{module}.py").write_text("")
+    for top in ("config", "prompts"):
+        (repo / top).mkdir()
+        (repo / top / "x.yaml").write_text("")
+    return repo
+
+
+SHARED_MODULES = ("__init__", "math_tool_specs", "config", "models")
+
+
+def _assemble(service: str, repo: Path, out: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["sh", str(ROOT / "infra/assemble-service.sh"), service, str(repo), str(out)],
+        capture_output=True,
+        text=True,
+    )
+
+
+def _tree(base: Path) -> set[str]:
+    return {str(p.relative_to(base)) for p in base.rglob("*") if p.is_file()}
+
+
+def test_assemble_writes_an_executable_serve_and_healthcheck_for_every_service(tmp_path):
+    repo = _fake_repo(tmp_path)
+    for service in SERVICES:
+        out = tmp_path / f"out-{service}"
+        result = _assemble(service, repo, out)
+        assert result.returncode == 0, (service, result.stderr)
+        for command in ("serve", "healthcheck"):
+            assert os.access(out / "bin" / command, os.X_OK), (service, command)
+        assert (out / "app/services" / service / "src" / service / "__init__.py").is_file()
+        assert (out / "app/services/__init__.py").is_file()
+        assert not [p for p in _tree(out / "app") if "__pycache__" in p], service
+
+
+def test_assemble_ships_only_what_each_service_imports(tmp_path):
+    repo = _fake_repo(tmp_path)
+    shipped = {}
+    for service in SERVICES:
+        out = tmp_path / f"out-{service}"
+        assert _assemble(service, repo, out).returncode == 0
+        shipped[service] = _tree(out / "app")
+    verifier_shared = {p for p in shipped["math_verifier"] if p.startswith("shared/")}
+    assert verifier_shared == {
+        "shared/src/shared/__init__.py",
+        "shared/src/shared/math_tool_specs.py",
+    }
+    assert not any(p.startswith(("config/", "prompts/")) for p in shipped["math_verifier"])
+    assert not any(p.startswith("services/agent/") for p in shipped["corpus"])
+    assert {f"shared/src/shared/{m}.py" for m in SHARED_MODULES} <= shipped["agent"]
+    assert {"config/x.yaml", "prompts/x.yaml"} <= shipped["agent"]
+    # The gateway no longer imports agent code (ielts and critics live in shared/).
+    assert not any(p.startswith("services/agent/") for p in shipped["gateway"])
+    assert "services/gateway/src/gateway/__init__.py" not in shipped["agent"]
+
+
+def test_assemble_rejects_an_unknown_service(tmp_path):
+    result = _assemble("nope", _fake_repo(tmp_path), tmp_path / "out")
+    assert result.returncode != 0
+    assert not (tmp_path / "out/bin/serve").exists()
+
+
+def _tokens(line: str) -> list[str]:
+    lexer = shlex.shlex(line, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    return list(lexer)
+
+
+def test_ci_runs_the_import_smoke_in_every_image_the_compose_file_builds():
+    ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    commands = [
+        _tokens(line)
+        for step in ci["jobs"]["compose-smoke"]["steps"]
+        for line in str(step.get("run", "")).splitlines()
+        if line.strip()
+    ]
+    (loop,) = [argv for argv in commands if argv[:3] == ["for", "service", "in"]]
+    built = _compose_service_args()
+    looped = loop[3 : loop.index(";")]
+    assert set(looped) <= set(built)
+    assert sorted(built[name] for name in looped) == sorted(SERVICES)
+    (smoke,) = [argv for argv in commands if "--entrypoint" in argv]
+    assert smoke[0] == "$COMPOSE"
+    assert smoke[1:3] == ["run", "--rm"]
+    assert smoke[-5:] == ["python", "$service", "-", "<", "infra/import_smoke.py"]
 
 
 def _steps(workflow: dict) -> list[tuple[str, dict]]:

@@ -5,7 +5,7 @@ description: >
 
 inputs:
   sync:
-    description: "Run `uv sync --extra dev`. Set to 'false' for jobs that only need the uv binary."
+    description: "Run `uv sync` (the default `dev` group: every service group plus test and eval tools). Set to 'false' for jobs that only need the uv binary."
     required: false
     default: "true"
 
@@ -14,11 +14,11 @@ runs:
   steps:
     - uses: astral-sh/setup-uv@v10.3.3
       with:
-        # The one place the uv version is pinned. Bump it here, in a PR, so a new uv release
-        # cannot change what CI runs on its own.
+        # The CI uv pin. The image pin is ARG UV_VERSION in infra/Dockerfile; bump both together,
+        # in a PR, so a new uv release cannot change what CI or the images run on its own.
         version: "0.13.6"
         enable-cache: true
         cache-dependency-glob: uv.lock
     - if: inputs.sync == 'true'
       shell: bash
-      run: uv sync --extra dev
+      run: uv sync
