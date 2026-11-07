@@ -17,6 +17,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
 from services.agent.src.agent.agents.quant import QuantAgent
@@ -63,23 +64,34 @@ class Model:
         return self.replies.pop(0)
 
 
-class FakeMath(MathToolsSkill):
-    def __init__(self, result: dict[str, Any] | Exception) -> None:
-        super().__init__(server_url="http://math.test")
+class FakeMath:
+    """The math service as a canned HTTP answer, reached through the skill's real client path.
+
+    `result` is what the service replies, an exception it raises (a service that is down), or a
+    function of the call's arguments.
+    """
+
+    def __init__(self, result: Any) -> None:
         self.result = result
         self.posts: list[tuple[str, dict[str, Any]]] = []
+        self.skill = MathToolsSkill(
+            server_url="http://math.test",
+            client=httpx.AsyncClient(transport=httpx.MockTransport(self._handle)),
+        )
 
-    async def _post(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    def _handle(self, request: httpx.Request) -> httpx.Response:
+        name, arguments = request.url.path.rsplit("/", 1)[-1], json.loads(request.content)
         self.posts.append((name, arguments))
         if isinstance(self.result, Exception):
             raise self.result
-        return self.result
+        reply = self.result(arguments) if callable(self.result) else self.result
+        return httpx.Response(200, json=reply)
 
 
-def agent(math: MathToolsSkill, enabled: bool = True) -> QuantAgent:
+def agent(math: FakeMath, enabled: bool = True) -> QuantAgent:
     return QuantAgent(
         model_config_path="config/model_config.dev.yaml",
-        math_tools_skill=math,
+        math_tools_skill=math.skill,
         math_tools_enabled=enabled,
         verify_math_skill=AsyncMock(),
     )
@@ -171,10 +183,9 @@ async def test_the_turn_record_names_the_calls_and_the_prompt(turn_log) -> None:
     math = FakeMath(PERCENT_RESULT)
     a = agent(math)
     # second call fails inside the service: the result carries an error
-    async def post(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        return {"error": "bad"} if arguments["expression"] == "x^" else PERCENT_RESULT
-
-    math._post = post  # type: ignore[method-assign]
+    math.result = lambda arguments: (
+        {"error": "bad"} if arguments["expression"] == "x^" else PERCENT_RESULT
+    )
     with patch("litellm.acompletion", new=model):
         await collect(a, Mode.tutor, "Solve it", trace_id="trace-tools")
 
@@ -278,21 +289,15 @@ def test_the_tools_prompts_resolve_and_describe_the_tools() -> None:
 
 
 def test_every_tool_has_a_schema_the_service_accepts() -> None:
-    from services.math_verifier.src.math_verifier.tools import OPTIONAL, REQUIRED
-
     for spec in MATH_TOOL_SPECS:
         fn = spec["function"]
-        props = set(fn["parameters"]["properties"])
-        assert set(fn["parameters"]["required"]) == set(REQUIRED[fn["name"]])
-        assert props == set(REQUIRED[fn["name"]]) | set(OPTIONAL.get(fn["name"], ()))
         assert len(fn["description"]) > 200  # written to brief a colleague, not to label a field
 
 
 async def test_the_skill_turns_a_failed_post_into_an_error_result() -> None:
-    skill = FakeMath(ConnectionError("down"))
+    skill = FakeMath(ConnectionError("down")).skill
     assert await skill.call("math_evaluate", {"expression": "1"}) == {"error": UNAVAILABLE}
-    not_a_dict = FakeMath({})
-    not_a_dict.result = ["x"]  # type: ignore[assignment]
+    not_a_dict = FakeMath(["x"]).skill
     assert await not_a_dict.call("math_evaluate", {"expression": "1"}) == {"error": UNAVAILABLE}
 
 

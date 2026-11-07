@@ -1,18 +1,23 @@
 """
 Tests for the verify-math Skill in the Agent Service.
 
-The Skill is an MCP client that calls the math-verifier MCP server.
-Tests mock the MCP client — no live server needed.
+The Skill posts to the math-verifier service's verify_math route. Tests hand it an httpx client
+whose transport answers in process, so the skill's own request code runs and no live server is
+needed.
 
 Behaviors under test:
-  1. Returns VerificationResult with verified=True on matching answer
-  2. Returns VerificationResult with verified=False on wrong answer
-  3. Returns VerificationResult with error on server error
+  1. Returns VerifyMathResult with verified=True on matching answer
+  2. Returns VerifyMathResult with verified=False on wrong answer
+  3. Returns VerifyMathResult with error on server error
   4. Propagates timeout from the server response
+  5. Posts the expression and expected answer to /tools/verify_math
+  6. A verifier outage degrades instead of raising
 """
 
+import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -22,29 +27,29 @@ from services.agent.src.agent.skills.verify_math import (
 )
 
 
-def make_mcp_tool_result(verified: bool, computed: str, error=None) -> MagicMock:
-    """Build a mock MCP tool call result."""
-    import json
-    mock_result = MagicMock()
-    mock_result.content = [MagicMock()]
-    mock_result.content[0].text = json.dumps({
-        "verified": verified,
-        "computed": computed,
-        "error": error,
-    })
-    return mock_result
+def skill_answering(
+    reply: dict[str, Any] | Exception,
+) -> tuple[VerifyMathSkill, list[httpx.Request]]:
+    """A skill whose service replies `reply` (or raises it), and the requests it received."""
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if isinstance(reply, Exception):
+            raise reply
+        return httpx.Response(200, json=reply)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handle))
+    return VerifyMathSkill(server_url="http://localhost:8090", client=client), requests
 
 
 # ── 1. Verified = True ────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_skill_returns_verified_true():
-    skill = VerifyMathSkill(server_url="http://localhost:8090")
+    skill, _ = skill_answering({"verified": True, "computed": "[2, 3]", "error": None})
 
-    with patch.object(skill, "_call_mcp_tool", new_callable=AsyncMock) as mock_call:
-        mock_call.return_value = {"verified": True, "computed": "[2, 3]", "error": None}
-
-        result = await skill.verify("x**2 - 5*x + 6 = 0", "2, 3")
+    result = await skill.verify("x**2 - 5*x + 6 = 0", "2, 3")
 
     assert result.verified is True
     assert result.error is None
@@ -54,12 +59,9 @@ async def test_skill_returns_verified_true():
 
 @pytest.mark.asyncio
 async def test_skill_returns_verified_false():
-    skill = VerifyMathSkill(server_url="http://localhost:8090")
+    skill, _ = skill_answering({"verified": False, "computed": "[2I, -2I]", "error": None})
 
-    with patch.object(skill, "_call_mcp_tool", new_callable=AsyncMock) as mock_call:
-        mock_call.return_value = {"verified": False, "computed": "[2I, -2I]", "error": None}
-
-        result = await skill.verify("x**2 + 1 = 0", "x=1")
+    result = await skill.verify("x**2 + 1 = 0", "x=1")
 
     assert result.verified is False
     assert result.error is None
@@ -69,16 +71,11 @@ async def test_skill_returns_verified_false():
 
 @pytest.mark.asyncio
 async def test_skill_propagates_server_error():
-    skill = VerifyMathSkill(server_url="http://localhost:8090")
+    skill, _ = skill_answering(
+        {"verified": False, "computed": "", "error": "parse error: invalid syntax"}
+    )
 
-    with patch.object(skill, "_call_mcp_tool", new_callable=AsyncMock) as mock_call:
-        mock_call.return_value = {
-            "verified": False,
-            "computed": "",
-            "error": "parse error: invalid syntax",
-        }
-
-        result = await skill.verify("not valid $$", "5")
+    result = await skill.verify("not valid $$", "5")
 
     assert result.verified is False
     assert result.error is not None
@@ -89,32 +86,26 @@ async def test_skill_propagates_server_error():
 
 @pytest.mark.asyncio
 async def test_skill_propagates_timeout():
-    skill = VerifyMathSkill(server_url="http://localhost:8090")
+    skill, _ = skill_answering({"verified": False, "computed": "", "error": "timeout"})
 
-    with patch.object(skill, "_call_mcp_tool", new_callable=AsyncMock) as mock_call:
-        mock_call.return_value = {"verified": False, "computed": "", "error": "timeout"}
-
-        result = await skill.verify("very_long_computation(x)", "0")
+    result = await skill.verify("very_long_computation(x)", "0")
 
     assert result.verified is False
     assert result.error == "timeout"
 
 
-# ── 5. MCP tool called with correct args ─────────────────────────────────────
+# ── 5. Tool route called with correct args ───────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_skill_calls_tool_with_correct_args():
-    skill = VerifyMathSkill(server_url="http://localhost:8090")
+    skill, requests = skill_answering({"verified": True, "computed": "14", "error": None})
 
-    with patch.object(skill, "_call_mcp_tool", new_callable=AsyncMock) as mock_call:
-        mock_call.return_value = {"verified": True, "computed": "14", "error": None}
+    await skill.verify("2 + 3 * 4", "14")
 
-        await skill.verify("2 + 3 * 4", "14")
-
-    mock_call.assert_called_once_with(
-        tool_name="verify_math",
-        arguments={"expression": "2 + 3 * 4", "expected": "14"},
-    )
+    (request,) = requests
+    assert request.method == "POST"
+    assert str(request.url) == "http://localhost:8090/tools/verify_math"
+    assert json.loads(request.content) == {"expression": "2 + 3 * 4", "expected": "14"}
 
 
 # ── 6. Verifier outage degrades instead of raising ────────────────────────────
@@ -143,11 +134,9 @@ async def test_unreachable_verifier_returns_an_error_instead_of_raising():
     ],
 )
 async def test_any_http_error_from_the_verifier_is_reported_not_raised(exc):
-    skill = VerifyMathSkill(server_url="http://localhost:8090")
+    skill, _ = skill_answering(exc)
 
-    with patch.object(skill, "_call_mcp_tool", new_callable=AsyncMock) as mock_call:
-        mock_call.side_effect = exc
-        result = await skill.verify("2 + 2", "4")
+    result = await skill.verify("2 + 2", "4")
 
     assert result.verified is False
     assert result.error == "verifier unreachable"

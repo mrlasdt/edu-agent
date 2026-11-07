@@ -270,9 +270,9 @@ async def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             if "quant_judge" in args.suite:
                 agent = QuantAgent(
                     model_config_path=runner.write_model_config(model),
-                    verify_math_skill=runner.InProcessVerifySkill(),
+                    verify_math_skill=runner.in_process_verify_skill(),
                     retrieve_corpus_skill=quant_suite.NotesSkill([]),
-                    math_tools_skill=runner.InProcessMathTools(),
+                    math_tools_skill=runner.in_process_math_tools(),
                     math_tools_enabled=args.math_tools == "on",
                 )
                 solve_items = [i for i in load_golden_set("quant") if i["kind"] == "solve"]
@@ -339,13 +339,13 @@ async def _run_quant(
 ) -> dict[str, Any]:
     """The failure-seeded suite on `model`: real agent, rule graders, `--samples` attempts."""
     config = runner.write_model_config(model)
-    skill = runner.InProcessVerifySkill()
+    skill = runner.in_process_verify_skill()
 
     def factory(notes: list[str]) -> QuantAgent:
         return QuantAgent(
             model_config_path=config, verify_math_skill=skill,
             retrieve_corpus_skill=quant_suite.NotesSkill(notes),
-            math_tools_skill=runner.InProcessMathTools(),
+            math_tools_skill=runner.in_process_math_tools(),
             math_tools_enabled=args.math_tools == "on",
         )
 
@@ -389,7 +389,7 @@ async def _run_generation(
 ) -> dict[str, Any]:
     """Baseline vs LangGraph pipeline, both routed to `model`, on the same requests."""
     config = runner.write_model_config(model)
-    skill = runner.InProcessVerifySkill()
+    skill = runner.in_process_verify_skill()
     requests = [
         GenerationRequest.model_validate(i)
         for i in runner.select_items("quant_generation", max_items, SEED)

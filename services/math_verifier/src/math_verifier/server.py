@@ -1,9 +1,10 @@
 """
 Math Verifier MCP server.
 
-Exposes the verify_math tool via FastMCP (SSE transport).
-The Agent Service connects to this as an MCP client.
-Claude Desktop can also use it directly via the Candidate MCP server.
+Exposes the verify_math tool via FastMCP (SSE transport) for MCP clients such as Claude Desktop
+(through the Candidate MCP server). The Agent Service does not speak MCP to it: it calls the
+plain-HTTP routes below (`POST /tools/{name}`) with an httpx client. The argument contract of
+the model-called tools is `shared.math_tool_specs`, the same module the agent reads.
 
 Run with:
     python -m math_verifier.server

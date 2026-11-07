@@ -13,7 +13,7 @@ import pytest
 from evals.agent_eval import cli, generation, offline_generation
 from evals.agent_eval.budget import BudgetExceededError, Ledger
 from evals.agent_eval.judges import HeuristicJudge
-from evals.agent_eval.runner import InProcessVerifySkill, write_model_config
+from evals.agent_eval.runner import in_process_verify_skill, write_model_config
 from evals.agent_eval.transport import MeteredTransport
 from evals.human_review_queue import HumanReviewQueue
 from evals.loader import load_golden_set
@@ -34,7 +34,7 @@ from services.agent.src.agent.pipeline.schema import (
 from shared.src.shared.config import load_model_config
 from tests.llm_fakes import ScriptedRouter
 
-SKILL = InProcessVerifySkill()
+SKILL = in_process_verify_skill()
 
 NUMERIC = {
     "question_type": "numeric_entry",

@@ -130,8 +130,8 @@ services:
       timeout: 10s
       retries: 20
 
-  # Math verifier MCP server — SSE transport on port 8090.
-  # The Agent Service connects to http://math-verifier:8090 via the verify-math Skill.
+  # Math verifier — MCP server (SSE transport) plus the REST routes /tools/{name}, port 8090.
+  # The Agent Service POSTs to http://math-verifier:8090/tools/{name} from its math Skills.
   math-verifier:
     build:
       context: ..

@@ -454,7 +454,7 @@ async def test_generation_run_with_the_model_down_fails_the_coverage_gate():
     transport = MeteredTransport(
         Ledger(Path("/nonexistent/ledger.json"), 20.0), "t", fake_model=cli._offline_model
     )
-    skill = cli.runner.InProcessVerifySkill()
+    skill = cli.runner.in_process_verify_skill()
     out = await generation.run_generation(
         requests, {"baseline": Down(), "pipeline": Down()}, cli._offline_judge(), skill, transport
     )
