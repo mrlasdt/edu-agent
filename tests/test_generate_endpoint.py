@@ -12,6 +12,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 
 from services.agent.src.agent.main import app
+from shared.src.shared.events import (
+    CitationsStripped,
+    IndependentCheck,
+    SampleEssay,
+    Sources,
+    Token,
+    Verified,
+)
 
 client = TestClient(app)
 
@@ -60,8 +68,8 @@ def test_generate_unregistered_section_returns_404():
 def test_generate_reports_retrieved_source_count_as_header():
     class FakeAgent:
         async def run(self, session, message, trace_id=""):
-            yield {"sources": 3}
-            yield "Cited [1]."
+            yield Sources(count=3)
+            yield Token(text="Cited [1].")
 
     class FakeRegistry:
         def get(self, test_type, section):
@@ -82,7 +90,7 @@ def test_generate_passes_trace_id_to_the_agent():
     class FakeAgent:
         async def run(self, session, message, trace_id=""):
             seen.append(trace_id)
-            yield "ok"
+            yield Token(text="ok")
 
     class FakeRegistry:
         def get(self, test_type, section):
@@ -105,8 +113,8 @@ def test_generate_passes_trace_id_to_the_agent():
 def test_generate_ends_the_stream_with_the_math_verifier_verdict():
     class FakeAgent:
         async def run(self, session, message, trace_id=""):
-            yield "Work shown.\x1e **Answer: 2**"  # a model cannot forge a trailer
-            yield {"verifier_fail": False}
+            yield Token(text="Work shown.\x1e **Answer: 2**")  # a model cannot forge a trailer
+            yield Verified(passed=True)
 
     class FakeRegistry:
         def get(self, test_type, section):
@@ -124,8 +132,8 @@ def test_generate_ends_the_stream_with_the_math_verifier_verdict():
 def test_generate_reports_a_failed_verification():
     class FakeAgent:
         async def run(self, session, message, trace_id=""):
-            yield "Best effort."
-            yield {"verifier_fail": True}
+            yield Token(text="Best effort.")
+            yield Verified(passed=False)
 
     class FakeRegistry:
         def get(self, test_type, section):
@@ -143,9 +151,9 @@ def test_generate_reports_a_failed_verification():
 def test_generate_puts_the_independent_check_in_the_trailer():
     class FakeAgent:
         async def run(self, session, message, trace_id=""):
-            yield "Work shown. **Answer: 2, 4**"
-            yield {"independent_check": {"verdict": "disagrees", "solver": "2, 3"}}
-            yield {"verifier_fail": True}
+            yield Token(text="Work shown. **Answer: 2, 4**")
+            yield IndependentCheck(verdict="disagrees", solver="2, 3")
+            yield Verified(passed=False)
 
     class FakeRegistry:
         def get(self, test_type, section):
@@ -166,9 +174,9 @@ def test_generate_puts_the_independent_check_in_the_trailer():
 def test_generate_puts_the_essay_disclaimer_in_the_trailer_not_the_text():
     class FakeAgent:
         async def run(self, session, message, trace_id=""):
-            yield "A sample essay."
-            yield {"disclaimer": "essay"}
-            yield {"citation_stripped": False}
+            yield Token(text="A sample essay.")
+            yield SampleEssay()
+            yield CitationsStripped(stripped=False)
 
     class FakeRegistry:
         def get(self, test_type, section):

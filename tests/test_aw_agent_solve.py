@@ -16,7 +16,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from services.agent.src.agent.agents.aw import AWAgent
+from shared.src.shared.events import SampleEssay
 from shared.src.shared.models import Mode, Session
+from tests.agent_events import reply_of, texts
 
 
 def make_session(mode: Mode = Mode.solve, personal_style: bool = False) -> Session:
@@ -60,13 +62,9 @@ async def test_solve_yields_tokens():
         ),
     ):
         mock_llm.return_value = mock_stream(SAMPLE_ESSAY_TOKENS)
-        tokens = [
-            item
-            async for item in agent.run(make_session(Mode.solve), "Discuss technology")
-            if isinstance(item, str)
-        ]
+        items = [item async for item in agent.run(make_session(Mode.solve), "Discuss technology")]
 
-    assert len(tokens) > 0
+    assert len(texts(items)) > 0
 
 
 # ── 2. Solve uses solve system prompt ─────────────────────────────────────────
@@ -238,9 +236,9 @@ async def test_solve_output_is_flagged_as_a_sample_essay_and_carries_no_disclaim
         items = [item async for item in agent.run(make_session(Mode.solve), "Discuss tech")]
 
     # The notice is metadata for the web app to render, not text: no sentence, no markdown rule.
-    full_output = "".join(i for i in items if isinstance(i, str))
+    full_output = reply_of(items)
     assert full_output == "essay content here"
-    assert {"disclaimer": "essay"} in items
+    assert SampleEssay() in items
 
 
 # ── 7. Citation checker runs on Solve output ─────────────────────────────────

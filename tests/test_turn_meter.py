@@ -27,6 +27,7 @@ from shared.src.shared.feedback import latest_votes
 from shared.src.shared.models import Mode, Session
 from shared.src.shared.turn_meter import TurnLog, TurnMeter
 from shared.src.shared.turn_outcome import Outcome
+from tests.agent_events import reply_of
 from tests.gateway_fakes import agent_replies
 
 MODEL = "openai/gpt-4o-mini"
@@ -264,7 +265,7 @@ async def test_quant_tutor_turn_records_what_the_fake_model_reported(turn_log):
     ):
         text = [i async for i in agent.run(session(), "Solve x^2-5x+6=0", trace_id="trace-q")]
 
-    assert "Ask what the roots add up to." in text
+    assert "Ask what the roots add up to." in reply_of(text)
     (record,) = turn_log.read()
     assert record["trace_id"] == "trace-q"
     assert (record["source"], record["agent"], record["mode"]) == ("agent", "quant_agent", "tutor")

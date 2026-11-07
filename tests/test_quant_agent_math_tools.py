@@ -29,7 +29,9 @@ from services.agent.src.agent.skills.math_tools import (
 )
 from services.agent.src.agent.skills.verify_math import VerifyMathResult
 from shared.src.shared.config import Settings, load_model_config
+from shared.src.shared.events import Event, Token, ToolTrace, Verified
 from shared.src.shared.models import Mode, Session
+from tests.agent_events import reply_of
 
 PERCENT_RESULT = {"value": "0.92", "exact": "23/25"}
 
@@ -97,7 +99,7 @@ def agent(math: FakeMath, enabled: bool = True) -> QuantAgent:
     )
 
 
-async def collect(a: QuantAgent, mode: Mode, text: str, trace_id: str = "t1") -> list[Any]:
+async def collect(a: QuantAgent, mode: Mode, text: str, trace_id: str = "t1") -> list[Event]:
     with patch.object(a, "_retrieve", new_callable=AsyncMock, return_value=[]):
         return [item async for item in a.run(session(mode), text, trace_id=trace_id)]
 
@@ -112,7 +114,7 @@ async def test_tutor_reply_holds_only_the_final_text_never_the_tool_result(turn_
     with patch("litellm.acompletion", new=model):
         items = await collect(a, Mode.tutor, "A price rises 15% then falls 20%. Net change?")
 
-    text = "".join(i for i in items if isinstance(i, str))
+    text = reply_of(items)
     assert text == "What does a 20% fall do to the new price?"
     assert "0.92" not in text and "23/25" not in text
     # the model did see the result, in the tool message of its second request
@@ -150,11 +152,12 @@ async def test_solve_with_tools_is_verified_and_reports_the_calls() -> None:
     ):
         items = await collect(a, Mode.solve, "A price rises 15% then falls 20%.")
 
-    assert items[0] == final
-    assert {"verifier_fail": False} in items
-    trace = items[-1]["tool_trace"]
-    assert [(c["name"], c["ok"]) for c in trace] == [("math_evaluate", True)]
-    assert "0.92" in trace[0]["result"]
+    assert items[0] == Token(text=final)
+    assert Verified(passed=True) in items
+    trace = items[-1]
+    assert isinstance(trace, ToolTrace)
+    assert [(c.name, c.ok) for c in trace.calls] == [("math_evaluate", True)]
+    assert "0.92" in trace.calls[0].result
     assert "use a tool for every calculation" in model.requests[0]["messages"][0]["content"]
 
 
@@ -168,7 +171,7 @@ async def test_a_turn_without_tool_calls_yields_no_trace() -> None:
         ),
     ):
         items = await collect(a, Mode.solve, "2+2")
-    assert not any(isinstance(i, dict) and "tool_trace" in i for i in items)
+    assert not any(isinstance(i, ToolTrace) for i in items)
 
 
 # ── 3. the turn record ───────────────────────────────────────────────────────
@@ -210,7 +213,7 @@ async def test_a_math_service_that_is_down_gives_the_model_an_error_and_the_turn
     with patch("litellm.acompletion", new=model):
         items = await collect(agent(math), Mode.tutor, "A price rises 15%...")
 
-    assert "".join(i for i in items if isinstance(i, str)).startswith("Let's find")
+    assert reply_of(items).startswith("Let's find")
     tool_message = [m for m in model.requests[1]["messages"] if m["role"] == "tool"][0]
     assert UNAVAILABLE in tool_message["content"]
     assert "Do not guess" in UNAVAILABLE
@@ -219,7 +222,7 @@ async def test_a_math_service_that_is_down_gives_the_model_an_error_and_the_turn
 async def test_a_blank_final_reply_becomes_a_polite_fallback_not_silence() -> None:
     with patch("litellm.acompletion", new=Model(text_reply(""))):
         items = await collect(agent(FakeMath(PERCENT_RESULT)), Mode.tutor, "hi")
-    assert "".join(i for i in items if isinstance(i, str)).startswith("I could not finish")
+    assert reply_of(items).startswith("I could not finish")
 
 
 async def test_solve_retries_keep_calling_tools_and_keep_the_calls_of_every_attempt() -> None:
@@ -238,8 +241,10 @@ async def test_solve_retries_keep_calling_tools_and_keep_the_calls_of_every_atte
     ):
         items = await collect(a, Mode.solve, "q")
 
-    assert {"verifier_fail": True} in items
-    assert [c["round"] for c in items[-1]["tool_trace"]] == [1, 2]
+    assert Verified(passed=False) in items
+    last = items[-1]
+    assert isinstance(last, ToolTrace)
+    assert [c.round for c in last.calls] == [1, 2]
 
 
 # ── 5. the flag off is the original path ─────────────────────────────────────
@@ -260,7 +265,7 @@ async def test_with_the_flag_off_the_agent_streams_one_call_and_offers_no_tools(
     with patch("litellm.acompletion", new=fake):
         items = await collect(a, Mode.tutor, "q")
 
-    assert items == ["Think ", "about it."]
+    assert items == [Token(text="Think "), Token(text="about it.")]
     assert "tools" not in seen and seen["stream"] is True
     assert "Math tools" not in seen["messages"][0]["content"]
 

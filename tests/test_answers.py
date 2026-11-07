@@ -8,6 +8,7 @@ import pytest
 from evals.agent_eval.runner import in_process_verify_skill
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.answers import extract_final_answer, normalize_answer
+from shared.src.shared.events import IndependentCheck, Verified
 from shared.src.shared.models import Mode, Session
 
 
@@ -64,6 +65,6 @@ async def test_correct_multi_value_answer_passes_verifier_first_try(
     agent = QuantAgent(verify_math_skill=in_process_verify_skill())
     session = Session(candidate_id="c", test_type="gre", section="quant", mode=Mode.solve)
     out = [o async for o in agent.run(session, "Solve x^2 - 5x + 6 = 0")]
-    assert out[-1] == {"verifier_fail": False}
-    assert {"independent_check": {"verdict": "agrees"}} in out
+    assert out[-1] == Verified(passed=True)
+    assert IndependentCheck(verdict="agrees") in out
     assert calls == ["solve", "formalize"]  # no retry, no escalation

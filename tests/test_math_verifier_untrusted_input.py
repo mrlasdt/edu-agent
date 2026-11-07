@@ -18,6 +18,8 @@ from services.math_verifier.src.math_verifier.safe_parser import (
     parse_math,
 )
 from services.math_verifier.src.math_verifier.sandbox import verify_expression
+from shared.src.shared.events import Verified
+from tests.agent_events import reply_of
 
 HOSTILE = [
     '__import__("os").getpid()',
@@ -154,7 +156,7 @@ async def test_a_solve_turn_whose_final_answer_is_hostile_degrades_and_still_ans
     with patch("litellm.acompletion", new=AsyncMock(side_effect=respond)):
         items = [i async for i in agent.run(session, "Solve it")]
 
-    text = "".join(i for i in items if isinstance(i, str))
+    text = reply_of(items)
     assert "Working it out." in text  # the turn is still answered
-    assert {"verifier_fail": True} in [i for i in items if isinstance(i, dict)]
+    assert Verified(passed=False) in items
     assert str(os.getpid()) not in text

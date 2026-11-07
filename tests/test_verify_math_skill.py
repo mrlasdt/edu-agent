@@ -25,6 +25,8 @@ import pytest
 from services.agent.src.agent.skills.verify_math import (
     VerifyMathSkill,
 )
+from shared.src.shared.events import Verified
+from tests.agent_events import reply_of
 
 
 def skill_answering(
@@ -164,5 +166,5 @@ async def test_quant_solve_turn_degrades_when_the_verifier_is_down():
     with patch("litellm.acompletion", new=AsyncMock(side_effect=respond)):
         items = [i async for i in agent.run(session, "Solve x^2 - 5x + 6 = 0")]
 
-    assert "Factor it." in "".join(i for i in items if isinstance(i, str))
-    assert {"verifier_fail": True} in [i for i in items if isinstance(i, dict)]
+    assert "Factor it." in reply_of(items)
+    assert Verified(passed=False) in items

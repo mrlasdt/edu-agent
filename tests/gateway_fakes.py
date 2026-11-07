@@ -8,18 +8,19 @@ from typing import Any
 from services.gateway.src.gateway.agent_client import get_agent_client
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
 from services.gateway.src.gateway.main import app, get_orchestrator, get_rate_limiter
+from shared.src.shared.wire import GenerateRequest
 
 AgentStream = Callable[..., AsyncIterator[bytes]]
 
 
 class FakeAgentClient:
-    """Stands in for the Agent Service: `stream` is `fn(payload, meta=None)`, an async generator."""
+    """Stands in for the Agent Service: `stream` is `fn(request, meta=None)`, an async generator."""
 
     def __init__(self, fn: AgentStream) -> None:
         self._fn = fn
 
-    def stream(self, payload: dict[str, Any], meta: dict[str, Any] | None = None):
-        return self._fn(payload, meta)
+    def stream(self, request: GenerateRequest, meta: dict[str, Any] | None = None):
+        return self._fn(request, meta)
 
 
 @contextmanager
@@ -37,7 +38,7 @@ def override(dependency: Callable[..., Any], value: Any) -> Iterator[None]:
 
 
 def agent_replies(fn: AgentStream):
-    """The agent answers with the bytes `fn(payload, meta)` yields."""
+    """The agent answers with the bytes `fn(request, meta)` yields."""
     return override(get_agent_client, FakeAgentClient(fn))
 
 
