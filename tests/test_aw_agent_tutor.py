@@ -16,7 +16,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from services.agent.src.agent.agents.aw import AWAgent
+from services.agent.src.agent.skills.retrieve_corpus import CorpusChunk
+from shared.src.shared.events import CitationsStripped
 from shared.src.shared.models import Mode, Session
+from tests.agent_events import texts
 
 
 def make_session(mode: Mode = Mode.tutor) -> Session:
@@ -35,20 +38,20 @@ def mock_stream(tokens: list[str]):
 
 
 MOCK_CHUNKS = [
-    {
-        "text": "The GRE Issue task requires...",
-        "source_uri": "ets-guide.pdf",
-        "page_or_section": "Introduction",
-        "tier": "global",
-        "score": 0.9,
-    },
-    {
-        "text": "A strong thesis statement...",
-        "source_uri": "ets-guide.pdf",
-        "page_or_section": "Writing Tips",
-        "tier": "global",
-        "score": 0.8,
-    },
+    CorpusChunk(
+        text="The GRE Issue task requires...",
+        source_uri="ets-guide.pdf",
+        page_or_section="Introduction",
+        tier="global",
+        score=0.9,
+    ),
+    CorpusChunk(
+        text="A strong thesis statement...",
+        source_uri="ets-guide.pdf",
+        page_or_section="Writing Tips",
+        tier="global",
+        score=0.8,
+    ),
 ]
 
 
@@ -66,13 +69,9 @@ async def test_tutor_yields_tokens():
     ):
         mock_llm.return_value = mock_stream(["Outline:", " 1.", " Introduction"])
         mock_retrieve.return_value = MOCK_CHUNKS
-        tokens = [
-            item
-            async for item in agent.run(make_session(Mode.tutor), "Discuss technology")
-            if isinstance(item, str)
-        ]
+        items = [item async for item in agent.run(make_session(Mode.tutor), "Discuss technology")]
 
-    assert tokens == ["Outline:", " 1.", " Introduction"]
+    assert texts(items) == ["Outline:", " 1.", " Introduction"]
 
 
 # ── 2. retrieve-corpus Skill called ──────────────────────────────────────────
@@ -193,19 +192,16 @@ async def test_persistent_citation_failure_emits_stripped_metadata():
     ):
         mock_llm.return_value = mock_stream(["plan"])
         mock_retrieve.return_value = MOCK_CHUNKS
-        metadata = {}
-        async for item in agent.run(make_session(), "Discuss technology"):
-            if isinstance(item, dict):
-                metadata = item
+        items = [item async for item in agent.run(make_session(), "Discuss technology")]
 
-    assert metadata.get("citation_stripped") is True
+    assert CitationsStripped(stripped=True) in items
 
 
-# ── 7. Metadata dict yielded at end ──────────────────────────────────────────
+# ── 7. Metadata event yielded at end ──────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_metadata_dict_emitted_as_last_item():
+async def test_citation_metadata_is_emitted_as_the_last_item():
     agent = AWAgent(model_config_path="config/model_config.dev.yaml")
 
     with (
@@ -217,4 +213,4 @@ async def test_metadata_dict_emitted_as_last_item():
         mock_retrieve.return_value = []
         items = [item async for item in agent.run(make_session(), "Discuss technology")]
 
-    assert isinstance(items[-1], dict)
+    assert items[-1] == CitationsStripped(stripped=False)

@@ -16,12 +16,13 @@ from fastapi.testclient import TestClient
 
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
 from services.gateway.src.gateway.guardrails.verdict import Verdict
-from services.gateway.src.gateway.main import (
+from services.gateway.src.gateway.main import app
+from shared.src.shared.wire import (
     MAX_CANDIDATE_ID_CHARS,
     MAX_HISTORY_ITEM_CHARS,
     MAX_HISTORY_ITEMS,
     MAX_MESSAGE_CHARS,
-    app,
+    GenerateRequest,
 )
 from tests.gateway_fakes import agent_replies, rate_limiter_of
 
@@ -33,7 +34,7 @@ TURN = {"role": "candidate", "content": "hi"}
 @pytest.fixture
 def pipeline():
     """Everything /chat calls after validation, mocked; `agent` records what was forwarded."""
-    sent: list[dict] = []
+    sent: list[GenerateRequest] = []
 
     async def fake_stream(payload, meta=None):
         sent.append(payload)
@@ -107,7 +108,7 @@ def test_requests_exactly_at_the_caps_are_accepted(pipeline):
 
     assert resp.status_code == 200
     assert len(sent) == 1
-    assert len(sent[0]["history"]) == MAX_HISTORY_ITEMS
+    assert len(sent[0].history) == MAX_HISTORY_ITEMS
 
 
 def test_redaction_that_lengthens_text_past_a_cap_is_not_rejected(pipeline):
@@ -125,7 +126,7 @@ def test_redaction_that_lengthens_text_past_a_cap_is_not_rejected(pipeline):
     assert resp.status_code == 200
     assert resp.text.endswith("ok")
     assert len(sent) == 1
-    for redacted in (sent[0]["message"], sent[0]["history"][0]["content"]):
+    for redacted in (sent[0].message, sent[0].history[0].content):
         assert "a@b.co" not in redacted
         assert redacted.count("[REDACTED]") == 571
         assert len(redacted) > MAX_HISTORY_ITEM_CHARS

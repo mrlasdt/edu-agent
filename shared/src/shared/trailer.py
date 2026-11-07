@@ -11,7 +11,9 @@ gateway re-emits it, validated, for the web app.
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, get_args
+
+from shared.src.shared.events import Verdict
 
 MARK = "\x1e"  # ASCII record separator: never part of an answer
 
@@ -52,7 +54,7 @@ class TrailerSplitter:
         return value if isinstance(value, dict) else {}
 
 
-_VERDICTS = ("agrees", "disagrees", "not_checkable")
+_VERDICTS = get_args(Verdict)
 _SOLVER_MAX_CHARS = 80
 
 

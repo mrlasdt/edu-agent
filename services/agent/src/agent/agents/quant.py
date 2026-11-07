@@ -15,7 +15,9 @@ from services.agent.src.agent.skills.math_tools import MATH_TOOL_SPECS, MathTool
 from services.agent.src.agent.skills.retrieve_corpus import CorpusChunk, RetrieveCorpusSkill
 from services.agent.src.agent.skills.verify_math import VerifyMathResult, VerifyMathSkill
 from services.agent.src.agent.tool_loop import ToolCallRecord, run_tool_loop
+from shared.src.shared import events
 from shared.src.shared.config import get_settings, load_model_config
+from shared.src.shared.events import Event, Sources, Token, ToolTrace, Verified
 from shared.src.shared.models import MessageRole, Mode, Session
 from shared.src.shared.observability import build_llm_metadata
 from shared.src.shared.turn_meter import TurnMeter
@@ -130,8 +132,8 @@ class _ToolTurn:
             tool_budget_exhausted=self.out_of_budget,
         )
 
-    def trace(self) -> dict[str, Any]:
-        return {"tool_trace": [c.public() for c in self.calls]}
+    def trace(self) -> ToolTrace:
+        return ToolTrace(calls=tuple(events.ToolCall(**c.public()) for c in self.calls))
 
 
 class _SolveChecks:
@@ -198,8 +200,8 @@ class _SolveChecks:
             )
         return f"[My previous answer {prev_answer!r} could not be verified. Let me try again.]"
 
-    def report(self) -> dict[str, Any]:
-        return {"independent_check": self.last.public()}
+    def report(self) -> events.IndependentCheck:
+        return self.last.event()
 
 
 class QuantAgent(BaseAgent):
@@ -218,7 +220,7 @@ class QuantAgent(BaseAgent):
                   attempt 1 (quant_agent model)
                   → if a check fails:   attempt 2 (quant_agent model, mismatch context)
                   → if still failing:   attempt 3 (math_escalation model)
-                  → if still failing:   degrade gracefully (emit verifier_fail metadata)
+                  → if still failing:   degrade gracefully (emit a failed Verified)
     """
 
     def __init__(
@@ -241,20 +243,16 @@ class QuantAgent(BaseAgent):
 
     async def run(
         self, session: Session, message: str, trace_id: str = ""
-    ) -> AsyncGenerator[str | dict[str, Any], None]:
+    ) -> AsyncGenerator[Event, None]:
         """
-        Yield str tokens as they are generated, followed by a final dict metadata item.
-
-        Metadata dict shapes:
-          {"sources": int}          — first item, only when corpus notes were retrieved
-          {"independent_check": {"verdict": "agrees" | "disagrees" | "not_checkable",
-                                 "solver": str}}
-                                    — Solve mode, just before verifier_fail; `solver` (what the
-                                      solver computed) only when the verdict is "disagrees"
-          {"verifier_fail": bool}   — only emitted in Solve mode, after the answer text
-          {"tool_trace": [...]}     — last item, only when the model called a math tool: each
-                                      call with its arguments and result (for evals and
-                                      debugging; never part of the reply the learner sees)
+        Yield the reply as `Token`s as it is generated, with these events around it:
+          Sources            — first, only when corpus notes were retrieved
+          IndependentCheck   — Solve mode, just before Verified; `solver` (what the solver
+                               computed) is set only when the verdict is "disagrees"
+          Verified           — only emitted in Solve mode, after the answer text
+          ToolTrace          — last, only when the model called a math tool: each call with its
+                               arguments and result (for evals and debugging; never part of the
+                               reply the learner sees)
         """
         mode = session.mode.value
         prompt_agent = _TOOLS_AGENT if self._math_tools_enabled else _AGENT
@@ -271,7 +269,7 @@ class QuantAgent(BaseAgent):
                 chunks = await self._retrieve(session, message)
             meter.annotate(notes_retrieved=len(chunks))
             if chunks:
-                yield {"sources": len(chunks)}
+                yield Sources(count=len(chunks))
             chunk_context = _format_chunks_for_context(chunks)
             if session.mode == Mode.tutor:
                 async for token in self._tutor_turn(
@@ -306,7 +304,7 @@ class QuantAgent(BaseAgent):
         version: str = "v1",
         chunk_context: str = "",
         tools: _ToolTurn | None = None,
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[Token, None]:
         system_prompt = (
             _load_prompt(Mode.tutor, version, _TOOLS_AGENT)
             if tools is not None
@@ -318,8 +316,11 @@ class QuantAgent(BaseAgent):
 
         if tools is not None:
             # Tool results stay in the loop's own message list; only the final text is yielded.
-            yield await tools.reply(
-                meter, model=model, messages=messages, temperature=temperature, obs_meta=obs_meta
+            yield Token(
+                text=await tools.reply(
+                    meter, model=model, messages=messages, temperature=temperature,
+                    obs_meta=obs_meta,
+                )
             )
             return
         response = meter.stream(
@@ -331,7 +332,7 @@ class QuantAgent(BaseAgent):
         async for chunk in response:
             content = chunk.choices[0].delta.content
             if content:
-                yield content
+                yield Token(text=content)
 
     # ── solve mode ────────────────────────────────────────────────────────────
 
@@ -344,7 +345,7 @@ class QuantAgent(BaseAgent):
         version: str = "v1",
         chunk_context: str = "",
         tools: _ToolTurn | None = None,
-    ) -> AsyncGenerator[str | dict[str, Any], None]:
+    ) -> AsyncGenerator[Event, None]:
         system_prompt = (
             _load_prompt(Mode.solve, version, _TOOLS_AGENT)
             if tools is not None
@@ -384,9 +385,9 @@ class QuantAgent(BaseAgent):
 
             if await checks.passes(full_text, prev_answer or ""):
                 for token in tokens:
-                    yield token
+                    yield Token(text=token)
                 yield checks.report()
-                yield {"verifier_fail": False}
+                yield Verified(passed=True)
                 return
 
         # Attempt 3: escalation model (once)
@@ -416,10 +417,10 @@ class QuantAgent(BaseAgent):
         prev_answer = self.extract_final_answer(full_text)
         passed = await checks.passes(full_text, prev_answer or "")
         for token in tokens:
-            yield token
+            yield Token(text=token)
         yield checks.report()
-        # Degradation: emit best reasoning with verifier_fail metadata when the last check failed
-        yield {"verifier_fail": not passed}
+        # Degradation: emit best reasoning with a failed Verified when the last check failed
+        yield Verified(passed=passed)
 
     # ── helpers (designed as seams for unit test patching) ────────────────────
 

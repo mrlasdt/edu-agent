@@ -127,7 +127,7 @@ AFTER   {"verified":false,"computed":"","error":"parse error: not a math express
 ```
 
 The learner's turn is unaffected: the reply is still streamed, the verifier says "could not
-verify", and the existing retry, escalate, degrade path runs (`verifier_fail: true`).
+verify", and the existing retry, escalate, degrade path runs (a failed `Verified` event, `passed=False`).
 
 ## Trade-offs, and how to extend
 

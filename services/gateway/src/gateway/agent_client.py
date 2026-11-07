@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from shared.src.shared.config import get_settings
+from shared.src.shared.wire import GenerateRequest
 
 
 class AgentClient:
@@ -17,7 +18,7 @@ class AgentClient:
     """
 
     async def stream(
-        self, payload: dict[str, Any], meta: dict[str, Any] | None = None
+        self, request: GenerateRequest, meta: dict[str, Any] | None = None
     ) -> AsyncGenerator[bytes, None]:
         """
         Yield the agent's reply as it arrives. When the agent reports how many sources it
@@ -27,7 +28,9 @@ class AgentClient:
         settings = get_settings()
         url = f"{settings.agent_service_url}/generate"
         async with httpx.AsyncClient(timeout=120.0) as client:
-            async with client.stream("POST", url, json=payload) as resp:
+            async with client.stream(
+                "POST", url, json=request.model_dump(mode="json")
+            ) as resp:
                 resp.raise_for_status()
                 count = resp.headers.get("x-source-count")
                 if meta is not None and count is not None and count.isdigit():

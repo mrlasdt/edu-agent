@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from services.agent.src.agent.agents.quant import QuantAgent
+from shared.src.shared.events import Sources, Token
 from shared.src.shared.models import Message, MessageRole, Mode, Session
 
 
@@ -58,11 +59,9 @@ async def test_tutor_run_returns_async_generator():
     with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = mock_litellm_stream(["Think", " about", " it."])
 
-        tokens = []
-        async for token in agent.run(make_session(), "Solve x^2 - 5x + 6 = 0"):
-            tokens.append(token)
+        items = [i async for i in agent.run(make_session(), "Solve x^2 - 5x + 6 = 0")]
 
-    assert tokens == ["Think", " about", " it."]
+    assert items == [Token(text="Think"), Token(text=" about"), Token(text=" it.")]
 
 
 # ── 2. LiteLLM called with configured model (not hardcoded) ──────────────────
@@ -170,7 +169,7 @@ async def test_retrieved_notes_are_reported_and_injected_into_the_prompt():
         mock_llm.return_value = mock_litellm_stream(["hint"])
         items = [item async for item in agent.run(make_session(), "Solve x^2 - 5x + 6 = 0")]
 
-    assert items == [{"sources": 2}, "hint"]
+    assert items == [Sources(count=2), Token(text="hint")]
     skill.retrieve.assert_awaited_once()
     assert skill.retrieve.call_args.kwargs["test_type"] == "gre"
     user_message = mock_llm.call_args.kwargs["messages"][-1]["content"]
@@ -191,5 +190,5 @@ async def test_unreachable_corpus_degrades_to_an_ungrounded_answer():
         mock_llm.return_value = mock_litellm_stream(["hint"])
         items = [item async for item in agent.run(make_session(), "A problem")]
 
-    assert items == ["hint"]
+    assert items == [Token(text="hint")]
     assert mock_llm.call_args.kwargs["messages"][-1]["content"] == "A problem"

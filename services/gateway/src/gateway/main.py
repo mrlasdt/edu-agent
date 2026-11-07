@@ -43,11 +43,19 @@ from services.gateway.src.gateway.orchestrator import (
     RouteResult,
 )
 from shared.src.shared.feedback import capture_turn, default_capture_log
-from shared.src.shared.models import Message, MessageRole, Mode, Session
+from shared.src.shared.models import Message, Mode, Session
 from shared.src.shared.observability import setup_observability
 from shared.src.shared.trailer import MARK, TrailerSplitter, encode, independent_check_trailer
 from shared.src.shared.turn_meter import TurnLog, TurnMeter
 from shared.src.shared.turn_outcome import Outcome
+from shared.src.shared.wire import (
+    MAX_CANDIDATE_ID_CHARS,
+    MAX_HISTORY_ITEMS,
+    MAX_MESSAGE_CHARS,
+    ClientHistoryItem,
+    GenerateRequest,
+    HistoryItem,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -99,28 +107,15 @@ TRACE_ID_HEADER = "X-Trace-Id"
 _MODERATION_UNAVAILABLE = "The safety check is unavailable right now. Please try again in a moment."
 
 
-# Request size caps. /chat sends the message and the whole history to the model (and through
-# the PII and safety checks), so an unbounded body is an unbounded bill. A request over a cap is
-# rejected with 422 before any guardrail or model call runs.
-MAX_MESSAGE_CHARS = 4_000
-MAX_HISTORY_ITEMS = 20
-MAX_HISTORY_ITEM_CHARS = 4_000
-# candidate_id keys the rate limiter, so it must not be an arbitrarily large string either.
-MAX_CANDIDATE_ID_CHARS = 128
-
-
-class HistoryItem(BaseModel):
-    role: MessageRole
-    content: str = Field(max_length=MAX_HISTORY_ITEM_CHARS)
-
-
+# A request over a size cap (`shared.wire`) is rejected with 422 before any guardrail or model
+# call runs.
 class ChatRequest(BaseModel):
     candidate_id: str = Field(max_length=MAX_CANDIDATE_ID_CHARS)
     test_type: str
     section: str
     message: str = Field(max_length=MAX_MESSAGE_CHARS)
     mode: Mode = Mode.tutor
-    history: list[HistoryItem] = Field(default_factory=list, max_length=MAX_HISTORY_ITEMS)
+    history: list[ClientHistoryItem] = Field(default_factory=list, max_length=MAX_HISTORY_ITEMS)
     personal_style_enabled: bool = False
 
 
@@ -199,16 +194,16 @@ async def _answer(turn: ChatTurn) -> AsyncGenerator[bytes, None]:
     """Stream the agent's reply through the reply guard (answer leak, citations, PII), then the
     answer-leak model check and the verifier trailer."""
     req, meter, flags = turn.req, turn.meter, turn.flags
-    payload = {
-        "candidate_id": req.candidate_id,
-        "test_type": req.test_type,
-        "section": req.section,
-        "message": turn.message,
-        "mode": req.mode.value,
-        "history": [h.model_dump(mode="json") for h in turn.history],
-        "personal_style_enabled": req.personal_style_enabled,
-        "trace_id": turn.trace_id,
-    }
+    payload = GenerateRequest(
+        candidate_id=req.candidate_id,
+        test_type=req.test_type,
+        section=req.section,
+        message=turn.message,
+        mode=req.mode,
+        history=[HistoryItem(role=m.role, content=m.content) for m in turn.history],
+        personal_style_enabled=req.personal_style_enabled,
+        trace_id=turn.trace_id,
+    )
     meta: dict[str, Any] = {}
     guard: ReplyGuard | None = None
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")

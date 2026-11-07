@@ -7,10 +7,11 @@ from typing import Any
 
 from services.agent.src.agent.base import BaseAgent
 from services.agent.src.agent.skills.match_student_style import MatchStudentStyleSkill
-from services.agent.src.agent.skills.retrieve_corpus import RetrieveCorpusSkill
+from services.agent.src.agent.skills.retrieve_corpus import CorpusChunk, RetrieveCorpusSkill
 from shared.src.shared.config import load_model_config
 from shared.src.shared.critics.citation_checker import check_citations, strip_uncited_claims
 from shared.src.shared.critics.style_critic import run_style_critic
+from shared.src.shared.events import CitationsStripped, Event, SampleEssay, Sources, Token
 from shared.src.shared.models import MessageRole, Mode, Session
 from shared.src.shared.observability import build_llm_metadata
 from shared.src.shared.turn_meter import TurnMeter
@@ -32,28 +33,17 @@ def _load_prompt(mode: Mode, version: str) -> str:
     return re.sub(r"^---\n.*?\n---\n", "", raw, flags=re.DOTALL).strip()
 
 
-def _format_chunks_for_context(chunks: list[Any]) -> str:
+def _format_chunks_for_context(chunks: list[CorpusChunk]) -> str:
     if not chunks:
         return ""
     lines = ["\n\n## Reference Material\n"]
     for i, chunk in enumerate(chunks, start=1):
-        text = chunk.get("text", "") if isinstance(chunk, dict) else getattr(chunk, "text", "")
-        tier = (
-            chunk.get("tier", "global")
-            if isinstance(chunk, dict)
-            else getattr(chunk, "tier", "global")
-        )
-        section = (
-            chunk.get("page_or_section", "")
-            if isinstance(chunk, dict)
-            else getattr(chunk, "page_or_section", "")
-        )
         tier_label = {
             "global": "Official ETS material",
             "school": "Course notes",
             "candidate": "Your notes",
-        }.get(tier, "Reference")
-        lines.append(f"[{i}] ({tier_label} — {section})\n{text}")
+        }.get(chunk.tier, "Reference")
+        lines.append(f"[{i}] ({tier_label} — {chunk.page_or_section})\n{chunk.text}")
     return "\n\n".join(lines)
 
 
@@ -105,7 +95,7 @@ class AWAgent(BaseAgent):
       - personal style exemplars (if opted-in and >= 2 essays available)
       - style critic (Haiku-tier) → one rewrite pass on structural violation
       - citation checker → strip invalid citations on persistent failure
-      - flags the essay as a sample (`{"disclaimer": "essay"}`); the web app shows the notice
+      - flags the essay as a sample (`SampleEssay`); the web app shows the notice
     """
 
     def __init__(
@@ -121,14 +111,14 @@ class AWAgent(BaseAgent):
 
     async def run(
         self, session: Session, message: str, trace_id: str = ""
-    ) -> AsyncGenerator[str | dict[str, Any], None]:
+    ) -> AsyncGenerator[Event, None]:
         version = self._model_config.prompt_version("aw_agent", session.mode.value)
         meter = TurnMeter(trace_id, "agent", "aw_agent", session.mode.value, version)
         try:
             with meter.phase("retrieval"):
                 chunks = await self._retrieve(session, message)
             meter.annotate(notes_retrieved=len(chunks))
-            yield {"sources": len(chunks)}
+            yield Sources(count=len(chunks))
             chunk_context = _format_chunks_for_context(chunks)
             obs_meta = build_llm_metadata(trace_id=trace_id, prompt_version=version)
 
@@ -155,11 +145,11 @@ class AWAgent(BaseAgent):
         session: Session,
         message: str,
         chunk_context: str,
-        chunks: list[Any],
+        chunks: list[CorpusChunk],
         meter: TurnMeter,
         version: str = "v1",
         obs_meta: dict[str, Any] | None = None,
-    ) -> AsyncGenerator[str | dict[str, Any], None]:
+    ) -> AsyncGenerator[Event, None]:
         system_prompt = _load_prompt(Mode.tutor, version)
         messages = _build_messages(session, message, system_prompt, chunk_context)
         model = self._model_config.litellm_model("aw_agent")
@@ -177,8 +167,8 @@ class AWAgent(BaseAgent):
 
         if valid:
             for token in tokens:
-                yield token
-            yield {"citation_stripped": False}
+                yield Token(text=token)
+            yield CitationsStripped(stripped=False)
             return
 
         # Retry on citation failure
@@ -202,12 +192,12 @@ class AWAgent(BaseAgent):
 
         if valid:
             for token in tokens:
-                yield token
-            yield {"citation_stripped": False}
+                yield Token(text=token)
+            yield CitationsStripped(stripped=False)
             return
 
-        yield strip_uncited_claims(full_text, invalid)
-        yield {"citation_stripped": True}
+        yield Token(text=strip_uncited_claims(full_text, invalid))
+        yield CitationsStripped(stripped=True)
 
     # ── solve mode ────────────────────────────────────────────────────────────
 
@@ -216,12 +206,12 @@ class AWAgent(BaseAgent):
         session: Session,
         message: str,
         chunk_context: str,
-        chunks: list[Any],
+        chunks: list[CorpusChunk],
         meter: TurnMeter,
         version: str = "v1",
         obs_meta: dict[str, Any] | None = None,
         trace_id: str = "",
-    ) -> AsyncGenerator[str | dict[str, Any], None]:
+    ) -> AsyncGenerator[Event, None]:
         system_prompt = _load_prompt(Mode.solve, version)
         model = self._model_config.litellm_model("aw_agent")
         temperature = self._model_config.role("aw_agent").temperature
@@ -287,20 +277,20 @@ class AWAgent(BaseAgent):
             if not valid:
                 full_text = strip_uncited_claims(full_text, invalid)
                 for token in tokens:
-                    yield token
-                yield {"disclaimer": "essay"}
-                yield {"citation_stripped": True}
+                    yield Token(text=token)
+                yield SampleEssay()
+                yield CitationsStripped(stripped=True)
                 return
 
         # Emit essay, then flag it as a sample for the web app's notice
         for token in tokens:
-            yield token
-        yield {"disclaimer": "essay"}
-        yield {"citation_stripped": False}
+            yield Token(text=token)
+        yield SampleEssay()
+        yield CitationsStripped(stripped=False)
 
     # ── seams ─────────────────────────────────────────────────────────────────
 
-    async def _retrieve(self, session: Session, message: str) -> list[Any]:
+    async def _retrieve(self, session: Session, message: str) -> list[CorpusChunk]:
         return await self._retrieve_skill.retrieve(
             query=message,
             candidate_id=session.candidate_id,

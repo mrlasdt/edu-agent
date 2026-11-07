@@ -58,6 +58,7 @@ from services.agent.src.agent.skills.retrieve_corpus import RetrieveCorpusSkill
 from services.agent.src.agent.skills.verify_math import VerifyMathSkill
 from services.math_verifier.src.math_verifier.server import mcp as math_verifier_mcp
 from shared.src.shared.config import DEFAULT_MODEL_CONFIG_PATH
+from shared.src.shared.events import Token, Verified
 from shared.src.shared.models import Mode, Session
 
 AW_SCALE = [
@@ -169,10 +170,13 @@ async def _run_agent(
     start = time.perf_counter()
     with tagged("agent"):
         async for out in agent.run(session, message):
-            if isinstance(out, str):
-                parts.append(out)
-            else:
-                verifier_fail = out.get("verifier_fail", verifier_fail)
+            match out:
+                case Token(text=piece):
+                    parts.append(piece)
+                case Verified(passed=passed):
+                    verifier_fail = not passed
+                case _:
+                    pass
     return "".join(parts), verifier_fail, time.perf_counter() - start
 
 

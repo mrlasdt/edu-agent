@@ -21,8 +21,10 @@ from services.agent.src.agent.skills.verify_math import (
     VerifyMathResult,
     VerifyMathSkill,
 )
+from shared.src.shared.events import IndependentCheck, Verified
 from shared.src.shared.models import Mode, Session
 from shared.src.shared.turn_meter import TurnLog
+from tests.agent_events import reply_of
 
 
 @pytest.fixture
@@ -74,7 +76,7 @@ async def test_agrees_when_the_solver_gets_the_claimed_values(skill) -> None:
 async def test_disagrees_and_names_what_the_solver_computed(skill) -> None:
     check = await ic.compare(skill, "x^2 - 5x + 6 = 0", "2, 4")
     assert (check.verdict, check.solver) == (ic.DISAGREES, "2, 3")
-    assert check.public() == {"verdict": "disagrees", "solver": "2, 3"}
+    assert check.event().public() == {"verdict": "disagrees", "solver": "2, 3"}
 
 
 async def test_a_single_wrong_value_disagrees(skill) -> None:
@@ -219,8 +221,8 @@ async def test_a_wrong_model_is_caught_retried_escalated_and_degraded(
 
     # attempt 1, the check's one short call, attempt 2, the escalation attempt: 3 solves + 1
     assert model.kinds == ["solve", "formalize", "solve", "solve"]
-    assert out[-2] == {"independent_check": {"verdict": "disagrees", "solver": "2, 3"}}
-    assert out[-1] == {"verifier_fail": True}
+    assert out[-2] == IndependentCheck(verdict="disagrees", solver="2, 3")
+    assert out[-1] == Verified(passed=False)
     assert record["verified_independent"] == "disagrees"
     assert record["independent_solver"] == "2, 3"
     assert record["llm_calls"] == 4
@@ -245,8 +247,8 @@ async def test_the_model_that_fixes_its_answer_on_the_retry_agrees(
     out, record = await _solve(monkeypatch, model, tmp_path)
 
     assert model.kinds == ["solve", "formalize", "solve"]  # the expression is asked for once
-    assert "".join(o for o in out if isinstance(o, str)) == RIGHT  # the wrong draft is not shown
-    assert out[-2:] == [{"independent_check": {"verdict": "agrees"}}, {"verifier_fail": False}]
+    assert reply_of(out) == RIGHT  # the wrong draft is not shown
+    assert out[-2:] == [IndependentCheck(verdict="agrees"), Verified(passed=True)]
     assert record["verified_independent"] == "agrees"
 
 
@@ -269,10 +271,7 @@ async def test_a_problem_with_no_numeric_answer_is_shown_not_checkable_and_not_r
     out, record = await _solve(monkeypatch, model, tmp_path)
 
     assert model.kinds == ["solve", "formalize"]
-    assert out[-2:] == [
-        {"independent_check": {"verdict": "not_checkable"}},
-        {"verifier_fail": False},
-    ]
+    assert out[-2:] == [IndependentCheck(verdict="not_checkable"), Verified(passed=True)]
     assert record["verified_independent"] == "not_checkable"
 
 
@@ -287,7 +286,7 @@ async def test_a_failing_check_call_does_not_fail_the_turn(
 
     out, record = await _solve(monkeypatch, Flaky([RIGHT]), tmp_path)
 
-    assert out[-1] == {"verifier_fail": False}
+    assert out[-1] == Verified(passed=True)
     assert record["verified_independent"] == "not_checkable"
 
 
@@ -299,7 +298,7 @@ async def test_an_unparseable_answer_skips_the_extra_model_call(
     out, record = await _solve(monkeypatch, model, tmp_path)
 
     assert "formalize" not in model.kinds  # nothing well-formed to check
-    assert out[-1] == {"verifier_fail": True}
+    assert out[-1] == Verified(passed=False)
     assert record["llm_calls"] == 3
 
 

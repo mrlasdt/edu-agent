@@ -5,7 +5,7 @@ Behaviors under test (from issue 05 acceptance criteria):
   1. Solve turn calls verify-math skill; verified answer emitted normally
   2. On verifier disagreement: agent retries (once) with disagreement as context
   3. After 2 retries still failing: escalates to escalation model
-  4. After escalation failure: degrades gracefully with verifier_fail=True metadata
+  4. After escalation failure: degrades gracefully with a failed Verified event
   5. Mode resets to tutor at start of next question
   6. Tutor mode does NOT call verifier
 """
@@ -18,7 +18,9 @@ import yaml
 
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.skills.verify_math import VerifyMathResult
+from shared.src.shared.events import Verified
 from shared.src.shared.models import Mode, Session
+from tests.agent_events import texts
 
 
 def make_session(mode: Mode = Mode.solve) -> Session:
@@ -49,16 +51,10 @@ async def test_solve_emits_tokens_when_verified():
         mock_llm.return_value = mock_stream(["Step 1", " ... ", "**Answer: x=2 or x=3**"])
         mock_verify.return_value = VerifyMathResult(verified=True, computed="[2,3]")
 
-        tokens = []
-        metadata = {}
-        async for item in agent.run(make_session(Mode.solve), "Solve x^2-5x+6=0"):
-            if isinstance(item, dict):
-                metadata = item
-            else:
-                tokens.append(item)
+        items = [i async for i in agent.run(make_session(Mode.solve), "Solve x^2-5x+6=0")]
 
-    assert tokens  # tokens were emitted
-    assert metadata.get("verifier_fail") is not True
+    assert texts(items)  # tokens were emitted
+    assert Verified(passed=False) not in items
 
 
 # ── 2. Retry on verifier disagreement ────────────────────────────────────────
@@ -80,10 +76,8 @@ async def test_solve_retries_on_verifier_mismatch():
         # First two verifications fail, third (escalation) also fails
         mock_verify.return_value = VerifyMathResult(verified=False, computed="[2,3]")
 
-        tokens = []
-        async for item in agent.run(make_session(Mode.solve), "Solve x^2-5x+6=0"):
-            if not isinstance(item, dict):
-                tokens.append(item)
+        async for _ in agent.run(make_session(Mode.solve), "Solve x^2-5x+6=0"):
+            pass
 
     # Should have called LLM at least twice (initial + 1 retry before escalation)
     assert call_count >= 2
@@ -133,12 +127,9 @@ async def test_solve_degrades_gracefully_after_full_pipeline_failure():
         mock_llm.return_value = mock_stream(["My best reasoning..."])
         mock_verify.return_value = VerifyMathResult(verified=False, computed="[2,3]")
 
-        metadata = {}
-        async for item in agent.run(make_session(Mode.solve), "Solve x^2-5x+6=0"):
-            if isinstance(item, dict):
-                metadata = item
+        items = [i async for i in agent.run(make_session(Mode.solve), "Solve x^2-5x+6=0")]
 
-    assert metadata.get("verifier_fail") is True
+    assert Verified(passed=False) in items
 
 
 # ── 5. Tutor mode does NOT call verifier ─────────────────────────────────────

@@ -23,14 +23,16 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, get_args
 
 from services.agent.src.agent.skills.verify_math import VerifyMathSkill
+from shared.src.shared import events
+from shared.src.shared.events import Verdict
 
 AGREES: Final = "agrees"
 DISAGREES: Final = "disagrees"
 NOT_CHECKABLE: Final = "not_checkable"
-VERDICTS: Final = (AGREES, DISAGREES, NOT_CHECKABLE)
+VERDICTS: Final = get_args(Verdict)
 
 # The model answers `<expr>NONE</expr>` when the problem has no numeric answer to compute.
 _NONE_WORDS = {"none", "n/a", "not checkable", "not_checkable"}
@@ -50,13 +52,13 @@ _THOUSANDS = re.compile(r"(?<![\d.])\d{1,3}(?:,\d{3})+(?!\d)")
 
 @dataclass(frozen=True)
 class IndependentCheck:
-    verdict: str
+    verdict: Verdict
     solver: str = ""  # what the solver computed; set only for "disagrees"
     reason: str = ""  # why a check was "not_checkable" (for the log, not the learner)
 
-    def public(self) -> dict[str, str]:
-        """What the turn reports on: the verdict, and the solver's value when they disagree."""
-        return {"verdict": self.verdict, **({"solver": self.solver} if self.solver else {})}
+    def event(self) -> events.IndependentCheck:
+        """What the turn reports: the verdict, and the solver's value when they disagree."""
+        return events.IndependentCheck(verdict=self.verdict, solver=self.solver)
 
 
 def parse_expression(text: str) -> str | None:

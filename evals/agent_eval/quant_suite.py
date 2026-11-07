@@ -63,6 +63,7 @@ from services.agent.src.agent.answers import extract_final_answer, normalize_ans
 from services.agent.src.agent.skills.retrieve_corpus import CorpusChunk, RetrieveCorpusSkill
 from services.agent.src.agent.skills.verify_math import VerifyMathSkill
 from shared.src.shared.budget import estimate_cost
+from shared.src.shared.events import IndependentCheck, Token, ToolTrace, Verified
 from shared.src.shared.models import MessageRole, Mode, Session
 from shared.src.shared.turn_meter import TurnLog
 
@@ -157,18 +158,22 @@ async def _converse(
         tool_lines: list[TranscriptMessage] = []
         with tagged("agent"):
             async for out in agent.run(session, text, trace_id=trace_id):
-                if isinstance(out, str):
-                    parts.append(out)
-                else:
-                    verifier_fail = out.get("verifier_fail", verifier_fail)
-                    independent = out.get("independent_check", {}).get("verdict", independent)
-                    tool_lines += [
-                        TranscriptMessage(
-                            role="tool_call",
-                            content=f"{c['name']}({c['arguments']}) -> {c['result']}",
-                        )
-                        for c in out.get("tool_trace", [])
-                    ]
+                match out:
+                    case Token(text=piece):
+                        parts.append(piece)
+                    case Verified(passed=passed):
+                        verifier_fail = not passed
+                    case IndependentCheck(verdict=verdict):
+                        independent = verdict
+                    case ToolTrace(calls=calls):
+                        tool_lines += [
+                            TranscriptMessage(
+                                role="tool_call", content=f"{c.name}({c.arguments}) -> {c.result}"
+                            )
+                            for c in calls
+                        ]
+                    case _:
+                        pass
         reply = "".join(parts)
         transcript += [TranscriptMessage(role="student", content=text), *tool_lines,
                        TranscriptMessage(role="tutor", content=reply)]
