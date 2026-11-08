@@ -137,7 +137,7 @@ services:
       retries: 20
 
   # Math verifier — MCP server (SSE transport) plus the REST routes /tools/{name}, port 8090.
-  # The Agent Service POSTs to http://math-verifier:8090/tools/{name} from its math Skills.
+  # The Agent Service POSTs to http://math-verifier:8090/tools/{name} from its math tools and the verify-math capability.
   math-verifier:
     build:
       context: ..

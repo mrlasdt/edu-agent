@@ -1,5 +1,5 @@
 """
-Personal style Skill — retrieves Candidate's own essays from their Candidate corpus
+Personal style capability — retrieves Candidate's own essays from their Candidate corpus
 and returns up to 2 as few-shot exemplars for style injection.
 
 Returns [] (silent fallback to Canonical style) when fewer than 2 essays are available.
@@ -16,7 +16,7 @@ from services.agent.src.agent.settings import get_settings
 _MIN_ESSAYS = 2
 
 
-class MatchStudentStyleSkill:
+class MatchStudentStyle:
     def __init__(self, corpus_url: str | None = None) -> None:
         settings = get_settings()
         self._corpus_url = corpus_url or settings.corpus_service_url

@@ -108,7 +108,7 @@ async def test_tutor_includes_history_in_llm_messages():
 
 @pytest.mark.asyncio
 async def test_solve_mode_uses_different_system_prompt():
-    from services.agent.src.agent.skills.verify_math import VerifyMathResult
+    from services.agent.src.agent.capabilities.verify_math import VerifyMathResult
 
     agent = QuantAgent(model_config_path="config/model_config.dev.yaml")
 
@@ -137,7 +137,7 @@ async def test_solve_mode_uses_different_system_prompt():
 # ── 5. Corpus grounding ───────────────────────────────────────────────────────
 
 def make_chunks():
-    from services.agent.src.agent.skills.retrieve_corpus import CorpusChunk
+    from services.agent.src.agent.capabilities.retrieve_corpus import CorpusChunk
 
     return [
         CorpusChunk(
@@ -159,10 +159,10 @@ def make_chunks():
 
 @pytest.mark.asyncio
 async def test_retrieved_notes_are_reported_and_injected_into_the_prompt():
-    skill = MagicMock()
-    skill.retrieve = AsyncMock(return_value=make_chunks())
+    retrieve_corpus = MagicMock()
+    retrieve_corpus.retrieve = AsyncMock(return_value=make_chunks())
     agent = QuantAgent(
-        model_config_path="config/model_config.dev.yaml", retrieve_corpus_skill=skill
+        model_config_path="config/model_config.dev.yaml", retrieve_corpus=retrieve_corpus
     )
 
     with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
@@ -170,8 +170,8 @@ async def test_retrieved_notes_are_reported_and_injected_into_the_prompt():
         items = [item async for item in agent.run(make_session(), "Solve x^2 - 5x + 6 = 0")]
 
     assert items == [Sources(count=2), Token(text="hint")]
-    skill.retrieve.assert_awaited_once()
-    assert skill.retrieve.call_args.kwargs["test_type"] == "gre"
+    retrieve_corpus.retrieve.assert_awaited_once()
+    assert retrieve_corpus.retrieve.call_args.kwargs["test_type"] == "gre"
     user_message = mock_llm.call_args.kwargs["messages"][-1]["content"]
     assert user_message.startswith("Solve x^2 - 5x + 6 = 0")
     assert "[1] (Factoring quadratics)" in user_message
@@ -180,10 +180,10 @@ async def test_retrieved_notes_are_reported_and_injected_into_the_prompt():
 
 @pytest.mark.asyncio
 async def test_unreachable_corpus_degrades_to_an_ungrounded_answer():
-    skill = MagicMock()
-    skill.retrieve = AsyncMock(side_effect=ConnectionError("corpus down"))
+    retrieve_corpus = MagicMock()
+    retrieve_corpus.retrieve = AsyncMock(side_effect=ConnectionError("corpus down"))
     agent = QuantAgent(
-        model_config_path="config/model_config.dev.yaml", retrieve_corpus_skill=skill
+        model_config_path="config/model_config.dev.yaml", retrieve_corpus=retrieve_corpus
     )
 
     with patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:

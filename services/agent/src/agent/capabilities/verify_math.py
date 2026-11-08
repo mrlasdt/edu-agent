@@ -1,7 +1,7 @@
 """
-verify-math Skill - client for the math-verifier service's verify_math tool.
+verify-math capability - client for the math-verifier service's verify_math tool.
 
-The Agent Service calls this skill during every Quant Solve turn. It posts to the verifier's
+The Agent Service calls this capability during every Quant Solve turn. It posts to the verifier's
 plain-HTTP route (`POST /tools/verify_math`), the REST facade that sits beside the MCP
 surface; the MCP surface itself is for outside clients such as Claude Desktop. Tests and
 evals inject an `httpx.AsyncClient` (see `client`) instead of patching a method.
@@ -31,9 +31,9 @@ class VerifyMathResult:
     error: str | None = None
 
 
-class VerifyMathSkill:
+class VerifyMath:
     """
-    Client skill for the math-verifier service's verify_math route.
+    Client capability for the math-verifier service's verify_math route.
 
     The service runs at MATH_VERIFIER_URL (default localhost:8090). By default each call opens
     its own `httpx.AsyncClient`; pass `client` to choose the transport. Tests and the evals hand

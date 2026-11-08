@@ -29,4 +29,4 @@ Accepted.
 - **Thinking states in the UX are non-optional.** Verifier-fail events and retrieval latency are visible to the Candidate as status lines ("Checking your answer...", "Finding references..."). Silent long pauses are worse than named waiting.
 - **Citations in AW output are a UI contract, not just a prompt feature.** The backend must return structured citation metadata alongside the text so the frontend can render inline `[N]` links and the Sources panel. This affects the streaming response format (citation metadata emitted at end of stream, not mid-stream).
 - **Latency budgets are guiding targets, not hard SLOs in v1.** They become SLOs when the eval pipeline has enough production data to set a baseline. Watch the p95, not just the mean.
-- **The style opt-in toggle's "≥2 essays" gate is client-enforced** (toggle hidden) and server-enforced (Personal style Skill no-ops with <2 essays, returns Canonical style). Both guards needed.
+- **The style opt-in toggle's "≥2 essays" gate is client-enforced** (toggle hidden) and server-enforced (Personal style capability no-ops with <2 essays, returns Canonical style). Both guards needed.

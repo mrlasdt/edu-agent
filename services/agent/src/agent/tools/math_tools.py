@@ -1,5 +1,5 @@
 """
-math-tools Skill - the client that carries the Quant agent's model-chosen math tool calls
+math-tools tool client - the client that carries the Quant agent's model-chosen math tool calls
 (math_evaluate, math_solve, math_compare) to the math-verifier service.
 
 The contract the model reads (name, description, argument schema) is not written here: it is
@@ -18,7 +18,7 @@ import httpx
 from services.agent.src.agent.settings import get_settings
 from shared.src.shared.math_tool_specs import MATH_TOOL_SPECS, TOOL_NAMES
 
-__all__ = ["MATH_TOOL_SPECS", "TOOL_NAMES", "UNAVAILABLE", "MathToolsSkill"]
+__all__ = ["MATH_TOOL_SPECS", "TOOL_NAMES", "UNAVAILABLE", "MathTools"]
 
 _log = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ UNAVAILABLE = (
 )
 
 
-class MathToolsSkill:
+class MathTools:
     """
     Carries one model-chosen tool call to the math-verifier service and returns its answer.
 

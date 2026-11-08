@@ -1,8 +1,8 @@
 """
 Tests for the math-verifier's plain-HTTP /tools/verify_math route.
 
-The verify-math Skill calls this REST facade (the MCP SSE transport exposes no
-tool route). These guard the wire contract the Skill depends on: a JSON body of
+The verify-math capability calls this REST facade (the MCP SSE transport exposes no
+tool route). These guard the wire contract the capability depends on: a JSON body of
 {expression, expected} in, {verified, computed, error} out.
 """
 

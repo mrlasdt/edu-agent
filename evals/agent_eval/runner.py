@@ -53,9 +53,9 @@ from evals.agent_eval.transport import (
 from evals.judges.quant_judge import grade_quant_item
 from evals.loader import load_golden_set, sample_golden_set
 from services.agent.src.agent.agents.quant import QuantAgent
-from services.agent.src.agent.skills.math_tools import MathToolsSkill
-from services.agent.src.agent.skills.retrieve_corpus import RetrieveCorpusSkill
-from services.agent.src.agent.skills.verify_math import VerifyMathSkill
+from services.agent.src.agent.capabilities.retrieve_corpus import RetrieveCorpus
+from services.agent.src.agent.capabilities.verify_math import VerifyMath
+from services.agent.src.agent.tools.math_tools import MathTools
 from services.math_verifier.src.math_verifier.server import mcp as math_verifier_mcp
 from shared.src.shared.config import anchor, get_llm_settings
 from shared.src.shared.events import Token, Verified
@@ -83,34 +83,34 @@ def _in_process_client() -> httpx.AsyncClient:
     )
 
 
-def in_process_verify_skill() -> VerifyMathSkill:
-    """The product's verify-math skill, reaching the real verifier routes in this process."""
-    return VerifyMathSkill(client=_in_process_client())
+def in_process_verify_math() -> VerifyMath:
+    """The product's verify-math capability, reaching the real verifier routes in this process."""
+    return VerifyMath(client=_in_process_client())
 
 
-def in_process_math_tools() -> MathToolsSkill:
-    """The product's math-tools skill, reaching the real verifier routes in this process."""
-    return MathToolsSkill(client=_in_process_client())
+def in_process_math_tools() -> MathTools:
+    """The product's math-tools tool set, reaching the real verifier routes in this process."""
+    return MathTools(client=_in_process_client())
 
 
 def build_quant_agent(
     *,
     model_config_path: str,
-    corpus_skill: RetrieveCorpusSkill,
+    retrieve_corpus: RetrieveCorpus,
     math_tools_enabled: bool = False,
-    verify_skill: VerifyMathSkill | None = None,
+    verify_math: VerifyMath | None = None,
 ) -> QuantAgent:
     """
     The one way an eval builds the real QuantAgent: the verifier and the math tools reach the
-    real routes in this process, and `corpus_skill` is passed explicitly. It has no default on
+    real routes in this process, and `retrieve_corpus` is passed explicitly. It has no default on
     purpose: the agent's own default calls the corpus service, so an eval that forgot it would
     score differently depending on whether the docker stack happens to be running.
     """
     return QuantAgent(
         model_config_path=model_config_path,
-        verify_math_skill=verify_skill or in_process_verify_skill(),
-        retrieve_corpus_skill=corpus_skill,
-        math_tools_skill=in_process_math_tools(),
+        verify_math=verify_math or in_process_verify_math(),
+        retrieve_corpus=retrieve_corpus,
+        math_tools=in_process_math_tools(),
         math_tools_enabled=math_tools_enabled,
     )
 

@@ -40,7 +40,7 @@ A learner types a message in the web app. One message is one **turn**. Here is e
 |---|---|---|
 | web | `web/` | React app behind nginx; streams `POST /chat` into message bubbles |
 | gateway | `services/gateway/` | `/chat`, the `Orchestrator`, all guardrails (`guardrails/`) |
-| agent | `services/agent/` | `QuantAgent` and `AWAgent` (`agents/`), skills (`skills/`), the question pipeline |
+| agent | `services/agent/` | `QuantAgent` and `AWAgent` (`agents/`), capabilities (`capabilities/`), model tools (`tools/`), the question pipeline |
 | corpus | `services/corpus/` | hybrid retrieval over the notes, with a three-tier access filter |
 | ingestion | `services/ingestion/` | parse, chunk, embed, index documents; the `seed` job loads the demo notes |
 | math-verifier | `services/math_verifier/` | sympy sandbox behind a small MCP server |

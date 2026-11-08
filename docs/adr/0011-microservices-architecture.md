@@ -7,7 +7,7 @@ The system is decomposed into five persistent microservices and one CLI tool, al
 | Service | Responsibility | Exposes |
 |---|---|---|
 | **gateway** | External API (HTTP + SSE), auth, rate-limiting, session management, Orchestrator logic (validate → enrich → classify → route), Admin UI backend | `/chat`, `/upload`, `/admin/*` |
-| **agent** | Quant Agent + AW Agent via plugin registry, Skill loading, post-gen critics (style critic, citation checker), streaming to gateway | internal HTTP |
+| **agent** | Quant Agent + AW Agent via plugin registry, capability and tool wiring, post-gen critics (style critic, citation checker), streaming to gateway | internal HTTP |
 | **corpus** | Qdrant interface, hybrid search (BGE-M3 dense + sparse + RRF), BGE reranker, ACL enforcement, citation metadata | internal HTTP |
 | **ingestion** | Document parsing (PDF/DOCX/TXT), chunking, embedding, Qdrant indexing, job management API; large files are indexed by an in-process background task (see "Amendment: ingestion without a queue worker") | internal HTTP |
 | **math-verifier** | sympy sandbox, local MCP server; accepts `verify_math(expression, expected)` tool calls | MCP (SSE) for outside clients; `POST /tools/{name}` over HTTP for the Agent Service (see the amendment on the REST routes) |
@@ -36,7 +36,7 @@ Accepted. Supersedes the monolithic service implied by the earlier ADRs; all ser
 
 - **Monolith with internal modules** — rejected: the math verifier needs process-level isolation; corpus retrieval has a natural scaling unit different from agent turns; ingestion is purely async and doesn't belong in the request path.
 - **Math Verifier as HTTP microservice** — rejected in favour of MCP server: loses the MCP demo surface, gains nothing at our scale.
-- **Math Verifier as in-process Skill** — rejected: sympy sandbox isolation requires process separation; a crash in the verifier would take down the Agent Service.
+- **Math Verifier as in-process capability** — rejected: sympy sandbox isolation requires process separation; a crash in the verifier would take down the Agent Service.
 - **Message broker (Kafka, RabbitMQ) between request-path services** — rejected: the request path is synchronous (Gateway → Agent → Corpus, Agent → Math Verifier). Message brokers add latency and operational complexity without benefit on synchronous call chains. Async ingestion was meant to use the existing Postgres pgmq queue; see "Amendment: ingestion without a queue worker" for what is built.
 - **Separate eval service** — rejected: the eval harness needs to be invocable as a CLI tool from CI. Wrapping it in a persistent service adds an HTTP layer and a deployment dependency for no benefit. The harness calls Agent and Corpus services directly.
 - **Admin UI as a separate service** — rejected: too thin (upload form + job table). Belongs in Gateway as protected routes calling Ingestion API.
@@ -66,4 +66,4 @@ A collection filled before this change (random ids) needs no manual cleanup: the
 
 ## Amendment: the Agent Service calls the REST routes (2026-11)
 
-The decision above had the Agent Service hold an MCP connection to the Math Verifier. It never did: the agent's `verify-math` and `math-tools` Skills `POST` to the verifier's plain-HTTP routes (`/tools/{name}`), which sit beside the FastMCP server in `server.py`. Both surfaces are kept: MCP serves outside clients such as Claude Desktop, REST serves the Agent Service. The model-facing contract of the three math tools (`math_evaluate`, `math_solve`, `math_compare`) is written once in `shared/src/shared/math_tool_specs.py`, which the agent hands to the model and the verifier reads its argument rules from. Both Skills take an optional `client=` (an `httpx.AsyncClient`), so tests and evals reach the real routes in process with `httpx.ASGITransport` instead of patching a method.
+The decision above had the Agent Service hold an MCP connection to the Math Verifier. It never did: the agent's `verify-math` capability and `math-tools` tools `POST` to the verifier's plain-HTTP routes (`/tools/{name}`), which sit beside the FastMCP server in `server.py`. Both surfaces are kept: MCP serves outside clients such as Claude Desktop, REST serves the Agent Service. The model-facing contract of the three math tools (`math_evaluate`, `math_solve`, `math_compare`) is written once in `shared/src/shared/math_tool_specs.py`, which the agent hands to the model and the verifier reads its argument rules from. Both clients take an optional `client=` (an `httpx.AsyncClient`), so tests and evals reach the real routes in process with `httpx.ASGITransport` instead of patching a method.

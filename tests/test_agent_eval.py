@@ -518,17 +518,17 @@ def test_a_run_report_written_before_provenance_and_unit_counts_still_loads():
     assert report.coverage_failures(0.0) == {"generation": None}
 
 
-def test_the_quant_agent_factory_has_no_default_corpus_skill():
+def test_the_quant_agent_factory_has_no_default_retrieve_corpus():
     """The agent's own default calls the corpus service; an eval must always choose its notes."""
     from evals.agent_eval import quant_suite, runner
 
-    with pytest.raises(TypeError, match="corpus_skill"):
+    with pytest.raises(TypeError, match="retrieve_corpus"):
         runner.build_quant_agent(  # type: ignore[call-arg]
             model_config_path="config/model_config.dev.yaml"
         )
     runner.build_quant_agent(
         model_config_path="config/model_config.dev.yaml",
-        corpus_skill=quant_suite.NotesSkill(["note"]),
+        retrieve_corpus=quant_suite.NotesCorpus(["note"]),
     )
 
 
@@ -547,9 +547,9 @@ async def test_generation_run_with_the_model_down_fails_the_coverage_gate():
     transport = MeteredTransport(
         Ledger(Path("/nonexistent/ledger.json"), 20.0), "t", fake_model=offline_model
     )
-    skill = runner.in_process_verify_skill()
+    verify_math = runner.in_process_verify_math()
     out = await generation.run_generation(
-        requests, {"baseline": Down(), "pipeline": Down()}, offline_judge(), skill, transport
+        requests, {"baseline": Down(), "pipeline": Down()}, offline_judge(), verify_math, transport
     )
     assert out.units_total == 8 and out.units_dropped == 8
     assert eval_report(generation=out).coverage_failures(0.8) == {"generation": 0.0}
@@ -558,8 +558,8 @@ async def test_generation_run_with_the_model_down_fails_the_coverage_gate():
 async def test_quant_judge_suite_never_reaches_the_corpus_service(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, block_network: None
 ):
-    """The quant_judge agent gets the same offline notes skill as the quant suite."""
-    from services.agent.src.agent.skills.retrieve_corpus import RetrieveCorpusSkill
+    """The quant_judge agent gets the same offline notes corpus as the quant suite."""
+    from services.agent.src.agent.capabilities.retrieve_corpus import RetrieveCorpus
 
     corpus_calls: list[str] = []
 
@@ -567,7 +567,7 @@ async def test_quant_judge_suite_never_reaches_the_corpus_service(
         corpus_calls.append(query)
         return []
 
-    monkeypatch.setattr(RetrieveCorpusSkill, "_call_corpus", corpus)
+    monkeypatch.setattr(RetrieveCorpus, "_call_corpus", corpus)
     args = cli.argparse.Namespace(
         mode="offline", suite=["quant_judge"], provider="free", judge="llm", judge_model=None,
         max_items=3, max_items_given=True, samples=1, model=None, max_tokens=800,
