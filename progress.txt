@@ -63,6 +63,7 @@ Moderation API). See README "Not built yet" for what is still missing.
   BGE-reranker-v2-m3 (TEI /rerank) when TEI_RERANKER_URL is set, and fails open to the RRF
   order. evals/retrieval_eval.py compares dense, hybrid and the relevance floor, but the
   rerank column is not measured (the emulated reranker exceeds its 2 s timeout locally).
+  Until a rerank floor is measured, a reranked hit must also clear the dense cosine floor.
 - Orchestrator complexity classification is a stub. Gateway /chat applies rate limit, PII
   redaction, content safety, completeness (enrichment), answer-leak and citation guardrails;
   output content safety is not applied.

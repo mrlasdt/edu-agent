@@ -20,8 +20,9 @@ class CorpusSettings(ServiceSettings):
     # The two signals live on different scales, so each has its own floor. The dense floor was
     # read off the sweep table of `python -m evals.retrieval_eval` (BGE-M3 cosine, 55 seed
     # chunks, 46 queries): at 0.45 11 of 12 off-topic queries get no note and 2 of 34 on-topic
-    # queries lose theirs. The rerank floor is 0 (no floor) until the reranker has been measured
-    # on hardware where it answers inside its timeout; see the ADR-0004 status.
+    # queries lose theirs (hybrid numbers, scored on the same queries that set the floor, so
+    # in-sample). The rerank floor is 0 (no floor) until the reranker has been measured on hardware
+    # where it answers inside its timeout; until then a reranked hit must also clear the dense floor.
     dense_relevance_floor: float = 0.45
     rerank_relevance_floor: float = 0.0
 

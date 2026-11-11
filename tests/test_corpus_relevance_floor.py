@@ -6,8 +6,8 @@ Behaviors under test:
   2. With it, dense-only and hybrid retrieval drop hits whose cosine similarity is below
      the configured floor, so an off-topic message gets no notes at all
   3. A fused RRF score is never the floor's signal: a rank-1 hit with a low cosine is dropped
-  4. After a successful rerank the floor reads the reranker score instead; if the reranker
-     fails open, it falls back to the cosine floor
+  4. A reranked hit must clear both the reranker floor and the cosine floor; an off-topic
+     query with the reranker on still gets no notes while the rerank floor is unset
   5. A hit only the sparse channel found has no cosine and does not pass
   6. ACL ids stay out of floored results, and the HTTP request defaults the flag off
 """
@@ -136,6 +136,13 @@ async def test_floor_reads_the_reranker_score_after_a_rerank():
     assert out[0]["score"] == 0.9
 
 
+async def test_off_topic_message_gets_no_notes_with_the_reranker_on():
+    client = _client([_point("a", 0.41, "A"), _point("b", 0.39, "B")], [])
+    settings = _settings(tei_reranker_url=RERANKER_URL, rerank_relevance_floor=0.0)
+    out = await _search(settings, client, floor=True, reranker=[0.8, 0.7])
+    assert out == []
+
+
 async def test_failed_rerank_falls_back_to_the_cosine_floor():
     client = _client([_point("a", 0.9, "A"), _point("b", 0.3, "B")], [])
     settings = _settings(tei_reranker_url=RERANKER_URL)
@@ -149,8 +156,10 @@ async def test_failed_rerank_falls_back_to_the_cosine_floor():
         ({"score": 0.03, "dense_score": 0.5}, True),
         ({"score": 0.03, "dense_score": 0.49}, False),
         ({"score": 0.03, "dense_score": None}, False),
-        ({"score": 0.4, "reranked": True, "dense_score": 0.1}, True),
+        ({"score": 0.4, "reranked": True, "dense_score": 0.5}, True),
         ({"score": 0.39, "reranked": True, "dense_score": 0.9}, False),
+        ({"score": 0.9, "reranked": True, "dense_score": 0.1}, False),
+        ({"score": 0.9, "reranked": True, "dense_score": None}, False),
     ],
 )
 def test_passes_relevance_floor_signal_choice(hit, expected):

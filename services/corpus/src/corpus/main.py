@@ -203,14 +203,18 @@ def passes_relevance_floor(hit: dict[str, Any], settings: CorpusSettings) -> boo
 
     A fused RRF score only says "rank 1 in both lists", whatever the query was, so it cannot
     tell an on-topic hit from the least-bad hit of an off-topic query. The floor therefore
-    reads a signal that keeps its magnitude: the cross-encoder score when the rerank step ran,
-    otherwise the dense cosine similarity (hits only the sparse channel found carry none and
-    do not pass). The two scales differ, so each has its own floor in CorpusSettings.
+    reads signals that keep their magnitude. Every hit must clear the dense cosine floor (hits
+    only the sparse channel found carry no cosine and do not pass); a hit the cross-encoder
+    reranked must also clear the rerank floor. The two scales differ, so each has its own floor
+    in CorpusSettings. The rerank floor is 0 until it is measured, so the cosine floor is what
+    keeps an off-topic query note-free while the reranker is on.
     """
+    dense = hit.get("dense_score")
+    if dense is None or float(dense) < settings.dense_relevance_floor:
+        return False
     if hit.get("reranked"):
         return float(hit["score"]) >= settings.rerank_relevance_floor
-    dense = hit.get("dense_score")
-    return dense is not None and float(dense) >= settings.dense_relevance_floor
+    return True
 
 
 async def search_candidates(
