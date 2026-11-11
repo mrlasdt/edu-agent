@@ -11,7 +11,7 @@ export interface ChatTurn {
 
 // Mirror the gateway's /chat caps (services/gateway/src/gateway/main.py); it rejects bigger requests.
 export const MAX_MESSAGE_CHARS = 4000;
-export const MAX_HISTORY_ITEMS = 60;
+export const MAX_HISTORY_ITEMS = 20;
 export const MAX_HISTORY_ITEM_CHARS = 4000;
 
 const clip = (text: string, limit: number) => Array.from(text).slice(0, limit).join("");
