@@ -43,7 +43,7 @@ def test_query_set_groups_and_expectations():
 
 
 def _hit(label, score, dense=None, reranked=False):
-    return Hit(label, score, dense if dense is not None else score, None, reranked)
+    return Hit(label, score, dense if dense is not None else score, reranked)
 
 
 def _run(group, expect, hits):

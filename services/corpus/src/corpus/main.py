@@ -328,13 +328,7 @@ async def search_candidates(
     # Keep the cosine similarity next to the fused or reranked score: it is the signal the
     # relevance floor can read when no reranker ran (see passes_relevance_floor).
     dense_scores = {h["id"]: h["score"] for h in dense_hits}
-    sparse_scores = (
-        {h["id"]: h["score"] for h in _hits(sparse_response)} if sparse_response is not None else {}
-    )
-    ranked = [
-        {**h, "dense_score": dense_scores.get(h["id"]), "sparse_score": sparse_scores.get(h["id"])}
-        for h in ranked
-    ]
+    ranked = [{**h, "dense_score": dense_scores.get(h["id"])} for h in ranked]
     if settings.tei_reranker_url:
         ranked = await _rerank(query, ranked, top_k, settings.tei_reranker_url)
     return ranked[:top_k]

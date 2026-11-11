@@ -67,7 +67,6 @@ class Hit:
     label: str
     score: float  # the score the corpus returns (RRF, cosine or reranker, by configuration)
     dense_score: float | None
-    sparse_score: float | None
     reranked: bool
 
 
@@ -207,7 +206,6 @@ async def run_config(queries: Sequence[Query], settings: CorpusSettings) -> list
                 hit_label(h),
                 float(h["score"]),
                 h.get("dense_score"),
-                h.get("sparse_score"),
                 bool(h.get("reranked")),
             )
             for h in ranked
