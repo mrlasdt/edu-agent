@@ -156,6 +156,10 @@ _Avoid_: Skill, tool
 An Agent Skill: a package of instructions the model loads on demand (the Anthropic Agent Skills meaning). This repo has no skills in the agent service. The name is not used for the tools or capabilities above, which were called "skills" before the rename.
 _Avoid_: Using "skill" for a tool or a capability
 
+**Context budget**:
+The rule that decides what the model sees of a long conversation (`services/agent/src/agent/context.py`): the first message always, the latest messages as written, and (opt-in) a short note of the turns in between. Example: at turn 20 the tutor is sent the problem and the last 8 to 11 messages instead of all 39 earlier ones.
+_Avoid_: Truncation, memory
+
 ## IELTS mock
 
 **IELTS mock**:

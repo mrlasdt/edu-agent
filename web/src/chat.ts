@@ -11,16 +11,20 @@ export interface ChatTurn {
 
 // Mirror the gateway's /chat caps (services/gateway/src/gateway/main.py); it rejects bigger requests.
 export const MAX_MESSAGE_CHARS = 4000;
-export const MAX_HISTORY_ITEMS = 20;
+export const MAX_HISTORY_ITEMS = 60;
 export const MAX_HISTORY_ITEM_CHARS = 4000;
 
 const clip = (text: string, limit: number) => Array.from(text).slice(0, limit).join("");
 
+// Past the cap the opening message is kept with the latest ones: it states the problem, and the
+// agent pins it (services/agent/src/agent/context.py) while it folds the turns in between.
 export function toHistoryPayload(history: Message[]) {
-  return history
-    .filter((m) => m.content)
-    .slice(-MAX_HISTORY_ITEMS)
-    .map((m) => ({ role: m.role, content: clip(m.content, MAX_HISTORY_ITEM_CHARS) }));
+  const sendable = history.filter((m) => m.content);
+  const kept =
+    sendable.length > MAX_HISTORY_ITEMS
+      ? [sendable[0], ...sendable.slice(-(MAX_HISTORY_ITEMS - 1))]
+      : sendable;
+  return kept.map((m) => ({ role: m.role, content: clip(m.content, MAX_HISTORY_ITEM_CHARS) }));
 }
 
 export type ChatEvent =

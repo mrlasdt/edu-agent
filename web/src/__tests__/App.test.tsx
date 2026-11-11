@@ -79,7 +79,7 @@ describe("App /chat request limits", () => {
     );
   });
 
-  it("sends only the latest history items once the conversation outgrows the cap", async () => {
+  it("sends the opening message and the latest history items once the conversation outgrows the cap", async () => {
     const fetchMock = stubGateway();
     const user = await openQuant();
     const turns = MAX_HISTORY_ITEMS / 2 + 3;
@@ -92,8 +92,10 @@ describe("App /chat request limits", () => {
     expect(history).toHaveLength(MAX_HISTORY_ITEMS);
     expect(history[history.length - 1]).toEqual({ role: "agent", content: "ok" });
     expect(history[history.length - 2]).toEqual({ role: "candidate", content: `question ${turns - 1}` });
-    expect(history[0]).toEqual({ role: "candidate", content: "question 3" });
-  }, 30000);
+    expect(history[0]).toEqual({ role: "candidate", content: "question 0" });
+    expect(history[1]).toEqual({ role: "agent", content: "ok" });
+    expect(history[2]).toEqual({ role: "candidate", content: "question 4" });
+  }, 120000);
 
   it("truncates an oversized replayed reply to the gateway's per-item limit", async () => {
     const fetchMock = stubGateway("a".repeat(MAX_HISTORY_ITEM_CHARS + 500));

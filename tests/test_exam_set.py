@@ -91,7 +91,7 @@ def test_best_label_tier_prefers_examiner_then_captain_then_weak():
 
 def test_gre_loader_is_unchanged():
     # grown from 5 to the failure-seeded set (tests/test_quant_suite.py pins its composition)
-    assert len(load_golden_set("quant")) == 40
+    assert len(load_golden_set("quant")) == 41
     assert len(load_golden_set("aw")) == 2
 
 
