@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
@@ -14,6 +15,8 @@ from shared.src.shared.events import CitationsStripped, Event, SampleEssay, Sour
 from shared.src.shared.models import MessageRole, Mode, Session
 from shared.src.shared.observability import build_llm_metadata
 from shared.src.shared.turn_meter import TurnMeter
+
+_log = logging.getLogger(__name__)
 
 _PROMPT_ROOT = PROJECT_ROOT / "prompts" / "aw_agent"
 
@@ -117,7 +120,8 @@ class AWAgent(BaseAgent):
             with meter.phase("retrieval"):
                 chunks = await self._retrieve(session, message)
             meter.annotate(notes_retrieved=len(chunks))
-            yield Sources(count=len(chunks))
+            if chunks:
+                yield Sources(count=len(chunks))
             chunk_context = _format_chunks_for_context(chunks)
             obs_meta = build_llm_metadata(trace_id=trace_id, prompt_version=version)
 
@@ -274,9 +278,7 @@ class AWAgent(BaseAgent):
             tokens, full_text = await _collect_stream(response)
             valid, invalid = self._check_citations(full_text, len(chunks))
             if not valid:
-                full_text = strip_uncited_claims(full_text, invalid)
-                for token in tokens:
-                    yield Token(text=token)
+                yield Token(text=strip_uncited_claims(full_text, invalid))
                 yield SampleEssay()
                 yield CitationsStripped(stripped=True)
                 return
@@ -290,13 +292,21 @@ class AWAgent(BaseAgent):
     # ── seams ─────────────────────────────────────────────────────────────────
 
     async def _retrieve(self, session: Session, message: str) -> list[CorpusChunk]:
-        return await self._retrieve_corpus.retrieve(
-            query=message,
-            candidate_id=session.candidate_id,
-            school_id="",
-            test_type=session.test_type,
-            top_k=5,
-        )
+        """
+        Fetch grounding notes from the Corpus Service. Fails open, like the Quant agent: an
+        unreachable corpus costs the turn its grounding, not the answer.
+        """
+        try:
+            return await self._retrieve_corpus.retrieve(
+                query=message,
+                candidate_id=session.candidate_id,
+                school_id="",
+                test_type=session.test_type,
+                top_k=5,
+            )
+        except Exception:
+            _log.warning("corpus retrieval failed; answering without notes", exc_info=True)
+            return []
 
     def _check_citations(self, text: str, num_chunks: int) -> tuple[bool, list[str]]:
         return check_citations(text, num_chunks)

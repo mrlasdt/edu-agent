@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from services.agent.src.agent.agents.aw import AWAgent
-from shared.src.shared.events import SampleEssay
+from shared.src.shared.events import CitationsStripped, SampleEssay, Sources
 from shared.src.shared.models import Mode, Session
 from tests.agent_events import reply_of, texts
 
@@ -262,3 +262,53 @@ async def test_citation_checker_runs_on_solve():
             pass
 
     mock_check.assert_called()
+
+
+# ── 8. Citation strip: the stripped essay is the one emitted ──────────────────
+
+
+@pytest.mark.asyncio
+async def test_solve_emits_the_stripped_essay_when_citations_stay_invalid():
+    """After the retry still cites a note that does not exist, the bad claim is cut from the
+    text that is sent, not only from a local copy."""
+    agent = AWAgent(model_config_path="config/model_config.dev.yaml")
+    essay = ["Technology helps.", " It is proven [9].", " The end."]
+
+    with (
+        patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm,
+        patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]),
+        patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")),
+        patch.object(
+            agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=[]
+        ),
+    ):
+        mock_llm.side_effect = [mock_stream(essay), mock_stream(essay)]
+        items = [item async for item in agent.run(make_session(Mode.solve), "Discuss technology")]
+
+    assert "[9]" not in reply_of(items)
+    assert reply_of(items).startswith("Technology helps.")
+    assert CitationsStripped(stripped=True) in items
+
+
+@pytest.mark.asyncio
+async def test_solve_survives_an_unreachable_corpus_and_reports_no_sources():
+    """Same fail-open as Quant: the essay is written without notes, and no Sources(count=0)
+    is reported, which would make the gateway call every [N] invalid."""
+    retrieve_corpus = MagicMock()
+    retrieve_corpus.retrieve = AsyncMock(side_effect=ConnectionError("corpus down"))
+    agent = AWAgent(
+        model_config_path="config/model_config.dev.yaml", retrieve_corpus=retrieve_corpus
+    )
+
+    with (
+        patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm,
+        patch.object(agent, "_run_style_critic", new_callable=AsyncMock, return_value=(True, "")),
+        patch.object(
+            agent, "_get_personal_style_exemplars", new_callable=AsyncMock, return_value=[]
+        ),
+    ):
+        mock_llm.return_value = mock_stream(["An essay."])
+        items = [item async for item in agent.run(make_session(Mode.solve), "Discuss technology")]
+
+    assert reply_of(items) == "An essay."
+    assert not any(isinstance(i, Sources) for i in items)
