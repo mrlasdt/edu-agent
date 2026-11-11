@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -16,7 +17,7 @@ from services.gateway.src.gateway.guardrails.supportive import (
 )
 from services.gateway.src.gateway.guardrails.verdict import Verdict
 from services.gateway.src.gateway.settings import get_settings
-from shared.src.shared.config import load_model_config
+from shared.src.shared.config import PROJECT_ROOT, load_model_config
 from shared.src.shared.models import MessageRole, Session
 from shared.src.shared.observability import build_llm_metadata
 from shared.src.shared.structured import parse_structured, response_format_for
@@ -34,6 +35,15 @@ _HISTORY_TURNS = 6
 # reply is cut off it does not validate: check_completeness raises, and /chat skips the check
 # and answers the turn (flag `completeness_check_failed`), same as any other failure of it.
 COMPLETENESS_MAX_TOKENS = 512
+
+_COMPLETENESS_PROMPT_DIR = PROJECT_ROOT / "prompts" / "orchestrator" / "completeness"
+
+
+def _load_completeness_prompt(version: str) -> str:
+    """The completeness prompt file for `version`, without its YAML frontmatter."""
+    raw = (_COMPLETENESS_PROMPT_DIR / f"{version}.md").read_text()
+    return re.sub(r"^---\n.*?\n---\n", "", raw, flags=re.DOTALL).strip()
+
 
 # Sent when the check finds the question incomplete but writes no clarifying question.
 DEFAULT_CLARIFICATION = "Could you share the full question so I can help?"
@@ -179,17 +189,6 @@ async def _call_enrichment_llm(
     """
     cfg = load_model_config()
     model = cfg.litellm_model("orchestrator")
-    system = (
-        f"You are checking if the latest candidate message in a GRE {session.section.upper()} "
-        "session is complete enough to answer. Judge it in the context of the earlier "
-        "conversation: a follow-up, clarification or next-step request that refers to earlier "
-        "turns is complete. A message that states a problem or asks about a topic is complete, "
-        "even if it asks for a hint or does not say which method to use. Mark it incomplete "
-        "only when it refers to material it does not contain (for example 'this problem' or "
-        "'the figure' with nothing attached). "
-        'Reply with JSON: {"complete": true/false, '
-        '"clarification": "<question to ask if incomplete>"}'
-    )
     history = [
         {
             "role": "user" if m.role == MessageRole.candidate else "assistant",
@@ -198,6 +197,7 @@ async def _call_enrichment_llm(
         for m in session.history[-_HISTORY_TURNS:]
     ]
     version = cfg.prompt_version("orchestrator", "completeness")
+    system = _load_completeness_prompt(version).replace("{section}", session.section.upper())
     response = await (meter or TurnMeter.detached()).complete(
         model=model,
         messages=[

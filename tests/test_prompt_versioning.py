@@ -3,7 +3,7 @@ Tests for config-driven prompt versioning (closes the ADR-0009 gap).
 
 Behaviors under test:
   1. ModelConfig.prompt_version() returns the version configured per (agent, mode)
-  2. ModelConfig.prompt_version() defaults to "v1" when unconfigured (back-compat)
+  2. ModelConfig.prompt_version() raises for an unpinned pair (see test_lint_references.py)
   3. QuantAgent loads the prompt file for the configured version
   4. QuantAgent reports the configured version to Langfuse metadata
   5. AWAgent loads the prompt file for the configured version
@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from shared.src.shared.config import ModelConfig, ModelRoleConfig
+from shared.src.shared.config import ModelConfig, ModelRoleConfig, UnknownPromptError
 from shared.src.shared.models import Mode, Session
 
 
@@ -41,12 +41,14 @@ def test_prompt_version_returns_configured_value():
     assert cfg.prompt_version("quant_agent", "solve") == "v2"
 
 
-def test_prompt_version_defaults_to_v1_when_unconfigured():
+def test_prompt_version_raises_for_an_unpinned_pair_instead_of_guessing_v1():
     cfg = ModelConfig(
         roles={"quant_agent": ModelRoleConfig(provider="openai", model="gpt-4o")},
     )
-    assert cfg.prompt_version("quant_agent", "tutor") == "v1"
-    assert cfg.prompt_version("aw_agent", "solve") == "v1"
+    with pytest.raises(UnknownPromptError):
+        cfg.prompt_version("quant_agent", "tutor")
+    with pytest.raises(UnknownPromptError):
+        cfg.prompt_version("aw_agent", "solve")
 
 
 def test_dev_config_declares_prompt_versions():

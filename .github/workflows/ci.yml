@@ -15,6 +15,8 @@ jobs:
       - uses: ./.github/actions/setup-python
       - run: uv run ruff check .
       - run: uv run mypy services/ shared/ evals/ mcp_servers/
+      # Prompt pins, prompt files and model roles must name each other (scripts/lint_references.py).
+      - run: uv run python scripts/lint_references.py
 
   unit-tests:
     name: Unit tests
