@@ -240,7 +240,7 @@ Docker Compose (`infra/docker-compose.yml`) is the one supported way to run the 
 - Web UI beyond the chat shell: no sources panel, preferences, upload or conversation persistence (components exist but are not wired); math is typeset lightly, no LaTeX.
 - Most agent metadata is dropped on the way to the UI. The Solve-mode independent check (ADR-0015) covers numeric answers only: quantitative comparisons and other non-numeric answers show "not checkable", and "agrees" does not show the problem was read correctly. It costs one extra short model call per solve turn, and how often a real model writes a faithful equation is measured only by a live run (the offline `wrong_but_verified` uses each item's own expression).
 - Orchestrator complexity classification (a stub) and output content safety.
-- Corpus beyond 55 short GRE Quant note sections (16 files); no AW corpus.
+- Corpus beyond 55 short GRE Quant note sections (15 files); no AW corpus.
 - Question generation over HTTP, dedup against a bank, and difficulty calibration.
 - A calibrated IELTS grader (needs an examiner or blind-scored set of 60 essays).
 - A durable human review queue (in memory only).
