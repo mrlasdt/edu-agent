@@ -193,7 +193,7 @@ The six published ETS sample essays per AW prompt — one at each scoring tier (
 _Avoid_: Sample essays, reference essays, calibration essays
 
 **MCP server**:
-A Model Context Protocol server that exposes agent capabilities to external MCP-capable clients (e.g. Claude Desktop). Two in v1: the **Candidate MCP server** (tools: `search_corpus`, `get_question`, `get_model_essay`) and the **Admin MCP server** (tools: `ingest_document`, `list_ingestion_jobs`, `get_job_status`). Both are thin wrappers around the same service layer as the web backend — no duplicate logic.
+A Model Context Protocol server that exposes agent capabilities to external MCP-capable clients (e.g. Claude Desktop). Two in v1: the **Candidate MCP server** (tools: `corpus_search`, `practice_get_question`, `essay_get_model`) and the **Admin MCP server** (tools: `ingestion_submit_document`, `ingestion_list_jobs`, `ingestion_get_job`). Both are thin wrappers around the same service layer as the web backend — no duplicate logic.
 _Avoid_: Plugin, extension, integration
 
 **Admin UI**:

@@ -2,12 +2,18 @@
 Candidate MCP server.
 
 Exposes GRE corpus capabilities to external MCP-capable clients (Claude Desktop, etc.).
-All tools are thin wrappers over the service layer — no business logic here.
+All tools are thin wrappers over the service layer - no business logic here.
 
-Tools:
-  - search_corpus(query, test_type, candidate_id, school_id) → list of chunks
-  - get_question(test_type, section, question_type) → a random practice question
-  - get_model_essay(prompt, score_tier) → an ETS anchor essay at the given scoring tier
+Tools (named <area>_<verb>, so a client that lists many servers can tell them apart):
+  - corpus_search(query, test_type, response_format) -> reference notes for a topic
+  - practice_get_question(section, question_type) -> one practice question, never its answer
+  - essay_get_model(prompt_id, score_tier) -> an anchor essay for an AW prompt at a score tier
+
+Who is asking (candidate and school) comes from this server's environment (MCP_CANDIDATE_ID,
+MCP_SCHOOL_ID), never from a tool argument: the model cannot choose whose notes it reads.
+
+A call that cannot be answered raises ToolError, which the client sees as an error result
+(isError) whose message says what was wrong and which values would have worked.
 
 Run with (stdio by default; MCP_TRANSPORT=sse serves SSE on 127.0.0.1:8091):
     python -m mcp_servers.candidate_server
@@ -15,10 +21,11 @@ Run with (stdio by default; MCP_TRANSPORT=sse serves SSE on 127.0.0.1:8091):
 from __future__ import annotations
 
 import random
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 
 from evals.loader import load_golden_set
 from mcp_servers.launch import bind_host, run
@@ -26,89 +33,141 @@ from mcp_servers.settings import get_settings
 
 mcp = FastMCP(
     "gre-tutor-candidate",
-    instructions="GRE corpus search and practice material",
+    instructions=(
+        "GRE study material: search the reference notes (corpus_search), get a practice "
+        "question (practice_get_question), and read a model essay for an AW prompt "
+        "(essay_get_model, using a prompt_id from practice_get_question)."
+    ),
     host=bind_host(),
     port=8091,
 )
 
+ResponseFormat = Literal["concise", "detailed"]
+Section = Literal["quant", "aw"]
+
+# A concise search result keeps the first part of each note: enough to decide whether it is the
+# right one, small enough that five of them stay a few hundred tokens.
+_CONCISE_CHARS = 300
+_TOP_K = 5
+
 
 @mcp.tool()
-async def search_corpus_tool(
+async def corpus_search(
     query: str,
-    test_type: str,
-    candidate_id: str,
-    school_id: str = "",
-) -> list[dict[str, Any]]:
+    test_type: str = "gre",
+    response_format: ResponseFormat = "concise",
+) -> dict[str, Any]:
     """
-    Search the GRE corpus for relevant passages.
+    Search the reference notes for a topic, a term or a worked idea (for example "difference of
+    squares", "discriminant", "issue essay structure"). Use it to look something up before
+    explaining it; it does not give practice questions (practice_get_question) or essays
+    (essay_get_model). Searches the global notes plus the notes of the configured candidate.
 
     Args:
-        query: Search query (e.g. "quadratic equations", "issue essay structure")
-        test_type: GRE section type (e.g. "gre")
-        candidate_id: Candidate identifier for ACL-scoped retrieval
-        school_id: School identifier (empty string for no school tier)
+        query: What to look up, in a few words or one sentence.
+        test_type: The exam; "gre" is the only one with notes today.
+        response_format: "concise" (default) returns the source and the first ~300 characters of
+            each of up to 5 notes; "detailed" returns each note in full with its source file and
+            retrieval score. Search concise first and ask for detailed only to quote a note.
 
     Returns:
-        List of chunks with text, tier, source_uri, page_or_section, score
+        {"count": n, "notes": [...]}; an empty list comes with a "hint" on how to widen the query.
     """
-    return await _search_corpus(
-        query=query, test_type=test_type,
-        candidate_id=candidate_id, school_id=school_id,
-    )
+    if not query.strip():
+        raise ToolError(
+            "query is empty. Say what to look up, e.g. query='difference of squares'."
+        )
+    chunks = await _search_corpus(query=query, test_type=test_type)
+    if response_format == "concise":
+        notes = [
+            {
+                "source": c.get("page_or_section", ""),
+                "tier": c.get("tier", ""),
+                "text": _shorten(str(c.get("text", "")), _CONCISE_CHARS),
+            }
+            for c in chunks
+        ]
+    else:
+        notes = [
+            {k: c[k] for k in ("text", "tier", "source_uri", "page_or_section", "score") if k in c}
+            for c in chunks
+        ]
+    result: dict[str, Any] = {"count": len(notes), "notes": notes}
+    if not notes:
+        result["hint"] = (
+            "No note matched. Try the standard term for the idea (e.g. 'quadratic formula' "
+            "instead of 'that formula with the square root') or a broader topic."
+        )
+    return result
 
 
 @mcp.tool()
-async def get_question_tool(
-    test_type: str,
-    section: str,
+async def practice_get_question(
+    section: Section,
     question_type: str = "",
 ) -> dict[str, Any]:
     """
-    Get a random practice question from the Global corpus.
+    Get one practice question to work on. It never includes the answer. Use it to give a student
+    something to try; for background on a topic use corpus_search instead.
 
     Args:
-        test_type: "gre"
-        section: "quant" or "aw"
-        question_type: Optional filter (e.g. "numeric_entry", "issue", "argument")
+        section: "quant" or "aw" (the analytical writing section).
+        question_type: Optional filter. Quant: the question's type, e.g. "numeric_entry",
+            "quantitative_comparison", "multiple_choice". AW: "issue" or "argument". Leave empty
+            for any type; a value that does not exist returns the list that does.
 
     Returns:
-        A question dict with id, question_type and the question text (no answer key)
+        Quant: {"id", "question_type", "question", "expression"}. AW: {"id", "task_type",
+        "prompt"}; pass that id to essay_get_model as prompt_id to read a model essay for it.
     """
-    return await _get_random_question(
-        test_type=test_type, section=section, question_type=question_type
-    )
+    return await _get_random_question(section=section, question_type=question_type)
 
 
 @mcp.tool()
-async def get_model_essay_tool(prompt: str, score_tier: int) -> dict[str, Any]:
+async def essay_get_model(prompt_id: str, score_tier: int) -> dict[str, Any]:
     """
-    Get a sample ETS-style essay at the given scoring tier (1-6).
+    Get a scored anchor essay for one AW prompt, to show a student what a given score looks like.
+    Get the prompt_id from practice_get_question(section="aw"). Not for Quant.
 
     Args:
-        prompt: The AW prompt text
-        score_tier: Desired score tier (1 = weak, 6 = outstanding)
+        prompt_id: The id of an AW prompt, e.g. "aw001".
+        score_tier: The score of the essay wanted, 1 (weak) to 6 (outstanding). Only some tiers
+            exist per prompt; one that does not returns the tiers that do.
 
     Returns:
-        Dict with score_tier and text
+        {"prompt_id", "score_tier", "text"}.
     """
-    return await _get_model_essay(prompt=prompt, score_tier=score_tier)
+    return await _get_model_essay(prompt_id=prompt_id, score_tier=score_tier)
 
 
-# ── service seams (patched in tests) ─────────────────────────────────────────
+# -- service seams (patched in tests) ----------------------------------------------------------
 
 
-async def _search_corpus(
-    query: str, test_type: str, candidate_id: str, school_id: str
-) -> list[dict[str, Any]]:
+def _shorten(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
+
+
+async def _search_corpus(query: str, test_type: str) -> list[dict[str, Any]]:
     settings = get_settings()
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        r = await client.post(
-            f"{settings.corpus_service_url}/corpus/retrieve",
-            json={"query": query, "test_type": test_type,
-                  "candidate_id": candidate_id, "school_id": school_id, "top_k": 5},
-        )
-        r.raise_for_status()
-        return cast(list[dict[str, Any]], r.json())
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(
+                f"{settings.corpus_service_url}/corpus/retrieve",
+                json={
+                    "query": query,
+                    "test_type": test_type,
+                    "candidate_id": settings.mcp_candidate_id,
+                    "school_id": settings.mcp_school_id,
+                    "top_k": _TOP_K,
+                },
+            )
+            r.raise_for_status()
+            return cast(list[dict[str, Any]], r.json())
+    except httpx.HTTPError as exc:
+        raise ToolError(
+            f"the notes service is not available right now ({type(exc).__name__}). Try again "
+            "in a moment, or carry on without the notes."
+        ) from exc
 
 
 # What a candidate may see of a practice question. The golden rows are eval fixtures: they carry
@@ -118,34 +177,51 @@ _QUANT_FIELDS = ("id", "question_type", "question", "expression")
 _AW_FIELDS = ("id", "task_type", "prompt")
 
 
-async def _get_random_question(
-    test_type: str, section: str, question_type: str
-) -> dict[str, Any]:
+def _practice_rows(section: str) -> tuple[list[dict[str, Any]], tuple[str, ...], str]:
+    """The rows a candidate can be given for `section`, the fields to show, the type key."""
     if section == "quant":
         # Only "solve" rows are practice questions; tutor, tutor_multiturn and security rows
         # are eval scenarios (a security row is a prompt-injection test string).
         rows = [i for i in load_golden_set("quant") if i.get("kind") == "solve"]
-        fields: tuple[str, ...] = _QUANT_FIELDS
-    else:
-        rows = load_golden_set("aw")
-        fields = _AW_FIELDS
+        return rows, _QUANT_FIELDS, "question_type"
+    if section == "aw":
+        return load_golden_set("aw"), _AW_FIELDS, "task_type"
+    raise ToolError(f"section {section!r} is not available. Valid sections: 'quant', 'aw'.")
+
+
+async def _get_random_question(section: str, question_type: str) -> dict[str, Any]:
+    rows, fields, type_key = _practice_rows(section)
     if question_type:
-        rows = [i for i in rows if i.get("question_type") == question_type or
-                i.get("task_type") == question_type]
-    if not rows:
-        return {"error": f"No questions found for {section}/{question_type}"}
+        valid = sorted({str(r[type_key]) for r in rows if type_key in r})
+        rows = [r for r in rows if r.get(type_key) == question_type]
+        if not rows:
+            raise ToolError(
+                f"no {section} question has question_type {question_type!r}. "
+                f"Valid question types for {section}: {', '.join(repr(v) for v in valid)}. "
+                "Leave question_type empty for any type."
+            )
     chosen = random.choice(rows)
     return {k: chosen[k] for k in fields if k in chosen}
 
 
-async def _get_model_essay(prompt: str, score_tier: int) -> dict[str, Any]:
-    items = load_golden_set("aw")
-    for item in items:
-        anchors = item.get("anchor_essays", {})
-        tier_key = str(score_tier)
-        if tier_key in anchors:
-            return {"score_tier": score_tier, "text": anchors[tier_key]}
-    return {"error": f"No anchor essay found at tier {score_tier}"}
+async def _get_model_essay(prompt_id: str, score_tier: int) -> dict[str, Any]:
+    items = {str(i["id"]): i for i in load_golden_set("aw") if "anchor_essays" in i}
+    item = items.get(prompt_id)
+    if item is None:
+        raise ToolError(
+            f"no AW prompt has id {prompt_id!r}. Valid prompt ids: "
+            f"{', '.join(repr(k) for k in sorted(items))}. "
+            "Get one from practice_get_question(section='aw')."
+        )
+    anchors: dict[str, str] = item["anchor_essays"]
+    text = anchors.get(str(score_tier))
+    if text is None:
+        tiers = sorted(int(t) for t in anchors)
+        raise ToolError(
+            f"prompt {prompt_id!r} has no essay at score tier {score_tier}. "
+            f"Tiers available for it: {', '.join(str(t) for t in tiers)}."
+        )
+    return {"prompt_id": prompt_id, "score_tier": score_tier, "text": text}
 
 
 if __name__ == "__main__":

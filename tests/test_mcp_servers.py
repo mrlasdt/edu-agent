@@ -1,20 +1,12 @@
 """
-Tests for the Candidate and Admin MCP servers (issue 15).
+Tests for the Candidate and Admin MCP servers.
 
-Both servers are thin wrappers over the service layer.
-Tests call the tool handler functions directly with mocked service clients.
+The tool tests go through the server's own `call_tool`, the path a client's request takes, so
+argument validation, the tool list and error results are the real ones. Only the HTTP boundary
+to the corpus and ingestion services is replaced.
 
-Behaviors under test:
-Candidate server:
-  1. search_corpus returns chunks with citation metadata
-  2. get_question returns a question from the Global corpus
-  3. get_model_essay returns an anchor essay at the requested score tier
-
-Admin server:
-  4. ingest_document calls ingestion service and returns job_id
-  5. list_ingestion_jobs returns recent jobs list
-  6. get_job_status returns current job state
-  7. get_job_status returns error for unknown job
+Candidate tools: corpus_search, practice_get_question, essay_get_model.
+Admin tools: ingestion_submit_document, ingestion_list_jobs, ingestion_get_job.
 """
 
 import json
@@ -22,20 +14,18 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
+from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 
-from mcp_servers.admin_server import (
-    get_job_status_tool,
-    ingest_document_tool,
-    list_ingestion_jobs_tool,
-)
-from mcp_servers.candidate_server import (
-    get_model_essay_tool,
-    get_question_tool,
-    search_corpus_tool,
-)
+from mcp_servers import candidate_server
+from mcp_servers.admin_server import mcp as admin_mcp
+from mcp_servers.candidate_server import mcp as candidate_mcp
+from mcp_servers.settings import McpSettings
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -132,70 +122,130 @@ def test_stdio_launch_answers_initialize_on_stdout(module):
     assert first["result"]["serverInfo"]["name"].startswith("gre-tutor-")
 
 
-# ── 1. search_corpus ──────────────────────────────────────────────────────────
+
+# -- helpers -----------------------------------------------------------------------------------
+
+
+async def call(server: FastMCP, tool: str, **arguments: Any) -> Any:
+    """What a client gets back: the tool's JSON result, or ToolError for an error result."""
+    result = await server.call_tool(tool, arguments)
+    content = result[0] if isinstance(result, tuple) else result
+    return json.loads(content[0].text)
+
+
+async def error_of(server: FastMCP, tool: str, **arguments: Any) -> str:
+    with pytest.raises(ToolError) as caught:
+        await call(server, tool, **arguments)
+    return str(caught.value)
+
+
+def corpus_returning(chunks: list[dict[str, Any]], seen: list[dict[str, Any]] | None = None):
+    """An httpx.AsyncClient whose every request is answered with `chunks` (and recorded)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if seen is not None:
+            seen.append(json.loads(request.content))
+        return httpx.Response(200, json=chunks)
+
+    real = httpx.AsyncClient
+
+    def factory(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
+        return real(*args, transport=httpx.MockTransport(handler), **kwargs)
+
+    return patch("mcp_servers.candidate_server.httpx.AsyncClient", factory)
+
+
+NOTE = {
+    "text": "The discriminant b^2 - 4ac tells you how many real roots a quadratic has. " * 8,
+    "tier": "global",
+    "source_uri": "seed/gre-quant/algebra.txt",
+    "page_or_section": "algebra.txt#Discriminant",
+    "score": 0.91,
+}
+
+
+# -- the tool list -----------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_search_corpus_returns_chunks():
-    mock_chunks = [
-        {
-            "text": "GRE prep tip.",
-            "tier": "global",
-            "source_uri": "guide.pdf",
-            "page_or_section": "Intro",
-            "score": 0.9,
-        }
-    ]
-    with patch("mcp_servers.candidate_server._search_corpus", new_callable=AsyncMock) as mock:
-        mock.return_value = mock_chunks
-        result = await search_corpus_tool(
-            query="quadratic equations", test_type="gre", candidate_id="c1", school_id=""
-        )
-    assert isinstance(result, list)
-    assert len(result) == 1
-    assert result[0]["tier"] == "global"
+async def test_tools_are_named_area_verb_and_describe_their_arguments():
+    candidate = {t.name: t for t in await candidate_mcp.list_tools()}
+    admin = {t.name: t for t in await admin_mcp.list_tools()}
+    assert set(candidate) == {"corpus_search", "practice_get_question", "essay_get_model"}
+    assert set(admin) == {"ingestion_submit_document", "ingestion_list_jobs", "ingestion_get_job"}
+    for tool in [*candidate.values(), *admin.values()]:
+        assert tool.description and "Args:" in tool.description, tool.name
+    assert candidate["corpus_search"].inputSchema["properties"]["response_format"]["enum"] == [
+        "concise", "detailed"]
+    assert candidate["practice_get_question"].inputSchema["properties"]["section"]["enum"] == [
+        "quant", "aw"]
 
 
 @pytest.mark.asyncio
-async def test_search_corpus_passes_test_type():
-    with patch("mcp_servers.candidate_server._search_corpus", new_callable=AsyncMock) as mock:
-        mock.return_value = []
-        await search_corpus_tool(
-            query="issue essay", test_type="gre", candidate_id="c1", school_id=""
-        )
-    call_kwargs = mock.call_args.kwargs
-    assert call_kwargs.get("test_type") == "gre"
+async def test_no_tool_takes_an_identity_argument():
+    for server in (candidate_mcp, admin_mcp):
+        for tool in await server.list_tools():
+            assert {"candidate_id", "school_id"}.isdisjoint(tool.inputSchema["properties"]), (
+                tool.name)
 
 
-# ── 2. get_question ───────────────────────────────────────────────────────────
+# -- corpus_search -----------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_get_question_returns_question():
-    mock_question = {
-        "id": "q001",
-        "question_type": "numeric_entry",
-        "expression": "x**2 - 5*x + 6 = 0",
-    }
-    with patch("mcp_servers.candidate_server._get_random_question", new_callable=AsyncMock) as mock:
-        mock.return_value = mock_question
-        result = await get_question_tool(
-            test_type="gre", section="quant", question_type="numeric_entry"
-        )
-    assert result["id"] == "q001"
-    assert "expression" in result
+async def test_corpus_search_is_concise_by_default_and_detailed_on_request():
+    with corpus_returning([NOTE, NOTE]):
+        concise = await call(candidate_mcp, "corpus_search", query="discriminant")
+        detailed = await call(
+            candidate_mcp, "corpus_search", query="discriminant", response_format="detailed")
+    assert concise["count"] == 2
+    short = concise["notes"][0]
+    assert set(short) == {"source", "tier", "text"}
+    assert short["source"] == "algebra.txt#Discriminant"
+    assert len(short["text"]) <= 300 and short["text"].endswith("...")
+    full = detailed["notes"][0]
+    assert full["text"] == NOTE["text"]
+    assert full["score"] == 0.91 and full["source_uri"] == "seed/gre-quant/algebra.txt"
 
 
 @pytest.mark.asyncio
-async def test_get_question_passes_section_and_type():
-    with patch("mcp_servers.candidate_server._get_random_question", new_callable=AsyncMock) as mock:
-        mock.return_value = {"id": "q1"}
-        await get_question_tool(
-            test_type="gre", section="quant", question_type="quantitative_comparison"
-        )
-    call_kwargs = mock.call_args.kwargs
-    assert call_kwargs.get("section") == "quant"
-    assert call_kwargs.get("question_type") == "quantitative_comparison"
+async def test_corpus_search_searches_as_the_configured_candidate_not_as_the_model_asks(
+    monkeypatch,
+):
+    configured = McpSettings(mcp_candidate_id="cand-1", mcp_school_id="school-1")
+    monkeypatch.setattr(candidate_server, "get_settings", lambda: configured)
+    seen: list[dict[str, Any]] = []
+    with corpus_returning([NOTE], seen):
+        # a model that tries to read somebody else's notes: the extra arguments change nothing
+        await call(candidate_mcp, "corpus_search", query="roots", candidate_id="victim",
+                   school_id="other-school")
+    assert seen[0]["candidate_id"] == "cand-1" and seen[0]["school_id"] == "school-1"
+    assert seen[0]["test_type"] == "gre" and seen[0]["top_k"] == 5
+
+
+@pytest.mark.asyncio
+async def test_corpus_search_without_a_configured_identity_asks_for_the_global_tier_only(
+    monkeypatch,
+):
+    monkeypatch.setattr(candidate_server, "get_settings", lambda: McpSettings())
+    seen: list[dict[str, Any]] = []
+    with corpus_returning([], seen):
+        await call(candidate_mcp, "corpus_search", query="roots")
+    assert seen[0]["candidate_id"] == "" and seen[0]["school_id"] == ""
+
+
+@pytest.mark.asyncio
+async def test_corpus_search_says_what_to_do_about_an_empty_query_or_no_match():
+    assert "query is empty" in await error_of(candidate_mcp, "corpus_search", query="  ")
+    with corpus_returning([]):
+        result = await call(candidate_mcp, "corpus_search", query="zzz")
+    assert result["count"] == 0 and "Try the standard term" in result["hint"]
+    message = await error_of(
+        candidate_mcp, "corpus_search", query="x", response_format="verbose")
+    assert "'concise' or 'detailed'" in message
+
+
+# -- practice_get_question ---------------------------------------------------------------------
 
 
 def _golden_solve_ids() -> set[str]:
@@ -205,19 +255,17 @@ def _golden_solve_ids() -> set[str]:
 
 
 @pytest.mark.asyncio
-async def test_get_question_serves_only_practice_questions_without_the_answer_key():
+async def test_practice_question_never_carries_the_answer_key_or_an_eval_scenario():
     """
     Regression: the tool used to random.choice over every raw golden row, so one call in five
     returned a prompt-injection test string, and every answer carried the answer key
     (ground_truth) and the eval's internal failure label (failure_source).
     """
-    from mcp_servers.candidate_server import _get_random_question
-
     solve_ids = _golden_solve_ids()
     assert len(solve_ids) == 16
     seen: set[str] = set()
-    for _ in range(300):
-        q = await _get_random_question(test_type="gre", section="quant", question_type="")
+    for _ in range(200):
+        q = await call(candidate_mcp, "practice_get_question", section="quant")
         assert q["id"] in solve_ids
         assert {"ground_truth", "failure_source", "tag", "kind", "hostile", "student"}.isdisjoint(q)
         assert q["question"]
@@ -226,122 +274,160 @@ async def test_get_question_serves_only_practice_questions_without_the_answer_ke
 
 
 @pytest.mark.asyncio
-async def test_get_question_pool_is_exactly_the_solve_rows():
-    from mcp_servers import candidate_server
-
-    pools: list[list[dict]] = []
-
-    def capture(items):
-        pools.append(items)
-        return items[0]
-
-    with patch.object(candidate_server.random, "choice", capture):
-        await candidate_server._get_random_question(
-            test_type="gre", section="quant", question_type=""
-        )
-    assert {q["id"] for q in pools[0]} == _golden_solve_ids()
-
-
-@pytest.mark.asyncio
-async def test_get_question_type_filter_still_applies_to_practice_questions():
-    from mcp_servers.candidate_server import _get_random_question
-
-    for _ in range(50):
-        q = await _get_random_question(
-            test_type="gre", section="quant", question_type="numeric_entry"
-        )
-        assert q["question_type"] == "numeric_entry" and "ground_truth" not in q
-    missing = await _get_random_question(test_type="gre", section="quant", question_type="nope")
-    assert "error" in missing
+async def test_practice_question_type_filter_applies_and_a_mistyped_one_lists_the_valid_ones():
+    for _ in range(30):
+        q = await call(
+            candidate_mcp, "practice_get_question", section="quant", question_type="numeric_entry")
+        assert q["question_type"] == "numeric_entry"
+    message = await error_of(
+        candidate_mcp, "practice_get_question", section="quant", question_type="numeric")
+    assert "'numeric'" in message
+    for valid in ("numeric_entry", "quantitative_comparison", "multiple_choice_single"):
+        assert repr(valid) in message
+    aw_message = await error_of(
+        candidate_mcp, "practice_get_question", section="aw", question_type="essay")
+    assert "'issue'" in aw_message and "'argument'" in aw_message
 
 
 @pytest.mark.asyncio
-async def test_get_question_aw_returns_the_prompt_without_anchor_essays():
-    from mcp_servers.candidate_server import _get_random_question
+async def test_practice_question_rejects_an_unknown_section_and_names_the_valid_ones():
+    message = await error_of(candidate_mcp, "practice_get_question", section="verbal")
+    assert "'quant' or 'aw'" in message
 
-    q = await _get_random_question(test_type="gre", section="aw", question_type="")
-    assert q["prompt"] and q["task_type"] in {"issue", "argument"}
+
+@pytest.mark.asyncio
+async def test_practice_question_aw_returns_the_prompt_and_id_without_anchor_essays():
+    q = await call(candidate_mcp, "practice_get_question", section="aw")
+    assert q["prompt"] and q["task_type"] in {"issue", "argument"} and q["id"].startswith("aw")
     assert "anchor_essays" not in q
 
 
-# ── 3. get_model_essay ────────────────────────────────────────────────────────
+# -- essay_get_model ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_get_model_essay_returns_essay_at_tier():
-    mock_essay = {"score_tier": 6, "text": "Outstanding essay at tier 6."}
-    with patch("mcp_servers.candidate_server._get_model_essay", new_callable=AsyncMock) as mock:
-        mock.return_value = mock_essay
-        result = await get_model_essay_tool(prompt="Technology improves lives.", score_tier=6)
-    assert result["score_tier"] == 6
-    assert "text" in result
+async def test_essay_get_model_returns_the_essay_for_the_prompt_asked_about():
+    from evals.loader import load_golden_set
+
+    items = {i["id"]: i for i in load_golden_set("aw")}
+    first = await call(candidate_mcp, "essay_get_model", prompt_id="aw001", score_tier=6)
+    second = await call(candidate_mcp, "essay_get_model", prompt_id="aw002", score_tier=6)
+    assert first == {
+        "prompt_id": "aw001", "score_tier": 6, "text": items["aw001"]["anchor_essays"]["6"]}
+    assert second["text"] == items["aw002"]["anchor_essays"]["6"]
+    assert first["text"] != second["text"]
 
 
 @pytest.mark.asyncio
-async def test_get_model_essay_passes_score_tier():
-    with patch("mcp_servers.candidate_server._get_model_essay", new_callable=AsyncMock) as mock:
-        mock.return_value = {"score_tier": 4, "text": "Good essay."}
-        await get_model_essay_tool(prompt="Technology.", score_tier=4)
-    call_kwargs = mock.call_args.kwargs
-    assert call_kwargs.get("score_tier") == 4
+async def test_essay_get_model_errors_list_the_valid_prompt_ids_and_tiers():
+    unknown = await error_of(candidate_mcp, "essay_get_model", prompt_id="aw999", score_tier=6)
+    assert "'aw001'" in unknown and "'aw002'" in unknown
+    assert "practice_get_question" in unknown
+    no_tier = await error_of(candidate_mcp, "essay_get_model", prompt_id="aw002", score_tier=3)
+    assert "no essay at score tier 3" in no_tier and "available for it: 1, 6" in no_tier
 
 
-# ── 4. ingest_document ────────────────────────────────────────────────────────
+# -- admin: ingestion_submit_document ----------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_ingest_document_returns_job_id():
+async def test_submit_document_returns_a_queued_job_id(tmp_path):
+    guide = tmp_path / "guide.pdf"
+    guide.write_bytes(b"%PDF")
     with patch("mcp_servers.admin_server._ingest_document", new_callable=AsyncMock) as mock:
         mock.return_value = "job-abc-123"
-        result = await ingest_document_tool(file_path="/tmp/guide.pdf", test_type="gre")
-    assert result["job_id"] == "job-abc-123"
-    assert result["status"] == "queued"
+        result = await call(
+            admin_mcp, "ingestion_submit_document", file_path=str(guide), test_type="gre")
+    assert result == {"job_id": "job-abc-123", "status": "queued"}
+    assert mock.call_args.kwargs == {"file_path": str(guide), "test_type": "gre"}
 
 
 @pytest.mark.asyncio
-async def test_ingest_document_has_no_tier_argument():
-    # The ingestion server decides the tier; a caller cannot ask for one.
-    with patch("mcp_servers.admin_server._ingest_document", new_callable=AsyncMock) as mock:
-        mock.return_value = "job-xyz"
-        await ingest_document_tool(file_path="/tmp/notes.txt", test_type="gre")
-    assert mock.call_args.kwargs == {"file_path": "/tmp/notes.txt", "test_type": "gre"}
+async def test_submit_document_explains_a_relative_path_and_a_missing_file(tmp_path):
+    relative = await error_of(admin_mcp, "ingestion_submit_document", file_path="notes/a.txt")
+    assert "not an absolute path" in relative and "a.txt" in relative
+    missing = await error_of(
+        admin_mcp, "ingestion_submit_document", file_path=str(tmp_path / "nope.txt"))
+    assert "no file at" in missing
 
 
-# ── 5. list_ingestion_jobs ────────────────────────────────────────────────────
+# -- admin: ingestion_list_jobs and ingestion_get_job ------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_list_ingestion_jobs_returns_jobs():
-    mock_jobs = [
-        {"job_id": "j1", "status": "completed", "filename": "a.pdf"},
-        {"job_id": "j2", "status": "processing", "filename": "b.docx"},
-    ]
+async def test_list_jobs_returns_a_count_and_the_jobs_and_checks_the_limit():
+    jobs = [{"job_id": "j1", "status": "done"}, {"job_id": "j2", "status": "failed"}]
     with patch("mcp_servers.admin_server._list_jobs", new_callable=AsyncMock) as mock:
-        mock.return_value = mock_jobs
-        result = await list_ingestion_jobs_tool(limit=10)
-    assert len(result) == 2
-    assert result[0]["job_id"] == "j1"
-
-
-# ── 6. get_job_status — known job ─────────────────────────────────────────────
+        mock.return_value = jobs
+        result = await call(admin_mcp, "ingestion_list_jobs", limit=10)
+    assert result == {"count": 2, "jobs": jobs}
+    assert mock.call_args.kwargs == {"limit": 10}
+    assert "1 to 100" in await error_of(admin_mcp, "ingestion_list_jobs", limit=0)
 
 
 @pytest.mark.asyncio
-async def test_get_job_status_returns_status():
+async def test_get_job_returns_the_job_and_points_at_the_list_for_an_unknown_id():
     with patch("mcp_servers.admin_server._get_job", new_callable=AsyncMock) as mock:
         mock.return_value = {"job_id": "j1", "status": "completed", "error_stage": None}
-        result = await get_job_status_tool(job_id="j1")
-    assert result["status"] == "completed"
-    assert result["job_id"] == "j1"
+        assert (await call(admin_mcp, "ingestion_get_job", job_id="j1"))["status"] == "completed"
+        mock.return_value = None
+        message = await error_of(admin_mcp, "ingestion_get_job", job_id="nonexistent")
+    assert "'nonexistent'" in message and "ingestion_list_jobs" in message
 
 
-# ── 7. get_job_status — unknown job ───────────────────────────────────────────
+# -- a service that is down or refuses is explained, not leaked as a stack of httpx text ---------
 
 
 @pytest.mark.asyncio
-async def test_get_job_status_returns_error_for_unknown():
-    with patch("mcp_servers.admin_server._get_job", new_callable=AsyncMock) as mock:
-        mock.return_value = None
-        result = await get_job_status_tool(job_id="nonexistent")
-    assert "error" in result
-    assert "not found" in result["error"].lower()
+async def test_corpus_search_explains_an_unreachable_corpus_service():
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    real = httpx.AsyncClient
+    with patch(
+        "mcp_servers.candidate_server.httpx.AsyncClient",
+        lambda *a, **k: real(*a, transport=httpx.MockTransport(refuse), **k),
+    ):
+        message = await error_of(candidate_mcp, "corpus_search", query="roots")
+    assert "notes service is not available" in message and "ConnectError" in message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [(503, "INGESTION_ADMIN_KEY is unset"), (401, "rejected the admin key"), (500, "HTTP 500")],
+)
+async def test_admin_tools_explain_why_the_ingestion_service_refused(status, expected):
+    def answer(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, json={"detail": "x"})
+
+    real = httpx.AsyncClient
+    with patch(
+        "mcp_servers.admin_server.httpx.AsyncClient",
+        lambda *a, **k: real(*a, transport=httpx.MockTransport(answer), **k),
+    ):
+        message = await error_of(admin_mcp, "ingestion_list_jobs", limit=5)
+    assert expected in message
+
+
+@pytest.mark.asyncio
+async def test_admin_tool_sends_the_admin_key_the_operator_configured(monkeypatch):
+    from mcp_servers import admin_server
+    from shared.src.shared.config import ADMIN_KEY_HEADER
+
+    monkeypatch.setattr(
+        admin_server, "get_settings", lambda: McpSettings(ingestion_admin_key="s3cret")
+    )
+    seen: list[httpx.Request] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=[])
+
+    real = httpx.AsyncClient
+    with patch(
+        "mcp_servers.admin_server.httpx.AsyncClient",
+        lambda *a, **k: real(*a, transport=httpx.MockTransport(answer), **k),
+    ):
+        assert (await call(admin_mcp, "ingestion_list_jobs", limit=3))["count"] == 0
+    assert seen[0].headers[ADMIN_KEY_HEADER] == "s3cret"

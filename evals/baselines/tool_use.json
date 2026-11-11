@@ -1,0 +1,132 @@
+{
+  "schema": "eval-baseline/1",
+  "suite": "tool_use",
+  "meta": {
+    "model": "openrouter/recursive/flint-v1.0:free",
+    "mode": "live",
+    "tasks": 10,
+    "git_commit": "bad4f38",
+    "date_utc": "2026-11-11"
+  },
+  "note": "n is tasks for right_tool and args_match, and tool calls for tool_error_rate. With ten tasks a difference inside an interval is noise. Offline numbers come from a keyword router and only prove the wiring.",
+  "metrics": {
+    "tool_use.right_tool_rate": {
+      "value": 1.0,
+      "n": 10,
+      "ci95": [
+        0.7225,
+        1.0
+      ]
+    },
+    "tool_use.args_match_rate": {
+      "value": 0.8,
+      "n": 10,
+      "ci95": [
+        0.4902,
+        0.9433
+      ]
+    },
+    "tool_use.tool_error_rate": {
+      "value": 0.0526,
+      "n": 19,
+      "ci95": [
+        0.0094,
+        0.2464
+      ]
+    }
+  },
+  "tasks": [
+    {
+      "task_id": "tu01",
+      "first_tool": "corpus_search",
+      "right_tool": true,
+      "args_match": true,
+      "calls": 1,
+      "errors": 0,
+      "error_texts": []
+    },
+    {
+      "task_id": "tu02",
+      "first_tool": "practice_get_question",
+      "right_tool": true,
+      "args_match": true,
+      "calls": 1,
+      "errors": 0,
+      "error_texts": []
+    },
+    {
+      "task_id": "tu03",
+      "first_tool": "practice_get_question",
+      "right_tool": true,
+      "args_match": true,
+      "calls": 1,
+      "errors": 0,
+      "error_texts": []
+    },
+    {
+      "task_id": "tu04",
+      "first_tool": "practice_get_question",
+      "right_tool": true,
+      "args_match": true,
+      "calls": 1,
+      "errors": 0,
+      "error_texts": []
+    },
+    {
+      "task_id": "tu05",
+      "first_tool": "practice_get_question",
+      "right_tool": true,
+      "args_match": true,
+      "calls": 1,
+      "errors": 0,
+      "error_texts": []
+    },
+    {
+      "task_id": "tu06",
+      "first_tool": "essay_get_model",
+      "right_tool": true,
+      "args_match": true,
+      "calls": 1,
+      "errors": 0,
+      "error_texts": []
+    },
+    {
+      "task_id": "tu07",
+      "first_tool": "essay_get_model",
+      "right_tool": true,
+      "args_match": true,
+      "calls": 1,
+      "errors": 0,
+      "error_texts": []
+    },
+    {
+      "task_id": "tu08",
+      "first_tool": "corpus_search",
+      "right_tool": true,
+      "args_match": false,
+      "calls": 6,
+      "errors": 0,
+      "error_texts": []
+    },
+    {
+      "task_id": "tu09",
+      "first_tool": "corpus_search",
+      "right_tool": true,
+      "args_match": true,
+      "calls": 4,
+      "errors": 0,
+      "error_texts": []
+    },
+    {
+      "task_id": "tu10",
+      "first_tool": "practice_get_question",
+      "right_tool": true,
+      "args_match": false,
+      "calls": 2,
+      "errors": 1,
+      "error_texts": [
+        "{\"error\":\"Error executing tool practice_get_question: no quant question has question_type 'multiple_choice'. Valid question types for quant: 'multiple_choice_multiple', 'multiple_choice_single', 'numeric_entry', 'quantitative_comparison'. Leave question_type empty for any type.\"}"
+      ]
+    }
+  ]
+}
