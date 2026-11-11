@@ -120,7 +120,7 @@ Every retrieval filters by tier: global (admin uploads, visible to all), school 
 
 ### Guardrails
 
-`/chat` applies, in order: request size caps (message 4,000 chars; history 20 items of 4,000; candidate id 128; over a cap is a 422 before any model call), per-candidate rate limit (60 turns/min, 200/day, in memory), input PII redaction, content safety (OpenAI Moderation), a completeness check on the question, a tutor-mode answer-leak check (regex on the stream, LLM after the reply), a citation check (only when the agent reports sources) and output PII redaction. Output content safety is not applied. Every check logs `guardrail.{layer}.{name}.{pass|fail}` with the trace id. Token caps on the guardrail model calls are `COMPLETENESS_MAX_TOKENS` and `LEAK_CHECK_MAX_TOKENS`.
+`/chat` applies, in order: request size caps (message 4,000 chars; history 20 items of 4,000; candidate id 128; over a cap is a 422 before any model call), per-candidate rate limit (60 turns/min, 200/day, in memory), routing (a blank message or an unsupported exam and section is answered here, before any model call), input PII redaction, content safety (OpenAI Moderation), a completeness check on the question, a tutor-mode answer-leak check (regex on the stream, LLM after the reply), a citation check (only when the agent reports sources) and output PII redaction. Output content safety is not applied. Every check logs `guardrail.{layer}.{name}.{pass|fail}` with the trace id. Token caps on the guardrail model calls are `COMPLETENESS_MAX_TOKENS` and `LEAK_CHECK_MAX_TOKENS`.
 
 ### Measuring a turn
 
