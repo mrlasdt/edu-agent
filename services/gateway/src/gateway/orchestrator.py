@@ -34,10 +34,12 @@ class Orchestrator:
                     On miss → ClarificationTurn (not an exception; the agent service is not called)
       3. Return   — RouteResult carries the validated session
 
-    Step 2b (enrichment — Haiku LLM detecting incomplete questions) runs in the
-    gateway's /chat handler via check_completeness, before this class is called.
-    Step 2c (complexity classification) is a stub implementation in v1 and will
-    be filled in by issue 10.
+    Step 2b (enrichment — a cheap LLM detecting incomplete questions) runs in the
+    gateway's /chat handler via check_completeness, after this class has validated and
+    routed the turn.
+    Not built: complexity classification (Basic vs Advanced), the complexity-escalation
+    suggestion and the topic-relevance label. There is no code for them, not even a stub
+    (issue 10 and ADR-0002 describe the design).
     """
 
     def __init__(self, supported: Collection[tuple[str, str]] = SUPPORTED_PAIRS) -> None:

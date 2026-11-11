@@ -239,7 +239,21 @@ Docker Compose (`infra/docker-compose.yml`) is the one supported way to run the 
 - Login and learner identity: school and candidate corpus tiers cannot be written, and the IELTS mock is single-user.
 - Web UI beyond the chat shell: no sources panel, preferences, upload or conversation persistence (components exist but are not wired); math is typeset lightly, no LaTeX.
 - Most agent metadata is dropped on the way to the UI. The Solve-mode independent check (ADR-0015) covers numeric answers only: quantitative comparisons and other non-numeric answers show "not checkable", and "agrees" does not show the problem was read correctly. It costs one extra short model call per solve turn, and how often a real model writes a faithful equation is measured only by a live run (the offline `wrong_but_verified` uses each item's own expression).
-- Orchestrator complexity classification (a stub) and output content safety.
+- Orchestrator complexity classification (Basic or Advanced) and complexity-escalation suggestions: no code, prompt or stub exists. Advanced mode (planner, specialist sub-agents, assembler), its `BasicRouter` and `AdvancedRouter` classes and the "coming soon" message are not built either (ADR-0002).
+- Topic relevance (an `off_topic` label for questions outside the exam; design-log 0004).
+- Output content safety, and a copyright spot-check on AW output.
+- Prompt-injection defence on the chat path: retrieved notes and history enter the prompt as plain text, and there is no regex or model check for injected instructions.
+- A refusal policy in the system prompts (the prompts carry no refusal rules).
+- A soft quota (3 a day) on full-essay Solve turns; the sample-essay disclaimer is built, the quota is not.
+- On an answer leak the model check appends a notice; it does not regenerate the reply (ADR-0008).
+- A runtime `verifier-fail` event and the 1% sample of those events sent to human review (only the offline eval reports `verifier_fail`).
+- A style profile derived asynchronously from a learner's essays (`style_extractor`), and parent section chunks with summaries in the corpus (chunks are sections split into paragraphs).
+- Upload scanning: no magic-byte check, antivirus scan, moderation of chunks or PII offer on ingested files (only extension, MIME and size limits and the admin key).
+- Nightly eval run, anchor-essay self-check and the three drift alerts (`eval-live.yml` is manual only); the style-adherence judge, citation judge and personal-style similarity judge.
+- An A/B traffic split between prompt versions: one version is pinned per agent and mode, and the turn record carries no variant.
+- Named waiting states in the UI ("Checking your answer...", "Finding references..."): one fixed "thinking..." shows.
+- A locale key for prompts and rubrics (English only; ADR-0003).
+- A learner or session key on turn records, so a per-learner score trend (ADR-0005) cannot be computed yet.
 - Corpus beyond 55 short GRE Quant note sections (15 files); no AW corpus.
 - Question generation over HTTP, dedup against a bank, and difficulty calibration.
 - A calibrated IELTS grader (needs an examiner or blind-scored set of 60 essays).

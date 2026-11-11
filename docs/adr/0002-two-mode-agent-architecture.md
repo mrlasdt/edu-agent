@@ -6,6 +6,10 @@ The agent operates in two **complexity modes**. **Basic** — the v1-shipped def
 
 Accepted.
 
+## Implementation status
+
+Not everything below was built. Built: Basic mode, with validate and route in the `Orchestrator` class, enrichment as a gateway guardrail (`check_completeness`), and the side-car critics. **Not built:** complexity classification, the complexity-escalation suggestion, Advanced mode (planner, sub-agents, assembler), and the `BasicRouter` and `AdvancedRouter` classes and the "coming soon" message. The "interfaces and stubs in code" this record promises were never written (no code mentions complexity); Advanced mode is a v2 design, not a v1 stub. The Orchestrator makes no LLM call, and no model call picks Basic or Advanced.
+
 ## Considered options
 
 - **A. Single agent with conditionally-loaded Skills** — closest competitor; rejected because it loses the explicit code-level separation that makes the two specialist surfaces easy to evolve and test independently.
@@ -15,7 +19,7 @@ Accepted.
 
 ## Consequences
 
-- v1 ships Basic fully and Advanced as architected stubs. The orchestrator's `BasicRouter` returns Math Agent or Lit Agent; the `AdvancedRouter` throws `NotImplemented` and surfaces a friendly "coming soon" message to the Student.
+- v1 ships Basic fully and Advanced as architected stubs (original intent; the stubs were not built, see the implementation status). The orchestrator's `BasicRouter` returns Math Agent or Lit Agent; the `AdvancedRouter` throws `NotImplemented` and surfaces a friendly "coming soon" message to the Student.
 - The Orchestrator is itself an LLM-using component (Haiku-tier) for the enrich and complexity-classify steps. One Haiku call precedes every main-agent turn, adding ~300-500ms latency in exchange for incomplete-input handling and complexity-mismatch detection.
 - Tutor mode has different semantics by complexity: in Basic it scaffolds the answer; in Advanced it produces a plan rather than drafted prose. Solve mode produces the full artifact in both.
 - Complexity escalation is suggested, not auto-applied. Students stay in control of complexity, matching the student-controlled mode-switch policy.
