@@ -256,7 +256,7 @@ evals/      eval harness, golden sets, baselines, exam_set tooling
 prompts/    versioned system prompts
 config/     model configs and IELTS calibration
 infra/      docker-compose.yml
-docs/       adr/ (decision records), design-log/, walkthrough/, CONTEXT.md at the repo root
+docs/       adr/ (decision records), design-log/, CONTEXT.md at the repo root
 ```
 
 Architectural decisions are recorded as ADRs in `docs/adr/`; `CONTEXT.md` is the domain glossary.
