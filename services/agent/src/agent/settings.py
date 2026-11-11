@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 
 from shared.src.shared.config import LangfuseSettings, LlmSettings, TurnLogSettings
 
@@ -20,6 +21,11 @@ class AgentSettings(LlmSettings, TurnLogSettings, LangfuseSettings):
     context_compaction_enabled: bool = True
     context_keep_messages: int = 8
     context_fold_step: int = 4
+    # How the Quant tutor gets its reference notes. "upfront": every turn searches the corpus
+    # with the student's message and puts the top notes in front of the model. "just_in_time":
+    # the model calls `notes_search` itself when a hint needs a fact (tutor mode only; solve
+    # mode and the AW agent keep the up-front search). A just-in-time turn is not streamed.
+    retrieval_mode: Literal["upfront", "just_in_time"] = "upfront"
 
 
 @lru_cache

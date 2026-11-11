@@ -187,12 +187,16 @@ def run_meta(args: argparse.Namespace, model: str, chain: list[str]) -> RunMeta:
         is_product_default_model=model == product_default,
         math_tools=args.math_tools,
         context_budget=args.context_budget,
+        retrieval=args.retrieval,
         prompt_versions={
             mode: config.prompt_version(
                 "quant_agent_math_tools" if args.math_tools == "on" else "quant_agent", mode
             )
             for mode in ("tutor", "solve")
-        },
+        } | (
+            {"notes_tool": config.prompt_version("quant_agent_notes_tool", "tutor")}
+            if args.retrieval == "just_in_time" else {}
+        ),
         temperature=role.temperature,
         git_commit=commit or None,
         date_utc=time.strftime("%Y-%m-%d", time.gmtime()),
@@ -225,6 +229,10 @@ def main(argv: list[str] | None = None) -> int:
                         "the older turns of a long session (the opening message stays pinned); "
                         "only conversations over 12 messages differ, so run both on the 20-turn "
                         "item (m005) to compare")
+    p.add_argument("--retrieval", choices=["upfront", "just_in_time"], default="upfront",
+                   help="how the Quant tutor gets reference notes: upfront (the product default) "
+                        "searches with the student's message every turn; just_in_time lets the "
+                        "model call notes_search itself. Run both on one model to compare")
     p.add_argument("--samples", type=int, default=ielts_writing.DEFAULT_SAMPLES,
                    help="attempts per item in the quant suite (pass@k and pass^k are over these); "
                         "grader samples per essay in the IELTS suites (per-criterion median)")

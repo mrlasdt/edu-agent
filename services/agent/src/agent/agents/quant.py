@@ -16,6 +16,8 @@ from services.agent.src.agent.prompting import build_messages, collect_stream
 from services.agent.src.agent.settings import get_settings
 from services.agent.src.agent.tool_loop import ANSWERED, ToolCallRecord, run_tool_loop
 from services.agent.src.agent.tools.math_tools import MATH_TOOL_SPECS, MathTools
+from services.agent.src.agent.tools.notes_tools import NOTES_TOOL_SPECS, NotesTools
+from services.agent.src.agent.tools.toolbox import ToolBox
 from shared.src.shared import events
 from shared.src.shared.config import load_model_config
 from shared.src.shared.events import Event, Sources, Token, ToolTrace, Verified
@@ -29,6 +31,9 @@ _log = logging.getLogger(__name__)
 _AGENT = "quant_agent"
 # The same prompts plus a "Math tools" section; used only when the math tools are on.
 _TOOLS_AGENT = "quant_agent_math_tools"
+# The notes section appended to the tutor prompt when the model looks notes up itself.
+_NOTES_AGENT = "quant_agent_notes_tool"
+RETRIEVAL_MODES = ("upfront", "just_in_time")
 _NO_REPLY = "I could not finish working that out just now. Could you send the problem again?"
 
 # Maximum retries before escalating to the stronger model
@@ -62,8 +67,12 @@ class _ToolTurn:
     several times; the calls of all attempts are kept).
     """
 
-    def __init__(self, math_tools: MathTools) -> None:
-        self._math_tools = math_tools
+    def __init__(
+        self, box: ToolBox, *, math: bool = True, notes: NotesTools | None = None
+    ) -> None:
+        self._box = box
+        self._math = math
+        self.notes = notes
         self.calls: list[ToolCallRecord] = []
         self.rounds = 0
         self.stop_reason = ANSWERED
@@ -81,8 +90,8 @@ class _ToolTurn:
             meter,
             model=model,
             messages=messages,
-            tools=MATH_TOOL_SPECS,
-            execute=self._math_tools.call,
+            tools=self._box.specs,
+            execute=self._box.call,
             temperature=temperature,
             **(obs_meta or {}),
         )
@@ -92,15 +101,22 @@ class _ToolTurn:
             self.stop_reason = outcome.stop_reason
         for call in outcome.calls:
             _log.info(
-                "math tool %s ok=%s ms=%s args=%s result=%s",
+                "tool %s ok=%s ms=%s args=%s result=%s",
                 call.name, call.ok, call.ms, call.arguments, call.result,
             )
         return outcome.text.strip() or _NO_REPLY
 
     def annotate(self, meter: TurnMeter) -> None:
         """Put the calls on the turn record (the operator's log; the learner never sees it)."""
+        if self._math:
+            meter.annotate(math_tools=True)
+        if self.notes is not None:
+            meter.annotate(
+                retrieval="just_in_time",
+                notes_retrieved=len(self.notes.chunks),
+                notes_searches=len(self.notes.concepts),
+            )
         meter.annotate(
-            math_tools=True,
             tool_rounds=self.rounds,
             tool_calls=[c.public() for c in self.calls],
             tool_errors=sum(1 for c in self.calls if not c.ok),
@@ -207,6 +223,7 @@ class QuantAgent(BaseAgent):
         math_tools: MathTools | None = None,
         math_tools_enabled: bool | None = None,
         context_compaction: bool | None = None,
+        retrieval_mode: str | None = None,
     ) -> None:
         self._model_config = load_model_config(model_config_path)
         settings = get_settings()
@@ -219,12 +236,33 @@ class QuantAgent(BaseAgent):
                 else context_compaction)
             else None
         )
+        mode = settings.retrieval_mode if retrieval_mode is None else retrieval_mode
+        if mode not in RETRIEVAL_MODES:
+            raise ValueError(f"retrieval_mode {mode!r} is not one of {', '.join(RETRIEVAL_MODES)}")
+        self._just_in_time = mode == "just_in_time"
         self._math_tools_enabled = (
             get_settings().math_tools_enabled if math_tools_enabled is None else math_tools_enabled
         )
         self._math_tools = math_tools
         self._retrieve_corpus = retrieve_corpus or RetrieveCorpus(apply_relevance_floor=True)
         self._verify_math = verify_math or VerifyMath()
+
+    def _tool_turn(self, session: Session, just_in_time: bool) -> _ToolTurn | None:
+        """The tools this turn offers (math, notes or both); None means the plain streamed call."""
+        sets: list[tuple[list[dict[str, Any]], Any]] = []
+        if self._math_tools_enabled:
+            sets.append((MATH_TOOL_SPECS, (self._math_tools or MathTools()).call))
+        notes: NotesTools | None = None
+        if just_in_time:
+            notes = NotesTools(
+                self._retrieve_corpus,
+                candidate_id=session.candidate_id,
+                test_type=session.test_type,
+            )
+            sets.append((NOTES_TOOL_SPECS, notes.call))
+        if not sets:
+            return None
+        return _ToolTurn(ToolBox(*sets), math=self._math_tools_enabled, notes=notes)
 
     # ── public interface ──────────────────────────────────────────────────────
 
@@ -242,29 +280,36 @@ class QuantAgent(BaseAgent):
                                reply the learner sees)
         """
         mode = session.mode.value
+        # Just-in-time notes are the tutor's: solve mode keeps the up-front search.
+        just_in_time = self._just_in_time and session.mode == Mode.tutor
         prompt_agent = _TOOLS_AGENT if self._math_tools_enabled else _AGENT
         version = self._model_config.prompt_version(prompt_agent, mode)
         # The turn record names the prompt that ran; the tools prompt is its own versioned file.
         reported = f"math_tools-{version}" if self._math_tools_enabled else version
+        notes_section = ""
+        if just_in_time:
+            notes_version = self._model_config.prompt_version(_NOTES_AGENT, mode)
+            notes_section = "\n\n" + read_prompt(_NOTES_AGENT, mode, notes_version)
+            reported = f"{reported}+notes_tool-{notes_version}"
         obs_meta = build_llm_metadata(trace_id=trace_id, prompt_version=reported)
         meter = TurnMeter(trace_id, "agent", "quant_agent", mode, reported)
-        tools = _ToolTurn(self._math_tools or MathTools()) if (
-            self._math_tools_enabled
-        ) else None
+        tools = self._tool_turn(session, just_in_time)
         try:
             session, context_section = self._compact(session, meter)
-            with meter.phase("retrieval"):
-                chunks = await self._retrieve(session, message)
-            meter.annotate(notes_retrieved=len(chunks))
+            chunks: list[CorpusChunk] = []
+            if not just_in_time:
+                with meter.phase("retrieval"):
+                    chunks = await self._retrieve(session, message)
+                meter.annotate(notes_retrieved=len(chunks))
             if chunks:
                 yield Sources(count=len(chunks))
             chunk_context = _format_chunks_for_context(chunks)
             if session.mode == Mode.tutor:
-                async for token in self._tutor_turn(
+                async for event in self._tutor_turn(
                     session, message, meter, obs_meta, version, chunk_context, tools,
-                    context_section,
+                    context_section, notes_section,
                 ):
-                    yield token
+                    yield event
             else:
                 async for item in self._solve_turn(
                     session, message, meter, obs_meta, version, chunk_context, tools,
@@ -295,24 +340,28 @@ class QuantAgent(BaseAgent):
         chunk_context: str = "",
         tools: _ToolTurn | None = None,
         context_section: str = "",
-    ) -> AsyncGenerator[Token, None]:
+        notes_section: str = "",
+    ) -> AsyncGenerator[Event, None]:
         system_prompt = (
             _load_prompt(Mode.tutor, version, _TOOLS_AGENT)
-            if tools is not None
+            if self._math_tools_enabled
             else _load_prompt(Mode.tutor, version)
-        ) + context_section
+        ) + context_section + notes_section
         messages = build_messages(session, message, system_prompt, chunk_context)
         model = self._model_config.litellm_model("quant_agent")
         temperature = self._model_config.role("quant_agent").temperature
 
         if tools is not None:
             # Tool results stay in the loop's own message list; only the final text is yielded.
-            yield Token(
-                text=await tools.reply(
-                    meter, model=model, messages=messages, temperature=temperature,
-                    obs_meta=obs_meta,
-                )
+            text = await tools.reply(
+                meter, model=model, messages=messages, temperature=temperature,
+                obs_meta=obs_meta,
             )
+            if tools.notes is not None:
+                # The count goes first so the gateway can check the reply's [N] against it, and
+                # it is sent even when it is 0: a turn that searched nothing may cite nothing.
+                yield Sources(count=len(tools.notes.chunks))
+            yield Token(text=text)
             return
         response = meter.stream(
             model=model,
@@ -340,7 +389,7 @@ class QuantAgent(BaseAgent):
     ) -> AsyncGenerator[Event, None]:
         system_prompt = (
             _load_prompt(Mode.solve, version, _TOOLS_AGENT)
-            if tools is not None
+            if self._math_tools_enabled
             else _load_prompt(Mode.solve, version)
         ) + context_section
         base_messages = build_messages(session, message, system_prompt, chunk_context)

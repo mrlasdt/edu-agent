@@ -114,6 +114,7 @@ class TurnCost(StrictModel):
     latency_ms_p50: float | None = None
     latency_ms_p95: float | None = None
     turns_with_estimated_tokens: int | None = None
+    turns_with_notes: int | None = None  # turns that were shown at least one reference note
 
 
 class RunMeta(StrictModel):
@@ -127,6 +128,7 @@ class RunMeta(StrictModel):
     is_product_default_model: bool
     math_tools: str | None = None
     context_budget: str | None = None  # "on" folds old turns of a long session, "off" keeps all
+    retrieval: str | None = None  # "upfront" or "just_in_time"
     prompt_versions: dict[str, Any] | None = None
     temperature: float | None = None
     git_commit: str | None
@@ -197,6 +199,7 @@ class TurnUsage(StrictModel):
     tool_budget_exhausted: bool
     latency_ms: float
     estimated: bool
+    notes_retrieved: int = 0
 
 
 class TranscriptMessage(StrictModel):

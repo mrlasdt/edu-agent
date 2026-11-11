@@ -120,6 +120,7 @@ class QuantSuite:
                 retrieve_corpus=quant_suite.NotesCorpus(notes),
                 math_tools_enabled=args.math_tools == "on",
                 context_compaction=args.context_budget == "on",
+                retrieval_mode=args.retrieval,
             )
 
         with quant_suite.collecting_turns() as collector:
@@ -157,6 +158,7 @@ class QuantJudgeSuite:
             retrieve_corpus=quant_suite.NotesCorpus([]),
             math_tools_enabled=ctx.args.math_tools == "on",
             context_compaction=ctx.args.context_budget == "on",
+            retrieval_mode=ctx.args.retrieval,
         )
         solve_items = self._solve_items()
         rate = min(1.0, ctx.args.max_items / len(solve_items))

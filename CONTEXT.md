@@ -145,7 +145,7 @@ _Avoid_: Essay score, score estimate
 ## Agent building blocks
 
 **Tool**:
-A function the model chooses to call from a declared list during a turn (the Quant agent's math tools, in `services/agent/src/agent/tools/`). Example: the model decides to call `math_evaluate` on "15% of 80". Whether it is called is the model's decision.
+A function the model chooses to call from a declared list during a turn (the Quant agent's math tools and, with `RETRIEVAL_MODE=just_in_time`, `notes_search`, in `services/agent/src/agent/tools/`). Example: the model decides to call `math_evaluate` on "15% of 80". Whether it is called is the model's decision.
 _Avoid_: Skill, capability
 
 **Capability**:
