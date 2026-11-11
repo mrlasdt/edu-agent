@@ -276,6 +276,6 @@
     "hybrid+rerank": null
   },
   "skipped": {
-    "hybrid+rerank": "no --reranker-url (the reranker is opt-in)"
+    "hybrid+rerank": "the reranker did not answer for 46 of 46 queries (it fails open to the RRF order)"
   }
 }
