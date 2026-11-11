@@ -48,16 +48,16 @@ async def ingestion_submit_document(
     test_type: str = "gre",
 ) -> dict[str, Any]:
     """
-    Submit a document to be indexed into the global corpus. It returns at once with a job id; the
-    indexing runs in the background, so follow it with ingestion_get_job. Needs
-    INGESTION_ADMIN_KEY in this server's environment.
+    Submit a document to be indexed into the global corpus. Small files are indexed before this
+    returns (status "completed"); larger ones return "queued" and are indexed in the background,
+    so follow those with ingestion_get_job. Needs INGESTION_ADMIN_KEY in this server's environment.
 
     Args:
         file_path: Absolute path of a PDF, DOCX or TXT file on the machine running this server.
         test_type: The exam the document belongs to; "gre" by default.
 
     Returns:
-        {"job_id": str, "status": "queued"}
+        {"job_id": str, "status": "completed" | "queued"}
     """
     path = Path(file_path)
     if not path.is_absolute():
@@ -69,8 +69,7 @@ async def ingestion_submit_document(
         raise ToolError(
             f"no file at {file_path!r}. Check the path; it must be a file, not a folder."
         )
-    job_id = await _ingest_document(file_path=file_path, test_type=test_type)
-    return {"job_id": job_id, "status": "queued"}
+    return await _ingest_document(file_path=file_path, test_type=test_type)
 
 
 @mcp.tool()
@@ -94,8 +93,8 @@ async def ingestion_list_jobs(limit: int = 20) -> dict[str, Any]:
 @mcp.tool()
 async def ingestion_get_job(job_id: str) -> dict[str, Any]:
     """
-    Get the current state of one ingestion job: queued, running, done or failed, and at which
-    stage it failed. Get the job_id from ingestion_submit_document or ingestion_list_jobs.
+    Get the current state of one ingestion job: queued, processing, completed or failed, and at
+    which stage it failed. Get the job_id from ingestion_submit_document or ingestion_list_jobs.
 
     Args:
         job_id: The job's identifier.
@@ -144,7 +143,7 @@ def _admin_headers() -> dict[str, str]:
     return {ADMIN_KEY_HEADER: get_settings().ingestion_admin_key}
 
 
-async def _ingest_document(file_path: str, test_type: str) -> str:
+async def _ingest_document(file_path: str, test_type: str) -> dict[str, Any]:
     settings = get_settings()
     content = Path(file_path).read_bytes()
     filename = Path(file_path).name
@@ -157,7 +156,8 @@ async def _ingest_document(file_path: str, test_type: str) -> str:
                 headers=_admin_headers(),
             )
             r.raise_for_status()
-            return str(r.json()["job_id"])
+            body = r.json()
+            return {"job_id": str(body["job_id"]), "status": str(body["status"])}
 
 
 async def _list_jobs(limit: int) -> list[dict[str, Any]]:

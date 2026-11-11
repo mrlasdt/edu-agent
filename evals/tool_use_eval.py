@@ -183,6 +183,15 @@ class TaskResult:
     error_texts: list[str] = field(default_factory=list)
 
 
+def _parse_arguments(raw: str) -> dict[str, Any]:
+    """The tool loop shortens long argument strings, so a truncated one counts as no match."""
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
 async def run_task(
     task: Task, *, model: str, specs: list[dict[str, Any]], server: FastMCP
 ) -> TaskResult:
@@ -200,7 +209,7 @@ async def run_task(
         temperature=0,
     )
     first = run.calls[0] if run.calls else None
-    arguments = json.loads(first.arguments) if first and first.arguments.startswith("{") else {}
+    arguments = _parse_arguments(first.arguments) if first else {}
     return TaskResult(
         task_id=task.id,
         first_tool=first.name if first else None,

@@ -76,6 +76,19 @@ def test_a_wrong_first_tool_and_an_error_are_both_counted(tmp_path):
     assert "query is empty" in summary.results[0].error_texts[0]
 
 
+def test_a_long_query_that_the_tool_loop_shortens_scores_as_a_mismatch_not_a_crash(tmp_path):
+    from evals.agent_eval.transport import FakeToolCalls
+
+    def wordy(model: str, messages: list[dict[str, Any]]) -> str | FakeToolCalls:
+        if any(m.get("role") == "tool" for m in messages):
+            return "done"
+        return FakeToolCalls([("corpus_search", {"query": "essay " * 100})])
+
+    transport = MeteredTransport(Ledger(tmp_path / "ledger.jsonl", 1.0), "t", fake_model=wordy)
+    summary = asyncio.run(tue.evaluate(transport, "wordy", tue.load_tasks()[:1]))
+    assert summary.right_tool.successes == 1 and summary.args_match.successes == 0
+
+
 def test_baseline_json_has_the_metrics_with_n_and_interval(tmp_path):
     transport = MeteredTransport(
         Ledger(tmp_path / "ledger.jsonl", 1.0), "t", fake_model=tue.keyword_router)

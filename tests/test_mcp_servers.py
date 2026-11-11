@@ -331,14 +331,14 @@ async def test_essay_get_model_errors_list_the_valid_prompt_ids_and_tiers():
 
 
 @pytest.mark.asyncio
-async def test_submit_document_returns_a_queued_job_id(tmp_path):
+async def test_submit_document_returns_the_services_job_id_and_status(tmp_path):
     guide = tmp_path / "guide.pdf"
     guide.write_bytes(b"%PDF")
     with patch("mcp_servers.admin_server._ingest_document", new_callable=AsyncMock) as mock:
-        mock.return_value = "job-abc-123"
+        mock.return_value = {"job_id": "job-abc-123", "status": "completed"}
         result = await call(
             admin_mcp, "ingestion_submit_document", file_path=str(guide), test_type="gre")
-    assert result == {"job_id": "job-abc-123", "status": "queued"}
+    assert result == {"job_id": "job-abc-123", "status": "completed"}
     assert mock.call_args.kwargs == {"file_path": str(guide), "test_type": "gre"}
 
 
@@ -356,7 +356,7 @@ async def test_submit_document_explains_a_relative_path_and_a_missing_file(tmp_p
 
 @pytest.mark.asyncio
 async def test_list_jobs_returns_a_count_and_the_jobs_and_checks_the_limit():
-    jobs = [{"job_id": "j1", "status": "done"}, {"job_id": "j2", "status": "failed"}]
+    jobs = [{"job_id": "j1", "status": "completed"}, {"job_id": "j2", "status": "failed"}]
     with patch("mcp_servers.admin_server._list_jobs", new_callable=AsyncMock) as mock:
         mock.return_value = jobs
         result = await call(admin_mcp, "ingestion_list_jobs", limit=10)
