@@ -70,6 +70,9 @@ class RetrieveCorpus:
                     "school_id": school_id,
                     "test_type": test_type,
                     "top_k": top_k,
+                    # Notes ground an answer and get cited: show none rather than the
+                    # least-bad ones when the message is not about anything in the corpus.
+                    "apply_relevance_floor": True,
                 },
             )
             response.raise_for_status()

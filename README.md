@@ -167,6 +167,8 @@ uv run python -m evals.agent_eval --mode live --provider free+openai    # free c
 
 Useful tools: `uv run python -m evals.read_transcripts --worst 5`, `uv run python -m evals.quant_report`.
 
+Retrieval has its own eval, `uv run python -m evals.retrieval_eval --embedder-url http://localhost:8080` (needs Docker for a throwaway Qdrant and a running `tei-embedder`; no language model is called). It indexes `seed/gre-quant/`, replays 46 labelled queries (`evals/golden/gre_retrieval.jsonl`: exact terms, paraphrases, off-topic) through dense-only, hybrid and, with `--reranker-url`, hybrid plus rerank, and prints recall@3, MRR@3, how often an off-topic query still gets a note, and a sweep of the relevance floor. The checked-in numbers are `evals/baselines/retrieval.json` (BGE-M3, small query set: it detects large differences, not small ones).
+
 ### Golden sets for IELTS and SAT
 
 `evals/exam_set/` builds exam items (ADR-0013). Every item has a label tier (`examiner`, `teacher_graded`, `captain_blind`, `site_or_model_weak`, `solver`, `author_key`) and every metric is reported against a tier and a sample size. Committed items are original: `sat_math.jsonl` and `ielts_reading.jsonl` in `evals/golden/`, and `ielts_writing_prompts.jsonl`, which the product serves and so keeps under `shared/src/shared/ielts/data/` (evals reads it there). Third-party data is imported only into the gitignored `evals/golden/local/`:
@@ -238,7 +240,7 @@ Docker Compose (`infra/docker-compose.yml`) is the one supported way to run the 
 - Web UI beyond the chat shell: no sources panel, preferences, upload or conversation persistence (components exist but are not wired); math is typeset lightly, no LaTeX.
 - Most agent metadata is dropped on the way to the UI. The Solve-mode independent check (ADR-0015) covers numeric answers only: quantitative comparisons and other non-numeric answers show "not checkable", and "agrees" does not show the problem was read correctly. It costs one extra short model call per solve turn, and how often a real model writes a faithful equation is measured only by a live run (the offline `wrong_but_verified` uses each item's own expression).
 - Orchestrator complexity classification (a stub) and output content safety.
-- Corpus beyond nine short GRE Quant notes; no AW corpus.
+- Corpus beyond 55 short GRE Quant note sections (16 files); no AW corpus.
 - Question generation over HTTP, dedup against a bank, and difficulty calibration.
 - A calibrated IELTS grader (needs an examiner or blind-scored set of 60 essays).
 - A durable human review queue (in memory only).

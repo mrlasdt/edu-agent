@@ -1,0 +1,15 @@
+# Solving linear inequalities
+
+Solve an inequality like an equation, with one rule added: multiplying or dividing both sides by a negative number reverses the inequality sign. From -3x + 2 > 11 you get -3x > 9, then x < -3. Forgetting to flip the sign when dividing by a negative is the most common slip, so check with a test value from your answer.
+
+# Absolute value equations
+
+The absolute value |a| is the distance of a from zero, so it is never negative. The equation |x - 3| = 5 splits into two cases, x - 3 = 5 and x - 3 = -5, giving x = 8 or x = -2. Always check each case, because an equation such as |x| = -4 has no solution at all.
+
+# Absolute value inequalities
+
+|x - 3| < 5 means the distance from x to 3 is under 5, so -5 < x - 3 < 5 and -2 < x < 8, one connected interval. |x - 3| > 5 means the distance is over 5, so x < -2 or x > 8, two separate pieces. Reading the expression as a distance on a number line makes the direction of the sign easy to remember.
+
+# Combining inequalities
+
+If a < b and b < c then a < c. You may add inequalities that point the same way, but you may not subtract them or multiply them unless every quantity is known to be positive. When a problem gives ranges for x and y, find the extreme value of x + y by adding the two smallest and the two largest bounds.

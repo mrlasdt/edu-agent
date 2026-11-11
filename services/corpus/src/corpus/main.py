@@ -17,7 +17,7 @@ from services.corpus.src.corpus.retriever import (
     _tier_tiebreak,
     build_search_filter,
 )
-from services.corpus.src.corpus.settings import get_settings
+from services.corpus.src.corpus.settings import CorpusSettings, get_settings
 from shared.src.shared.corpus import ChunkPayload
 from shared.src.shared.embedder import embed_query
 from shared.src.shared.reranker import rerank_texts
@@ -85,6 +85,10 @@ class RetrieveRequest(BaseModel):
     school_id: str
     test_type: str
     top_k: int = 5
+    # Drop chunks below the relevance floor (see passes_relevance_floor) so an off-topic
+    # question gets no notes. Off by default: callers that ask for a candidate's own essays
+    # with a generic query ("essay") want every chunk, not only the on-topic ones.
+    apply_relevance_floor: bool = False
 
 
 class ChunkResult(BaseModel):
@@ -136,6 +140,7 @@ async def retrieve(request: RetrieveRequest) -> list[dict[str, Any]]:
         school_id=request.school_id,
         test_type=request.test_type,
         top_k=request.top_k,
+        apply_relevance_floor=request.apply_relevance_floor,
     )
     return results
 
@@ -160,7 +165,7 @@ async def _rerank(query: str, ranked: list[dict[str, Any]], top_k: int) -> list[
         logger.warning("reranker unavailable; keeping pre-rerank order", exc_info=True)
         return ranked
     reranked = [
-        {**hit, "score": score}
+        {**hit, "score": score, "reranked": True}
         for hit, score in sorted(zip(window, scores, strict=True), key=lambda x: -x[1])
     ]
     return _tier_tiebreak(reranked, threshold=RRF_TIE_THRESHOLD) + ranked[len(window) :]
@@ -175,9 +180,51 @@ async def search_corpus(
     school_id: str,
     test_type: str,
     top_k: int = 5,
+    apply_relevance_floor: bool = False,
 ) -> list[dict[str, Any]]:
     """
-    Hybrid retrieval against Qdrant (ADR-0004):
+    The top_k citation-facing chunks for a query (see `search_candidates` for how they are
+    found and ranked). With `apply_relevance_floor`, chunks whose relevance signal is below the
+    configured floor are dropped (see `passes_relevance_floor`), so an off-topic message gets
+    no notes at all instead of the three least-bad ones.
+    """
+    settings = get_settings()
+    ranked = await search_candidates(
+        query, candidate_id, school_id, test_type, top_k, settings=settings
+    )
+    if apply_relevance_floor:
+        ranked = [h for h in ranked if passes_relevance_floor(h, settings)]
+    return [to_chunk_result(h["payload"], h["score"]).model_dump() for h in ranked]
+
+
+def passes_relevance_floor(hit: dict[str, Any], settings: CorpusSettings) -> bool:
+    """
+    Is this ranked hit relevant enough to show the model?
+
+    A fused RRF score only says "rank 1 in both lists", whatever the query was, so it cannot
+    tell an on-topic hit from the least-bad hit of an off-topic query. The floor therefore
+    reads a signal that keeps its magnitude: the cross-encoder score when the rerank step ran,
+    otherwise the dense cosine similarity (hits only the sparse channel found carry none and
+    do not pass). The two scales differ, so each has its own floor in CorpusSettings.
+    """
+    if hit.get("reranked"):
+        return float(hit["score"]) >= settings.rerank_relevance_floor
+    dense = hit.get("dense_score")
+    return dense is not None and float(dense) >= settings.dense_relevance_floor
+
+
+async def search_candidates(
+    query: str,
+    candidate_id: str,
+    school_id: str,
+    test_type: str,
+    top_k: int = 5,
+    *,
+    settings: CorpusSettings | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Hybrid retrieval against Qdrant (ADR-0004), returning the ranked top_k hits as
+    {"id", "score", "payload", "dense_score"?, "reranked"?} dicts:
       1. Embed the query via TEI (BGE-M3 dense) and encode its sparse vector
       2. Dense and sparse ANN searches, each with the three-tier ACL +
          test_type payload filter, fused with Reciprocal Rank Fusion
@@ -198,8 +245,11 @@ async def search_corpus(
     The rerank step fails open: if the reranker is unreachable or returns a bad
     response, the pre-rerank order (and scores) are used and a warning is logged.
     After a successful rerank, `score` is the reranker's relevance score.
+
+    `settings` defaults to the process settings; the retrieval eval passes its own so it can
+    compare configurations without touching the environment.
     """
-    settings = get_settings()
+    settings = settings or get_settings()
     hybrid = settings.hybrid_retrieval_enabled
     try:
         query_vec = await embed_query(query, url=settings.tei_embedder_url)
@@ -263,12 +313,22 @@ async def search_corpus(
             for p in response.points
         ]
 
+    dense_hits = _hits(dense_response)
     if sparse_response is None:
-        ranked = _tier_tiebreak(_hits(dense_response))
+        ranked = _tier_tiebreak(dense_hits)
     else:
-        fused = _rrf_merge(_hits(dense_response), _hits(sparse_response))
+        fused = _rrf_merge(dense_hits, _hits(sparse_response))
         ranked = _tier_tiebreak(fused, threshold=RRF_TIE_THRESHOLD)
+    # Keep the cosine similarity next to the fused or reranked score: it is the signal the
+    # relevance floor can read when no reranker ran (see passes_relevance_floor).
+    dense_scores = {h["id"]: h["score"] for h in dense_hits}
+    sparse_scores = (
+        {h["id"]: h["score"] for h in _hits(sparse_response)} if sparse_response is not None else {}
+    )
+    ranked = [
+        {**h, "dense_score": dense_scores.get(h["id"]), "sparse_score": sparse_scores.get(h["id"])}
+        for h in ranked
+    ]
     if settings.tei_reranker_url:
         ranked = await _rerank(query, ranked, top_k)
-    ranked = ranked[:top_k]
-    return [to_chunk_result(h["payload"], h["score"]).model_dump() for h in ranked]
+    return ranked[:top_k]

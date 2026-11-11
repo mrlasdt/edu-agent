@@ -1,0 +1,15 @@
+# Adding and comparing fractions
+
+To add fractions, rewrite them over a common denominator: 1/6 + 3/8 = 4/24 + 9/24 = 13/24. To compare two fractions, cross-multiply: a/b is larger than c/d when ad is larger than bc (for positive b and d). For example 5/7 versus 8/11: 5 x 11 = 55 and 8 x 7 = 56, so 8/11 is slightly larger.
+
+# Converting between fractions, decimals and percents
+
+Memorize the common values: 1/8 = 0.125, 1/6 = 0.1667, 1/5 = 0.2, 3/8 = 0.375, 2/3 = 0.6667. To turn a fraction into a decimal, divide the numerator by the denominator. A repeating decimal such as 0.333... equals 1/3. Moving the decimal point two places right turns a decimal into a percent.
+
+# Reciprocals and dividing by a fraction
+
+The reciprocal of a/b is b/a, and dividing by a fraction means multiplying by its reciprocal: 6 / (2/3) = 6 x 3/2 = 9. A number between 0 and 1 has a reciprocal larger than 1, and the reciprocal of a number larger than 1 is smaller than 1. Be careful with negatives: the reciprocal of -1/2 is -2.
+
+# Place value and rounding
+
+Each digit's value depends on its position: in 4,172.35 the digit 7 stands for 70. To round to a given place, look at the digit just to the right: 5 or more rounds up, 4 or less rounds down. Rounding only at the very end of a calculation avoids accumulating error; rounding early can change which answer choice is closest.

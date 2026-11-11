@@ -1,0 +1,15 @@
+# Slope and the equation of a line
+
+The slope of the line through (x1, y1) and (x2, y2) is (y2 - y1)/(x2 - x1), rise over run. A line in slope-intercept form is y = mx + b, where m is the slope and b is where the line crosses the y-axis. Parallel lines have equal slopes, and perpendicular lines have slopes that are negative reciprocals, such as 2 and -1/2.
+
+# Distance and midpoint
+
+The distance between two points comes from the Pythagorean theorem: d = sqrt((x2 - x1)^2 + (y2 - y1)^2). The midpoint is the average of the coordinates: ((x1 + x2)/2, (y1 + y2)/2). The distance from (1, 2) to (4, 6) is sqrt(9 + 16) = 5.
+
+# Intercepts and graphs of equations
+
+To find where a graph crosses the x-axis, set y = 0 and solve; to find where it crosses the y-axis, set x = 0. A parabola y = ax^2 + bx + c opens upward when a is positive and downward when a is negative, and its roots are its x-intercepts. Two graphs meet where their equations are equal, so set the right sides equal and solve.
+
+# Areas on the coordinate plane
+
+For a rectangle or triangle drawn on the plane, find side lengths by subtracting coordinates when sides are horizontal or vertical. For a triangle with a horizontal base, the height is the vertical distance from the base line to the opposite vertex. Draw a quick sketch: most coordinate problems get easier once the shape is on paper.

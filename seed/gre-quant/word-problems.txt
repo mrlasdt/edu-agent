@@ -1,0 +1,11 @@
+# Simple and compound interest
+
+Simple interest on principal P at rate r for t years is P x r x t. Compound interest grows the balance each period: P(1 + r)^t for annual compounding. At 10 percent for 2 years, 100 becomes 121 with compounding but only 120 with simple interest. The gap grows quickly as time increases.
+
+# Profit, markup and discount
+
+Profit equals revenue minus cost, and markup is usually a percent of cost. A discount is a percent of the listed price, and a series of discounts multiplies: 20 percent off followed by 10 percent off is 0.8 x 0.9 = 0.72 of the original price, a 28 percent total discount, not 30 percent.
+
+# Translating words into equations
+
+Define a variable for the unknown first. Phrases map to operations: "is" means equals, "of" means multiply, "more than" means add, "less than" reverses the order, so "5 less than x" is x - 5. Check that the answer makes sense in the story, for example that a count of people is a whole number.
