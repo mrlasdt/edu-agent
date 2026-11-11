@@ -23,9 +23,12 @@ class RetrieveCorpus:
     The _call_corpus seam is patched in unit tests.
     """
 
-    def __init__(self, corpus_url: str | None = None) -> None:
+    def __init__(
+        self, corpus_url: str | None = None, *, apply_relevance_floor: bool = False
+    ) -> None:
         settings = get_settings()
         self._corpus_url = corpus_url or settings.corpus_service_url
+        self._apply_relevance_floor = apply_relevance_floor
 
     async def retrieve(
         self,
@@ -70,9 +73,7 @@ class RetrieveCorpus:
                     "school_id": school_id,
                     "test_type": test_type,
                     "top_k": top_k,
-                    # Notes ground an answer and get cited: show none rather than the
-                    # least-bad ones when the message is not about anything in the corpus.
-                    "apply_relevance_floor": True,
+                    "apply_relevance_floor": self._apply_relevance_floor,
                 },
             )
             response.raise_for_status()

@@ -64,6 +64,7 @@ Moderation API). See README "Not built yet" for what is still missing.
   order. evals/retrieval_eval.py compares dense, hybrid and the relevance floor, but the
   rerank column is not measured (the emulated reranker exceeds its 2 s timeout locally).
   Until a rerank floor is measured, a reranked hit must also clear the dense cosine floor.
+  The relevance floor is a RetrieveCorpus option, on for QuantAgent and off for AW (unmeasured).
 - Orchestrator complexity classification is a stub. Gateway /chat applies rate limit, PII
   redaction, content safety, completeness (enrichment), answer-leak and citation guardrails;
   output content safety is not applied.
