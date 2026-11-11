@@ -105,17 +105,19 @@ def fresh_gateway_rate_limiter():
 
 
 @pytest.fixture(autouse=True)
-def no_live_corpus_service():
+def no_live_corpus_service(monkeypatch: pytest.MonkeyPatch):
     """
     Agents build a RetrieveCorpus by default; keep tests off a corpus service that
     may be running on localhost (e.g. the docker compose stack). Tests that exercise
     retrieval inject their own corpus capability.
+
+    Uses the same `monkeypatch` a test uses to re-patch `_call_corpus`, so both unwind in
+    one last-in-first-out order and no stub outlives its test.
     """
-    with patch(
-        "services.agent.src.agent.capabilities.retrieve_corpus.RetrieveCorpus._call_corpus",
-        new=AsyncMock(return_value=[]),
-    ):
-        yield
+    from services.agent.src.agent.capabilities.retrieve_corpus import RetrieveCorpus
+
+    monkeypatch.setattr(RetrieveCorpus, "_call_corpus", AsyncMock(return_value=[]))
+    yield
 
 
 @pytest.fixture(autouse=True)

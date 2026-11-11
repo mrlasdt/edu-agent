@@ -485,8 +485,8 @@ def test_a_result_stored_before_unit_counts_existed_still_loads():
 
 
 def test_checked_in_baselines_load_and_keep_their_stored_shape():
-    """The files under evals/baselines/ predate the models; they must read and write back."""
-    for path in sorted(Path("evals/baselines").glob("*.json")):
+    """The Quant baselines under evals/baselines/ predate the models; they must read back."""
+    for path in sorted(Path("evals/baselines").glob("quant*.json")):
         stored = json.loads(path.read_text())
         loaded = QuantBaseline.model_validate(stored)
         written = json.loads(loaded.model_dump_json())

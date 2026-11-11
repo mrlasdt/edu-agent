@@ -236,7 +236,7 @@ class QuantAgent(BaseAgent):
             get_settings().math_tools_enabled if math_tools_enabled is None else math_tools_enabled
         )
         self._math_tools = math_tools
-        self._retrieve_corpus = retrieve_corpus or RetrieveCorpus()
+        self._retrieve_corpus = retrieve_corpus or RetrieveCorpus(apply_relevance_floor=True)
         self._verify_math = verify_math or VerifyMath()
 
     # ── public interface ──────────────────────────────────────────────────────

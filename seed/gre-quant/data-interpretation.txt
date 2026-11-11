@@ -1,0 +1,15 @@
+# Labels and units before numbers
+
+Read the title, the axis labels and the units before looking at any numbers. Many wrong answers come from confusing thousands with millions, or a percent with a count. Locate the exact row and column the question names, and note whether a bar chart shows totals or shares of a whole.
+
+# Percent of a total in a chart
+
+A pie chart or a table of shares gives each category as a percent of the total, so a category's amount is its percent times the total. If a budget of 80,000 gives 15 percent to marketing, marketing gets 12,000. When two charts use different totals, you cannot compare the percents directly; convert to actual amounts first.
+
+# Rates of change over time
+
+The change between two years is later minus earlier, and the percent change divides that by the earlier value. A line that rises steeply has a large rate of change, but a small starting value can make a big percent from a small amount. Compare absolute change and percent change separately and answer only what was asked.
+
+# Estimation and approximation
+
+On data questions the answer choices are often far enough apart that rounding the numbers is safe. Round to one or two significant figures, compute, and pick the nearest choice. Use exact arithmetic only when the choices are close together or the question asks for an exact value.

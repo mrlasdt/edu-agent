@@ -1,0 +1,46 @@
+{"id": "r01", "group": "exact", "query": "discriminant", "expect": ["algebra-quadratics.txt#Quadratic formula and the discriminant"]}
+{"id": "r02", "group": "exact", "query": "difference of squares", "expect": ["algebra-quadratics.txt#Common GRE patterns"]}
+{"id": "r03", "group": "exact", "query": "x^2 + 1/x^2", "expect": ["algebra-quadratics.txt#Common GRE patterns"]}
+{"id": "r04", "group": "exact", "query": "b^2 - 4ac", "expect": ["algebra-quadratics.txt#Quadratic formula and the discriminant"]}
+{"id": "r05", "group": "exact", "query": "nCr vs nPr", "expect": ["counting-and-probability.txt#Counting principles"]}
+{"id": "r06", "group": "exact", "query": "LEVEL letters 5!/(2! x 2!)", "expect": ["counting-and-probability.txt#Arrangements with repeats"]}
+{"id": "r07", "group": "exact", "query": "3-4-5 and 5-12-13 triples", "expect": ["geometry-triangles-circles.txt#Right triangles"]}
+{"id": "r08", "group": "exact", "query": "sqrt(a + b)", "expect": ["exponents-and-roots.txt#Roots and fractional exponents"]}
+{"id": "r09", "group": "exact", "query": "x^0 and x^(-n)", "expect": ["exponents-and-roots.txt#Exponent rules"]}
+{"id": "r10", "group": "exact", "query": "|x - 3| < 5", "expect": ["inequalities-and-absolute-value.txt#Absolute value inequalities"]}
+{"id": "r11", "group": "exact", "query": "standard deviation", "expect": ["statistics-and-data.txt#Range and standard deviation"]}
+{"id": "r12", "group": "exact", "query": "divisible by 9 digit sum", "expect": ["number-properties.txt#Divisibility tests"]}
+{"id": "r13", "group": "exact", "query": "sector area (n/360) x pi r^2", "expect": ["geometry-triangles-circles.txt#Circles"]}
+{"id": "r14", "group": "exact", "query": "mean median mode", "expect": ["statistics-and-data.txt#Mean, median and mode"]}
+{"id": "r15", "group": "exact", "query": "compound interest P(1 + r)^t", "expect": ["word-problems.txt#Simple and compound interest"]}
+{"id": "r16", "group": "exact", "query": "distance = rate x time", "expect": ["rates-and-work.txt#Distance, rate and time"]}
+{"id": "r17", "group": "paraphrase", "query": "how many real solutions does a quadratic equation have", "expect": ["algebra-quadratics.txt#Quadratic formula and the discriminant"]}
+{"id": "r18", "group": "paraphrase", "query": "I keep forgetting to flip the sign when I divide by a negative", "expect": ["inequalities-and-absolute-value.txt#Solving linear inequalities"]}
+{"id": "r19", "group": "paraphrase", "query": "how do I pick a committee when order does not matter", "expect": ["counting-and-probability.txt#Counting principles"]}
+{"id": "r20", "group": "paraphrase", "query": "two trains start far apart and drive toward each other, when do they meet", "expect": ["rates-and-work.txt#Relative speed"]}
+{"id": "r21", "group": "paraphrase", "query": "one pipe fills a tank in 6 hours and another in 3, how long together", "expect": ["rates-and-work.txt#Work problems"]}
+{"id": "r22", "group": "paraphrase", "query": "a price goes up 15 percent then down 20 percent, what is the net change", "expect": ["percents-and-ratios.txt#Percent change"]}
+{"id": "r23", "group": "paraphrase", "query": "what does it mean that the relationship cannot be determined", "expect": ["quantitative-comparison-strategy.txt#What Quantitative Comparison asks"]}
+{"id": "r24", "group": "paraphrase", "query": "when two columns look equal, which numbers should I try for the variable", "expect": ["quantitative-comparison-strategy.txt#Strategy: test values"]}
+{"id": "r25", "group": "paraphrase", "query": "what is left over when a number is split into equal groups", "expect": ["number-properties.txt#Remainders and parity"]}
+{"id": "r26", "group": "paraphrase", "query": "a new score joins the class, how does the average shift", "expect": ["statistics-and-data.txt#Weighted averages and changing the data"]}
+{"id": "r27", "group": "paraphrase", "query": "how long is the slanted side of a right triangle given the two short sides", "expect": ["geometry-triangles-circles.txt#Right triangles"]}
+{"id": "r28", "group": "paraphrase", "query": "how do I tell how steep a line is from two points", "expect": ["coordinate-geometry.txt#Slope and the equation of a line"]}
+{"id": "r29", "group": "paraphrase", "query": "how do I find the 20th term when each term adds the same amount", "expect": ["sequences-and-sets.txt#Arithmetic sequences"]}
+{"id": "r30", "group": "paraphrase", "query": "what is the chance of getting at least one head in several flips", "expect": ["counting-and-probability.txt#Probability"]}
+{"id": "r31", "group": "paraphrase", "query": "two discounts in a row, is the total just the two percents added", "expect": ["word-problems.txt#Profit, markup and discount"]}
+{"id": "r32", "group": "paraphrase", "query": "fractions that are hard to compare because the denominators differ", "expect": ["fractions-and-decimals.txt#Adding and comparing fractions"]}
+{"id": "r33", "group": "paraphrase", "query": "how many students are in both clubs when I know each club and the total", "expect": ["sequences-and-sets.txt#Overlapping sets"]}
+{"id": "r34", "group": "paraphrase", "query": "how do I read a pie chart to get an amount from a share", "expect": ["data-interpretation.txt#Percent of a total in a chart", "statistics-and-data.txt#Reading graphs and tables"]}
+{"id": "r35", "group": "off_topic", "query": "how do I write a cover letter", "expect": []}
+{"id": "r36", "group": "off_topic", "query": "what is the capital of Australia", "expect": []}
+{"id": "r37", "group": "off_topic", "query": "recommend a good pasta recipe for tonight", "expect": []}
+{"id": "r38", "group": "off_topic", "query": "summarize the plot of Hamlet", "expect": []}
+{"id": "r39", "group": "off_topic", "query": "how do I fix a flat bicycle tire", "expect": []}
+{"id": "r40", "group": "off_topic", "query": "give me a thesis statement for an argument essay", "expect": []}
+{"id": "r41", "group": "off_topic", "query": "what are the rules of chess castling", "expect": []}
+{"id": "r42", "group": "off_topic", "query": "how long should I sleep before an exam", "expect": []}
+{"id": "r43", "group": "off_topic", "query": "what is the time limit for the GRE verbal section", "expect": []}
+{"id": "r44", "group": "off_topic", "query": "translate good morning into Spanish", "expect": []}
+{"id": "r45", "group": "off_topic", "query": "who won the football world cup in 2014", "expect": []}
+{"id": "r46", "group": "off_topic", "query": "tell me a joke about calculators", "expect": []}

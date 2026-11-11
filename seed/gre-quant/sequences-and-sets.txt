@@ -1,0 +1,15 @@
+# Arithmetic sequences
+
+In an arithmetic sequence each term differs from the previous one by a constant d, so the nth term is a1 + (n - 1)d. The sum of the first n terms is n times the average of the first and last term. For 3, 7, 11, ... the 20th term is 3 + 19 x 4 = 79 and the sum of 20 terms is 20 x (3 + 79)/2 = 820.
+
+# Geometric sequences
+
+In a geometric sequence each term is the previous term times a constant ratio r, so the nth term is a1 x r^(n-1). The terms 2, 6, 18, 54 have ratio 3. If the absolute value of r is below 1 the terms shrink toward zero. A growth problem with a fixed percent each period is a geometric sequence.
+
+# Overlapping sets
+
+For two overlapping groups, total = A + B - both + neither. If 30 students take French, 25 take Spanish, 10 take both and 5 take neither, the class has 30 + 25 - 10 + 5 = 50 students. Subtracting the overlap once avoids counting people in both groups twice. A two-by-two table or Venn diagram keeps the four regions straight.
+
+# Repeating patterns and cycles
+
+For a repeating pattern, divide the position by the cycle length and use the remainder: in a cycle of 4, the 50th term matches the 2nd because 50 leaves remainder 2.

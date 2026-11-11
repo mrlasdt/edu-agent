@@ -106,7 +106,7 @@ def chunk_point_id(chunk: dict[str, Any]) -> str:
     return str(uuid.uuid5(_POINT_NAMESPACE, key))
 
 
-def _build_chunks(
+def build_chunks(
     content: bytes, filename: str, test_type: str, source_uri: str
 ) -> list[dict[str, Any]]:
     text = parse_bytes(content, filename)
@@ -132,7 +132,7 @@ async def _ingest(content: bytes, filename: str, test_type: str, source_uri: str
     """Parse, chunk and index one document; returns the number of chunks indexed."""
     try:
         # Parsing and chunking a large PDF or DOCX is CPU work: keep it off the event loop.
-        chunks = await asyncio.to_thread(_build_chunks, content, filename, test_type, source_uri)
+        chunks = await asyncio.to_thread(build_chunks, content, filename, test_type, source_uri)
     except Exception as exc:
         raise IngestionError("parse", exc) from exc
     metadata = {
