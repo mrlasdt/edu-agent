@@ -232,21 +232,7 @@ async def _answer(turn: ChatTurn) -> AsyncGenerator[bytes, None]:
         if guard.stopped:
             meter.annotate(outcome=Outcome.answer_leak_blocked)
             return
-    if failure:
-        # Whatever the guard was still holding passed its checks so far: show it, then say why
-        # the reply stops. The answer-leak model check and the verifier trailer are skipped,
-        # because a partial reply has no verdict to give.
-        text = ""
-        if guard is not None:
-            text = guard.feed(trailer.feed(decoder.decode(b"", final=True))) + guard.finish()
-        stage = "before_first_byte" if guard is None else "midstream"
-        meter.annotate(
-            outcome=Outcome.agent_unavailable, error=type(failure[0]).__name__, degraded_stage=stage
-        )
-        _log.warning("agent unavailable (%s): %s", stage, type(failure[0]).__name__)
-        notice = AGENT_UNAVAILABLE_NOTICE if text.strip() else AGENT_UNAVAILABLE_NOTICE.lstrip()
-        yield (text + notice).encode("utf-8")
-        return
+    tail = ""
     if guard is not None:
         tail = guard.feed(trailer.feed(decoder.decode(b"", final=True))) + guard.finish()
         if guard.stopped:
@@ -255,6 +241,19 @@ async def _answer(turn: ChatTurn) -> AsyncGenerator[bytes, None]:
             flags.append("citations_trimmed")
         if guard.pii_redacted:
             flags.append("output_pii_redacted")
+    if failure:
+        # Whatever the guard was still holding passed its checks so far: show it, then say why
+        # the reply stops. The answer-leak model check and the verifier trailer are skipped,
+        # because a partial reply has no verdict to give. A leak the guard caught keeps its outcome.
+        stage = "before_first_byte" if guard is None else "midstream"
+        meter.annotate(error=type(failure[0]).__name__, degraded_stage=stage)
+        if guard is None or not guard.stopped:
+            meter.annotate(outcome=Outcome.agent_unavailable)
+        _log.warning("agent unavailable (%s): %s", stage, type(failure[0]).__name__)
+        notice = AGENT_UNAVAILABLE_NOTICE if tail.strip() else AGENT_UNAVAILABLE_NOTICE.lstrip()
+        yield (tail + notice).encode("utf-8")
+        return
+    if guard is not None:
         if (
             not guard.stopped
             and guard.text.strip()

@@ -215,7 +215,7 @@ async def run_tool_loop(
             # Nothing new was asked: do not run it, and do not leave the request unanswered.
             result.stop_reason, note = REPEATED_CALL, REPEATED_CALL_NOTE
             break
-        seen.update(signatures)
+        seen.update(signatures[:MAX_CALLS_PER_ROUND])
         result.rounds += 1
         convo.append(_assistant_message(message, requested))
         with meter.phase("tools"):

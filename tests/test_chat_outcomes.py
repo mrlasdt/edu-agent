@@ -215,6 +215,22 @@ def test_a_failing_agent_is_a_notice_and_the_record_says_where_it_failed(client,
     assert midstream["degraded_stage"] == "midstream" and midstream["error"] == "ConnectionError"
 
 
+def test_a_midstream_failure_whose_flushed_reply_trips_the_leak_check_keeps_the_leak_outcome(
+    client, turn_log
+):
+    # the leak check that runs when the reply ends (it sees the text plus a final newline) fires
+    # on the partial reply the failed stream left behind
+    guard = "services.gateway.src.gateway.guardrails.stream.detect_answer_leak"
+    with patch(guard, side_effect=lambda text: text.endswith("\n")):
+        resp = _run(
+            client, reply=["Isolate x first. ", "Then"], then_fail=ConnectionError("reset")
+        )
+    assert "Answer withheld" in resp.text and resp.text.endswith(AGENT_UNAVAILABLE_NOTICE)
+    (record,) = turn_log.read()
+    assert record["outcome"] == "answer_leak_blocked"
+    assert record["error"] == "ConnectionError" and record["degraded_stage"] == "midstream"
+
+
 def test_a_bug_in_the_guards_is_still_an_error_not_a_notice(client, turn_log):
     # only the agent call is guarded: a failure elsewhere in the turn must stay loud
     with patch(

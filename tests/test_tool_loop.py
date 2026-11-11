@@ -217,6 +217,26 @@ async def test_a_call_the_model_already_made_is_not_run_again_and_ends_the_loop(
     assert asked == answered == {"c1"}
 
 
+async def test_a_call_skipped_for_the_per_round_limit_runs_when_the_model_asks_again() -> None:
+    ran: list[str] = []
+
+    async def execute(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        ran.append(arguments["expression"])
+        return {"value": "1"}
+
+    expressions = [f"{i}+1" for i in range(MAX_CALLS_PER_ROUND + 2)]
+    first = [call(f"c{i}", arguments={"expression": e}) for i, e in enumerate(expressions)]
+    again = [
+        call(f"r{i}", arguments={"expression": e})
+        for i, e in enumerate(expressions[MAX_CALLS_PER_ROUND:])
+    ]
+    model = ScriptedModel(reply(calls=first), reply(calls=again), reply("done"))
+    outcome, _ = await run(model, execute, max_rounds=3)
+
+    assert ran == expressions  # the two skipped calls ran in round 2
+    assert outcome.stop_reason == "answered" and outcome.rounds == 2
+
+
 async def test_the_same_call_with_other_arguments_is_a_new_call() -> None:
     model = ScriptedModel(
         reply(calls=[call("c1", arguments={"expression": "1+1"})]),
