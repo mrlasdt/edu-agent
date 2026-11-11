@@ -42,6 +42,13 @@ DEFAULT_TURN_CAPTURE_PATH = ".turn-log/capture.jsonl"
 DEFAULT_AI_LEDGER_PATH = ".eval-ledger/ledger.jsonl"
 
 
+class UnknownPromptError(KeyError):
+    """prompt_version() was asked for an (agent, mode) pair that no config pins."""
+
+    def __str__(self) -> str:  # KeyError would show the message in quotes
+        return str(self.args[0])
+
+
 class ModelRoleConfig(BaseModel):
     provider: str
     model: str
@@ -52,8 +59,8 @@ class ModelRoleConfig(BaseModel):
 class ModelConfig(BaseModel):
     roles: dict[str, ModelRoleConfig]
     # Active prompt version per agent → mode (e.g. {"quant_agent": {"tutor": "v1"}}).
-    # Absent entries default to "v1", so a config without this section stays valid.
-    # load_model_config fills it from PROMPT_PINS_PATH when the config file has no section.
+    # prompt_version() raises for a pair that is not here. load_model_config fills the section
+    # from PROMPT_PINS_PATH when the config file has none.
     prompts: dict[str, dict[str, str]] = {}
 
     def role(self, name: str) -> ModelRoleConfig:
@@ -72,9 +79,23 @@ class ModelConfig(BaseModel):
         """LiteLLM model strings tried in order after the role's own model fails."""
         return list(self.role(role).fallbacks)
 
-    def prompt_version(self, agent: str, mode: str) -> str:
-        """Active prompt version for (agent, mode). Defaults to 'v1' when unset."""
-        return self.prompts.get(agent, {}).get(mode, "v1")
+    def prompt_version(self, agent: str, mode: str, *, default: str | None = None) -> str:
+        """
+        Active prompt version for (agent, mode).
+
+        An unknown pair raises UnknownPromptError, because a guessed "v1" is reported to Langfuse
+        and the turn record as if it were the prompt that ran. A caller that really has no pinned
+        prompt says so with `default=`, which is then the answer for an unknown pair.
+        """
+        version = self.prompts.get(agent, {}).get(mode)
+        if version is not None:
+            return version
+        if default is not None:
+            return default
+        raise UnknownPromptError(
+            f"No prompt version pinned for ({agent!r}, {mode!r}) in {PROMPT_PINS_PATH} or the "
+            f"model config's prompts section. Pinned agents: {sorted(self.prompts)}"
+        )
 
 
 def load_model_config(path: str | None = None) -> ModelConfig:

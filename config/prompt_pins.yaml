@@ -31,3 +31,8 @@ question_pipeline:
   comparison_expert: v1
   critic: v1
   baseline: v1
+# Guardrail and critic prompts (prompts/<agent>/<mode>/<version>.md)
+orchestrator:
+  completeness: v1  # the input guardrail's "is this message answerable" check
+style_critic:
+  rubric: v1  # the AW essay structure check; reported under its own key, not aw_agent's

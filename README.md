@@ -68,7 +68,7 @@ uv run pytest tests/ -q                                  # Python tests (mocked 
 uv run python -m evals.agent_eval --mode offline         # eval pipeline on a fake model: no network, no keys
 ```
 
-Live evals call real models and spend against the ledger; see "Evals" below. CI (`.github/workflows/ci.yml`) runs ruff, mypy, pytest, the web tests, build (which typechecks) and e2e, and the offline evals on every change (no path filter). It also builds every image and starts the services from them (`infra/docker-compose.smoke.yml`). It also runs a dependency audit (`pip-audit` on `uv.lock`, `npm audit` at high severity for `web/`) and a gitleaks secret scan over the full history. It never scores a real model.
+Live evals call real models and spend against the ledger; see "Evals" below. CI (`.github/workflows/ci.yml`) runs ruff, mypy, the reference lint, pytest, the web tests, build (which typechecks) and e2e, and the offline evals on every change (no path filter). It also builds every image and starts the services from them (`infra/docker-compose.smoke.yml`). It also runs a dependency audit (`pip-audit` on `uv.lock`, `npm audit` at high severity for `web/`) and a gitleaks secret scan over the full history. It never scores a real model.
 
 ### Run a single piece outside Docker
 
@@ -221,7 +221,7 @@ The math verifier (port 8090) is a cluster-internal service, not a client-facing
 
 ## Models
 
-`config/model_config.free.yaml` (the default) maps roles (orchestrator, `quant_agent`, `aw_agent`, math escalation, critics, graders, question-pipeline roles) to models; swapping a role to another provider is one line. `config/model_config.dev.yaml` is the paid OpenAI variant. Prompts are versioned under `prompts/`; the active version per agent and mode is pinned once for every model config in `config/prompt_pins.yaml`.
+`config/model_config.free.yaml` (the default) maps roles (orchestrator, `quant_agent`, `aw_agent`, math escalation, critics, graders, question-pipeline roles) to models; swapping a role to another provider is one line. `config/model_config.dev.yaml` is the paid OpenAI variant. Prompts are versioned under `prompts/`; the active version per agent and mode is pinned once for every model config in `config/prompt_pins.yaml`. `prompt_version(agent, mode)` raises for a pair that is not pinned (it never guesses `v1`), and `uv run python scripts/lint_references.py` (a CI step and `tests/test_lint_references.py`) fails when a pin has no prompt file, a prompt file has no pin or is newer than it, a call site names an unpinned pair or an undefined model role, or a configured role is never used (three reserved ones are listed with their reasons in the script).
 
 ## Deployment
 
@@ -254,7 +254,8 @@ web/        Vite + React app, nginx image, unit and Playwright tests
 seed/       self-written GRE Quant notes ingested on first start
 evals/      eval harness, golden sets, baselines, exam_set tooling
 prompts/    versioned system prompts
-config/     model configs and IELTS calibration
+config/     model configs, prompt pins and IELTS calibration
+scripts/    repository checks run in CI (lint_references.py)
 infra/      docker-compose.yml
 docs/       adr/ (decision records), design-log/, CONTEXT.md at the repo root
 ```

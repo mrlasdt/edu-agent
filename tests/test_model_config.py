@@ -75,6 +75,8 @@ PROMPT_PINS = {
     "aw_agent": {"tutor": "v1", "solve": "v1"},
     "ielts_grader": {"writing_t2": "v1"},
     "ielts_feedback": {"writing_t2": "v2"},
+    "orchestrator": {"completeness": "v1"},
+    "style_critic": {"rubric": "v1"},
     "question_pipeline": {
         "planner": "v1",
         "numeric_expert": "v1",

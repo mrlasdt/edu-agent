@@ -6,25 +6,22 @@ Returns (passed: bool, feedback: str).
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from shared.src.shared.config import load_model_config
-from shared.src.shared.models import Mode
+from shared.src.shared.config import PROJECT_ROOT, load_model_config
 from shared.src.shared.observability import build_llm_metadata
 from shared.src.shared.turn_meter import TurnMeter
 
-_STYLE_RUBRIC = """You are a strict GRE essay structure reviewer.
-Check whether this essay follows the PEEL/MEAL paragraph structure:
-  Point   → clear topic sentence
-  Evidence/Example → specific supporting detail
-  Explanation → analysis of the evidence
-  Link    → connection back to thesis
+_PROMPT_AGENT = "style_critic"
+_PROMPT_MODE = "rubric"
 
-Respond with exactly:
-  PASS  — if every body paragraph follows this structure
-  FAIL: <brief reason>  — if any body paragraph violates it
 
-Do not suggest rewrites. Only assess structure."""
+def _load_rubric(version: str) -> str:
+    """The rubric prompt file for `version`, without its YAML frontmatter."""
+    raw = (PROJECT_ROOT / "prompts" / _PROMPT_AGENT / _PROMPT_MODE / f"{version}.md").read_text()
+    return re.sub(r"^---\n.*?\n---\n", "", raw, flags=re.DOTALL).strip()
+
 
 
 async def run_style_critic(
@@ -41,12 +38,12 @@ async def run_style_critic(
     cfg = load_model_config(model_config_path)
     model = cfg.litellm_model("style_critic")
     temperature = cfg.role("style_critic").temperature
-    version = cfg.prompt_version("aw_agent", Mode.solve.value)
+    version = cfg.prompt_version(_PROMPT_AGENT, _PROMPT_MODE)
 
     call_args: dict[str, Any] = {
         "model": model,
         "messages": [
-            {"role": "system", "content": _STYLE_RUBRIC},
+            {"role": "system", "content": _load_rubric(version)},
             {"role": "user", "content": essay_text},
         ],
         "temperature": temperature,
