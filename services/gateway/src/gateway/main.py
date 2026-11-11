@@ -186,8 +186,9 @@ async def _route(turn: ChatTurn) -> Verdict:
     return Verdict.allow()
 
 
-# In order: the first gate that does not allow the turn ends it.
-_GATES: tuple[Gate, ...] = (_rate_limit, _content_safety, _input_pii_notice, _completeness, _route)
+# In order: the first gate that does not allow the turn ends it. The free checks come before the
+# two that call a model, so a blank or unsupported request is answered without paying for either.
+_GATES: tuple[Gate, ...] = (_rate_limit, _route, _content_safety, _input_pii_notice, _completeness)
 
 
 async def _answer(turn: ChatTurn) -> AsyncGenerator[bytes, None]:

@@ -81,6 +81,31 @@ def test_chat_clarifies_unregistered_section():
     assert "not set up" in resp.text.lower()
 
 
+@pytest.mark.parametrize(
+    ("section", "message"), [("quant", "   "), ("verbal", "hi")], ids=["blank", "unsupported"]
+)
+def test_rejected_request_makes_no_model_call(completeness, section, message):
+    """Blank and unsupported requests are answered by the free routing check: no moderation
+    call and no completeness call are paid for first."""
+    with patch(
+        "services.gateway.src.gateway.main.check_content_safety", new_callable=AsyncMock
+    ) as mock_safety:
+        mock_safety.return_value = _SAFE
+        resp = client.post(
+            "/chat",
+            json={
+                "candidate_id": "c1",
+                "test_type": "gre",
+                "section": section,
+                "message": message,
+            },
+        )
+    assert resp.status_code == 200
+    assert resp.text  # the clarification
+    mock_safety.assert_not_called()
+    completeness.assert_not_called()
+
+
 def test_chat_proxies_agent_stream_on_route():
     async def fake_stream(payload, meta=None):
         for token in (b"Hello", b", ", b"world"):
