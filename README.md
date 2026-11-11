@@ -124,7 +124,7 @@ Every retrieval filters by tier: global (admin uploads, visible to all), school 
 
 ### Measuring a turn
 
-Each `/chat` turn is metered (model calls, tokens, estimated USD, time to first token, notes retrieved, prompt version, guardrail outcome) to `.turn-log/turns.jsonl` (`TURN_LOG_PATH`; empty switches it off). `uv run python -m evals.turn_report --turns` summarizes it. Cost is recorded, never capped. Stop in the chat closes the request; the gateway and the agent service then stop their model calls, and the turn is recorded with `outcome=client_cancelled`. Regenerate resends the last question with the history before it.
+Each `/chat` turn is metered (model calls, tokens, estimated USD, time to first token, notes retrieved, prompt version, guardrail outcome) to `.turn-log/turns.jsonl` (`TURN_LOG_PATH`; empty switches it off). `uv run python -m evals.turn_report --turns` summarizes it. Cost is recorded, never capped. Stop in the chat closes the request; the gateway and the agent service then stop their model calls, and the turn is recorded with `outcome=client_cancelled`. If the tutoring service fails before or during a reply, the reply ends with a plain "Tutor unavailable" notice and the turn is recorded with `outcome=agent_unavailable` (see ADR-0007). Regenerate resends the last question with the history before it.
 
 ### Feedback
 
