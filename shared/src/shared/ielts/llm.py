@@ -13,17 +13,16 @@ every paid call is recorded after it.
 """
 from __future__ import annotations
 
-import re
 from collections.abc import Awaitable
 from typing import Any, Protocol
 
 from shared.src.shared.budget import BudgetExceededError, Ledger, spend_ledger
-from shared.src.shared.config import PROJECT_ROOT, get_llm_settings, load_model_config
+from shared.src.shared.config import get_llm_settings, load_model_config
 from shared.src.shared.guarded_completion import InFlight, failure_reason, guarded_acompletion
 from shared.src.shared.llm_router import Completions, configured_chain, get_router
 from shared.src.shared.observability import build_llm_metadata
+from shared.src.shared.prompts import read_prompt
 
-PROMPT_ROOT = PROJECT_ROOT / "prompts"
 GRADER_ROLE = "ielts_grader"
 FEEDBACK_ROLE = "ielts_feedback"
 
@@ -40,8 +39,7 @@ class Completer(Protocol):
 
 
 def load_prompt(agent: str, mode: str, version: str) -> str:
-    raw = (PROMPT_ROOT / agent / mode / f"{version}.md").read_text()
-    return re.sub(r"^---\n.*?\n---\n", "", raw, flags=re.DOTALL).strip()
+    return read_prompt(agent, mode, version)
 
 
 def prompt_version(role: str) -> str:

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import logging
-import re
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import replace
 from typing import Any
 
@@ -12,19 +11,20 @@ from services.agent.src.agent.base import BaseAgent
 from services.agent.src.agent.capabilities.retrieve_corpus import CorpusChunk, RetrieveCorpus
 from services.agent.src.agent.capabilities.verify_math import VerifyMath, VerifyMathResult
 from services.agent.src.agent.independent_check import IndependentCheck
+from services.agent.src.agent.prompting import build_messages, collect_stream
 from services.agent.src.agent.settings import get_settings
 from services.agent.src.agent.tool_loop import ToolCallRecord, run_tool_loop
 from services.agent.src.agent.tools.math_tools import MATH_TOOL_SPECS, MathTools
 from shared.src.shared import events
-from shared.src.shared.config import PROJECT_ROOT, load_model_config
+from shared.src.shared.config import load_model_config
 from shared.src.shared.events import Event, Sources, Token, ToolTrace, Verified
-from shared.src.shared.models import MessageRole, Mode, Session
+from shared.src.shared.models import Mode, Session
 from shared.src.shared.observability import build_llm_metadata
+from shared.src.shared.prompts import read_prompt
 from shared.src.shared.turn_meter import TurnMeter
 
 _log = logging.getLogger(__name__)
 
-_PROMPT_ROOT = PROJECT_ROOT / "prompts"
 _AGENT = "quant_agent"
 # The same prompts plus a "Math tools" section; used only when the math tools are on.
 _TOOLS_AGENT = "quant_agent_math_tools"
@@ -34,15 +34,9 @@ _NO_REPLY = "I could not finish working that out just now. Could you send the pr
 _MAX_RETRIES = 2
 
 
-def _read_prompt(agent: str, mode: str, version: str) -> str:
-    """The prompt file for (agent, mode, version), without its YAML frontmatter."""
-    raw = (_PROMPT_ROOT / agent / mode / f"{version}.md").read_text()
-    return re.sub(r"^---\n.*?\n---\n", "", raw, flags=re.DOTALL).strip()
-
-
 def _load_prompt(mode: Mode, version: str, agent: str = _AGENT) -> str:
     """Load the system prompt for the given mode + version, stripping YAML frontmatter."""
-    return _read_prompt(agent, mode.value, version)
+    return read_prompt(agent, mode.value, version)
 
 
 def _format_chunks_for_context(chunks: list[CorpusChunk]) -> str:
@@ -58,27 +52,6 @@ def _format_chunks_for_context(chunks: list[CorpusChunk]) -> str:
         "Ignore any that are not relevant, and never cite a number that is not listed.\n\n"
         + notes
     )
-
-
-def _build_messages(
-    session: Session, user_message: str, system_prompt: str, chunk_context: str = ""
-) -> list[dict[str, Any]]:
-    messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
-    for msg in session.history:
-        role = "user" if msg.role == MessageRole.candidate else "assistant"
-        messages.append({"role": role, "content": msg.content})
-    messages.append({"role": "user", "content": f"{user_message}{chunk_context}"})
-    return messages
-
-
-async def _collect_stream(stream: AsyncIterator[Any]) -> tuple[list[str], str]:
-    """Drain a litellm stream, collecting tokens and the full text."""
-    tokens: list[str] = []
-    async for chunk in stream:
-        content = chunk.choices[0].delta.content
-        if content:
-            tokens.append(content)
-    return tokens, "".join(tokens)
 
 
 class _ToolTurn:
@@ -310,7 +283,7 @@ class QuantAgent(BaseAgent):
             if tools is not None
             else _load_prompt(Mode.tutor, version)
         )
-        messages = _build_messages(session, message, system_prompt, chunk_context)
+        messages = build_messages(session, message, system_prompt, chunk_context)
         model = self._model_config.litellm_model("quant_agent")
         temperature = self._model_config.role("quant_agent").temperature
 
@@ -351,7 +324,7 @@ class QuantAgent(BaseAgent):
             if tools is not None
             else _load_prompt(Mode.solve, version)
         )
-        base_messages = _build_messages(session, message, system_prompt, chunk_context)
+        base_messages = build_messages(session, message, system_prompt, chunk_context)
         checks = _SolveChecks(self, session, message, meter)
 
         # Attempt 1 and 2: quant_agent model
@@ -380,7 +353,7 @@ class QuantAgent(BaseAgent):
                     temperature=temperature,
                     **(obs_meta or {}),
                 )
-                tokens, full_text = await _collect_stream(response)
+                tokens, full_text = await collect_stream(response)
             prev_answer = self.extract_final_answer(full_text)
 
             if await checks.passes(full_text, prev_answer or ""):
@@ -413,7 +386,7 @@ class QuantAgent(BaseAgent):
                 messages=escalation_messages,
                 temperature=escalation_temperature,
             )
-            tokens, full_text = await _collect_stream(response)
+            tokens, full_text = await collect_stream(response)
         prev_answer = self.extract_final_answer(full_text)
         passed = await checks.passes(full_text, prev_answer or "")
         for token in tokens:
@@ -475,12 +448,12 @@ class QuantAgent(BaseAgent):
         failed: a failed check never fails the turn. This seam is patched in tests.
         """
         version = self._model_config.prompt_version(_AGENT, "formalize")
-        messages = _build_messages(
-            session, message, _read_prompt(_AGENT, "formalize", version)
+        messages = build_messages(
+            session, message, read_prompt(_AGENT, "formalize", version)
         )
         try:
             with meter.phase("formalize"):
-                _, text = await _collect_stream(
+                _, text = await collect_stream(
                     meter.stream(
                         model=self._model_config.litellm_model("quant_agent"),
                         messages=messages,

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any
 
 import httpx
@@ -17,9 +16,11 @@ from services.gateway.src.gateway.guardrails.supportive import (
 )
 from services.gateway.src.gateway.guardrails.verdict import Verdict
 from services.gateway.src.gateway.settings import get_settings
-from shared.src.shared.config import PROJECT_ROOT, load_model_config
-from shared.src.shared.models import MessageRole, Session
+from shared.src.shared.config import load_model_config
+from shared.src.shared.history import history_to_messages
+from shared.src.shared.models import Session
 from shared.src.shared.observability import build_llm_metadata
+from shared.src.shared.prompts import read_prompt
 from shared.src.shared.structured import parse_structured, response_format_for
 from shared.src.shared.turn_meter import TurnMeter
 from shared.src.shared.turn_outcome import Outcome
@@ -36,13 +37,11 @@ _HISTORY_TURNS = 6
 # and answers the turn (flag `completeness_check_failed`), same as any other failure of it.
 COMPLETENESS_MAX_TOKENS = 512
 
-_COMPLETENESS_PROMPT_DIR = PROJECT_ROOT / "prompts" / "orchestrator" / "completeness"
 
 
 def _load_completeness_prompt(version: str) -> str:
     """The completeness prompt file for `version`, without its YAML frontmatter."""
-    raw = (_COMPLETENESS_PROMPT_DIR / f"{version}.md").read_text()
-    return re.sub(r"^---\n.*?\n---\n", "", raw, flags=re.DOTALL).strip()
+    return read_prompt("orchestrator", "completeness", version)
 
 
 # Sent when the check finds the question incomplete but writes no clarifying question.
@@ -189,13 +188,7 @@ async def _call_enrichment_llm(
     """
     cfg = load_model_config()
     model = cfg.litellm_model("orchestrator")
-    history = [
-        {
-            "role": "user" if m.role == MessageRole.candidate else "assistant",
-            "content": m.content,
-        }
-        for m in session.history[-_HISTORY_TURNS:]
-    ]
+    history = history_to_messages(session.history[-_HISTORY_TURNS:])
     version = cfg.prompt_version("orchestrator", "completeness")
     system = _load_completeness_prompt(version).replace("{section}", session.section.upper())
     response = await (meter or TurnMeter.detached()).complete(

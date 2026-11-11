@@ -114,7 +114,7 @@ def test_agent_prompts_load_from_another_working_directory(tmp_path, monkeypatch
 
     monkeypatch.chdir(tmp_path)
     assert aw._load_prompt(Mode.tutor, "v1")
-    assert quant._read_prompt("quant_agent", "tutor", "v1")
+    assert quant._load_prompt(Mode.tutor, "v1")
     assert ielts_llm.load_prompt("ielts_grader", "writing_t2", "v1")
     assert pipeline_llm.load_prompt("planner", "v1")
 

@@ -9,11 +9,11 @@ import json
 import re
 from typing import Any, Protocol
 
-from shared.src.shared.config import PROJECT_ROOT, ModelConfig, load_model_config
+from shared.src.shared.config import ModelConfig, load_model_config
 from shared.src.shared.llm_router import get_router
 from shared.src.shared.observability import build_llm_metadata
+from shared.src.shared.prompts import read_prompt
 
-_PROMPT_ROOT = PROJECT_ROOT / "prompts" / "question_pipeline"
 PROMPT_AGENT = "question_pipeline"
 # Generous: free routed models spend part of the budget on hidden reasoning, and a reply cut off
 # mid-JSON is an unparseable item.
@@ -52,8 +52,7 @@ class LiteLLMCompleter:
 
 def load_prompt(name: str, version: str = "v1") -> str:
     """System prompt for a pipeline role, with the YAML frontmatter stripped."""
-    raw = (_PROMPT_ROOT / name / f"{version}.md").read_text()
-    return re.sub(r"^---\n.*?\n---\n", "", raw, flags=re.DOTALL).strip()
+    return read_prompt("question_pipeline", name, version)
 
 
 def extract_json(text: str) -> dict[str, Any] | None:
