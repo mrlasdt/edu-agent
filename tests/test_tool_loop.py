@@ -237,6 +237,27 @@ async def test_a_call_skipped_for_the_per_round_limit_runs_when_the_model_asks_a
     assert outcome.stop_reason == "answered" and outcome.rounds == 2
 
 
+async def test_a_failed_call_may_be_retried_as_the_model_was_told() -> None:
+    attempts: list[dict[str, Any]] = []
+
+    async def flaky(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        attempts.append(arguments)
+        if len(attempts) == 1:
+            raise TimeoutError("transient")
+        return {"value": "2"}
+
+    model = ScriptedModel(
+        reply(calls=[call("c1", arguments={"expression": "1+1"})]),
+        reply(calls=[call("c2", arguments={"expression": "1+1"})]),
+        reply("It is 2."),
+    )
+    outcome, _ = await run(model, flaky, max_rounds=3)
+
+    assert len(attempts) == 2
+    assert [c.ok for c in outcome.calls] == [False, True]
+    assert outcome.stop_reason == "answered" and outcome.rounds == 2
+
+
 async def test_the_same_call_with_other_arguments_is_a_new_call() -> None:
     model = ScriptedModel(
         reply(calls=[call("c1", arguments={"expression": "1+1"})]),

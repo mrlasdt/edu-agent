@@ -215,7 +215,6 @@ async def run_tool_loop(
             # Nothing new was asked: do not run it, and do not leave the request unanswered.
             result.stop_reason, note = REPEATED_CALL, REPEATED_CALL_NOTE
             break
-        seen.update(signatures[:MAX_CALLS_PER_ROUND])
         result.rounds += 1
         convo.append(_assistant_message(message, requested))
         with meter.phase("tools"):
@@ -225,9 +224,11 @@ async def run_tool_loop(
                     for i, call in enumerate(requested)
                 )
             )
-        for tool_message, record in outcomes:
+        for sig, (tool_message, record) in zip(signatures, outcomes):
             convo.append(tool_message)
             result.calls.append(record)
+            if record.ok:
+                seen.add(sig)
     convo.append({"role": "user", "content": note})
     response = await meter.complete(
         model=model, messages=list(convo), tools=tools, tool_choice="none", **model_kwargs

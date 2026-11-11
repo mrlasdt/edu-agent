@@ -249,7 +249,9 @@ async def _answer(turn: ChatTurn) -> AsyncGenerator[bytes, None]:
         meter.annotate(error=type(failure[0]).__name__, degraded_stage=stage)
         if guard is None or not guard.stopped:
             meter.annotate(outcome=Outcome.agent_unavailable)
-        _log.warning("agent unavailable (%s): %s", stage, type(failure[0]).__name__)
+        _log.warning(
+            "agent unavailable (%s): %s", stage, type(failure[0]).__name__, exc_info=failure[0]
+        )
         notice = AGENT_UNAVAILABLE_NOTICE if tail.strip() else AGENT_UNAVAILABLE_NOTICE.lstrip()
         yield (tail + notice).encode("utf-8")
         return
