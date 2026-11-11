@@ -49,6 +49,12 @@ Moderation API). See README "Not built yet" for what is still missing.
   basic Markdown and light math typesetting in chat bubbles;
   live check in docs/mvp-demo
 
+- MCP tools reviewed as APIs for a model: renamed <area>_<verb>, identity from server env
+  (MCP_CANDIDATE_ID, MCP_SCHOOL_ID) not arguments, essay_get_model takes a prompt_id, errors list the
+  valid values, corpus_search has response_format. evals/tool_use_eval.py scores 10 requests
+  (right tool, args match, tool error rate); one live free-model run is in
+  evals/baselines/tool_use.json. 10 tasks: every rate has a wide interval.
+
 ### Current counts
 - Python and frontend (Vitest) test counts: README "Test and eval"
 - Browser smoke test (mocked /chat): cd web && npm run test:e2e (Playwright)

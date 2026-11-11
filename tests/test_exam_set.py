@@ -157,7 +157,8 @@ def test_local_only_directories_are_ignored_and_hold_nothing_tracked(directory: 
 
 def test_no_third_party_text_in_committed_golden_files():
     committed = [p for p in _GOLDEN_DIR.glob("*.jsonl") if p.stem not in {
-        "gre_quant", "gre_aw", "gre_quant_generation", "gre_retrieval"}]
+        "gre_quant", "gre_aw", "gre_quant_generation", "gre_retrieval",
+        "mcp_tool_use"}]
     committed.append(family_path("ielts_writing_prompts"))
     assert committed
     for path in committed:

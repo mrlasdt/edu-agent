@@ -2,7 +2,7 @@
 
 **Observability:** Langfuse for LLM-specific tracing (prompt version, tokens, cost, cache hit/miss, latency per call); Prometheus + Grafana for infra metrics; Sentry for application errors; structured JSON logs with trace IDs; a single eval dashboard (Grafana). Langfuse runs in Docker Compose in Phase 1, managed instance in Phase 2.
 
-**MCP:** two MCP servers ship in v1. The **Candidate MCP server** exposes `search_corpus`, `get_question`, `get_model_essay`. The **Admin MCP server** exposes `ingest_document`, `list_ingestion_jobs`, `get_job_status`. Both are thin wrappers around the same service layer as the FastAPI backend. Primary corpus management is the **Admin UI** (a minimal web form for file upload and job status) — not dependent on MCP or external clients.
+**MCP:** two MCP servers ship in v1. The **Candidate MCP server** exposes `search_corpus`, `get_question`, `get_model_essay`. The **Admin MCP server** exposes `ingest_document`, `list_ingestion_jobs`, `get_job_status`. Both are thin wrappers around the same service layer as the FastAPI backend. (Tool names were later changed to `<area>_<verb>`: `corpus_search`, `practice_get_question`, `essay_get_model`, `ingestion_submit_document`, `ingestion_list_jobs`, `ingestion_get_job`; candidate identity moved from tool arguments to server configuration. See the README's MCP section.) Primary corpus management is the **Admin UI** (a minimal web form for file upload and job status) — not dependent on MCP or external clients.
 
 **Latency:** all main-agent turns stream first tokens. Orchestrator + retrieval run before the stream; style critic and citation checker run post-generation and gate final emission. Target TTFT: <2s for Quant Tutor, <4s for AW Solve.
 

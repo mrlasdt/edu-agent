@@ -1,0 +1,10 @@
+{"id":"tu01","ask":"What does the discriminant of a quadratic tell me about its roots?","tool":"corpus_search","args":{},"query_has":["discriminant"]}
+{"id":"tu02","ask":"Give me a quantitative comparison question to practice.","tool":"practice_get_question","args":{"section":"quant","question_type":"quantitative_comparison"}}
+{"id":"tu03","ask":"I want a numeric entry quant question, please.","tool":"practice_get_question","args":{"section":"quant","question_type":"numeric_entry"}}
+{"id":"tu04","ask":"Give me an issue essay prompt so I can practise writing.","tool":"practice_get_question","args":{"section":"aw","question_type":"issue"}}
+{"id":"tu05","ask":"Can I have an argument task to analyse?","tool":"practice_get_question","args":{"section":"aw","question_type":"argument"}}
+{"id":"tu06","ask":"Show me what a top-scoring (6) essay looks like for prompt aw001.","tool":"essay_get_model","args":{"prompt_id":"aw001","score_tier":6}}
+{"id":"tu07","ask":"What does a weak, score 1, response to prompt aw002 look like?","tool":"essay_get_model","args":{"prompt_id":"aw002","score_tier":1}}
+{"id":"tu08","ask":"Find the notes on issue essay structure and quote the first one in full.","tool":"corpus_search","args":{"response_format":"detailed"},"query_has":["essay"]}
+{"id":"tu09","ask":"Look up how to find the roots of a quadratic equation in my notes.","tool":"corpus_search","args":{},"query_has":["quadratic"]}
+{"id":"tu10","ask":"Any single-answer multiple choice quant question to try?","tool":"practice_get_question","args":{"section":"quant","question_type":"multiple_choice_single"}}

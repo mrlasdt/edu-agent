@@ -163,6 +163,8 @@ uv run python -m evals.agent_eval --mode live --provider free+openai    # free c
 | `ielts_writing` | the IELTS grader against labelled essays; needs local third-party data, so it is opt-in |
 | `ielts_adversarial`, `ielts_report` | 12 injection and off-topic cases; structural checks on the feedback report |
 
+`uv run python -m evals.tool_use_eval --mode offline|live` is a separate small eval of the candidate MCP server's tools: 10 plain requests (`evals/golden/mcp_tool_use.jsonl`), each scored on whether the first call is to the right tool, carries the right arguments, and how many calls error (errors divided by calls, as in the quant suite). Offline uses a keyword router in place of a model and only proves the wiring; `--mode live` uses the free OpenRouter chain, and `evals/baselines/tool_use.json` holds one such run (10 tasks, so every rate has a wide interval).
+
 `--math-tools on|off` runs the Quant agent with or without the math tools, so both sides can be compared on one model. Live runs use free OpenRouter models first (`--provider free`), keys only from the environment; successful responses are cached in `.eval-cache/` and reports go to `.eval-runs/` (both gitignored). Spend is capped by the shared ledger. A run completing under `--min-coverage` (default 0.8) of its units exits 2. A manual `eval-live` workflow runs live suites; CI runs offline only.
 
 Useful tools: `uv run python -m evals.read_transcripts --worst 5`, `uv run python -m evals.quant_report`.
@@ -197,7 +199,18 @@ result.status, result.item, result.trace   # accepted | needs_review
 
 ## MCP servers
 
-For Claude Desktop or any MCP client. Candidate server: `search_corpus_tool`, `get_question_tool`, `get_model_essay_tool`. Admin server: `ingest_document_tool`, `list_ingestion_jobs_tool`, `get_job_status_tool` (sends `INGESTION_ADMIN_KEY`). Neither server has authentication.
+For Claude Desktop or any MCP client. Tools are named `<area>_<verb>` so a client that lists many servers can tell them apart.
+
+| Server | Tools |
+|---|---|
+| Candidate | `corpus_search(query, test_type, response_format)`, `practice_get_question(section, question_type)`, `essay_get_model(prompt_id, score_tier)` |
+| Admin | `ingestion_submit_document(file_path, test_type)`, `ingestion_list_jobs(limit)`, `ingestion_get_job(job_id)` (sends `INGESTION_ADMIN_KEY`; the ingestion service answers 503 to every admin call while that key is unset) |
+
+- **Who is asking is configuration, not an argument.** The candidate server searches as `MCP_CANDIDATE_ID` and `MCP_SCHOOL_ID` from its own environment; the model cannot name them. Unset, only the global notes are searched.
+- **A practice question never carries its answer.** `practice_get_question` returns the question and its id; `essay_get_model` takes that id and returns the anchor essay at a tier.
+- **An error says what would have worked.** A mistyped `question_type`, an unknown `prompt_id` or a tier an essay does not have comes back as an error result listing the valid values.
+- **`corpus_search` is concise by default** (source and the first 300 characters of up to 5 notes); `response_format="detailed"` returns each note in full with its source file and score.
+- Neither server authenticates its client; run them only on a machine you trust. The tool-use eval (`uv run python -m evals.tool_use_eval`, see "Evals") scores whether a model picks these tools well.
 
 Both speak **stdio** by default, which is how a client such as Claude Desktop launches them:
 
@@ -206,7 +219,8 @@ Both speak **stdio** by default, which is how a client such as Claude Desktop la
   "mcpServers": {
     "gre-tutor-candidate": {
       "command": "uv",
-      "args": ["--directory", "/path/to/edu-agent", "run", "python", "-m", "mcp_servers.candidate_server"]
+      "args": ["--directory", "/path/to/edu-agent", "run", "python", "-m", "mcp_servers.candidate_server"],
+      "env": { "MCP_CANDIDATE_ID": "your-candidate-id" }
     }
   }
 }
