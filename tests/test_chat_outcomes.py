@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from services.gateway.src.gateway.guardrails.input import CompletenessVerdict
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
+from services.gateway.src.gateway.guardrails.stream import AGENT_UNAVAILABLE_NOTICE
 from services.gateway.src.gateway.guardrails.supportive import SUPPORTIVE_MESSAGE
 from services.gateway.src.gateway.main import app
 from services.gateway.src.gateway.orchestrator import ClarificationTurn
@@ -41,6 +42,7 @@ def _run(
     *,
     body: dict[str, Any] | None = None,
     reply: list[str] | Exception = ("Isolate x first.",),
+    then_fail: Exception | None = None,
     moderation: dict[str, Any] | Exception = _SAFE,
     completeness: CompletenessVerdict | Exception = CompletenessVerdict(complete=True),
     llm_leak: bool = False,
@@ -52,6 +54,8 @@ def _run(
             raise reply
         for token in reply:
             yield token.encode()
+        if then_fail is not None:
+            raise then_fail  # the connection to the agent breaks after some of the reply
 
     moderation_mock = (
         AsyncMock(side_effect=moderation)
@@ -132,7 +136,12 @@ CASES = [
     ),
     pytest.param(
         {"reply": RuntimeError("agent exploded")},
-        None, "error", [], id="error",
+        AGENT_UNAVAILABLE_NOTICE.lstrip(), "agent_unavailable", [], id="agent-unavailable",
+    ),
+    pytest.param(
+        {"reply": ["Isolate x first.\n", "Subtract 3, then"], "then_fail": RuntimeError("reset")},
+        "Isolate x first.\nSubtract 3, then" + AGENT_UNAVAILABLE_NOTICE,
+        "agent_unavailable", [], id="agent-breaks-midstream",
     ),
 ]
 
@@ -185,7 +194,33 @@ def test_the_outcome_vocabulary_is_the_one_old_turn_logs_hold():
         "content_blocked",
         "clarification_requested",
         "answer_leak_blocked",
+        "agent_unavailable",
         "error",
         "client_cancelled",
         "no gateway record",
     }
+
+
+def test_a_failing_agent_is_a_notice_and_the_record_says_where_it_failed(client, turn_log):
+    """The learner used to get HTTP 200 and then a dropped connection (nothing to read); now the
+    reply is a sentence, and the turn record keeps the failure for the operator."""
+    resp = _run(client, reply=RuntimeError("agent exploded"))
+    assert resp.status_code == 200 and "Tutor unavailable" in resp.text
+    (record,) = turn_log.read()
+    assert record["outcome"] == "agent_unavailable"
+    assert record["error"] == "RuntimeError" and record["degraded_stage"] == "before_first_byte"
+
+    _run(client, reply=["Isolate x first.\n", "Then"], then_fail=ConnectionError("reset"))
+    midstream = turn_log.read()[-1]
+    assert midstream["degraded_stage"] == "midstream" and midstream["error"] == "ConnectionError"
+
+
+def test_a_bug_in_the_guards_is_still_an_error_not_a_notice(client, turn_log):
+    # only the agent call is guarded: a failure elsewhere in the turn must stay loud
+    with patch(
+        "services.gateway.src.gateway.main.ReplyGuard", side_effect=RuntimeError("guard bug")
+    ):
+        resp = _run(client)
+    assert "Tutor unavailable" not in resp.text
+    (record,) = turn_log.read()
+    assert record["outcome"] == "error"

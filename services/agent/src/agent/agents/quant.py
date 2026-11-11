@@ -13,7 +13,7 @@ from services.agent.src.agent.capabilities.retrieve_corpus import CorpusChunk, R
 from services.agent.src.agent.capabilities.verify_math import VerifyMath, VerifyMathResult
 from services.agent.src.agent.independent_check import IndependentCheck
 from services.agent.src.agent.settings import get_settings
-from services.agent.src.agent.tool_loop import ToolCallRecord, run_tool_loop
+from services.agent.src.agent.tool_loop import ANSWERED, ToolCallRecord, run_tool_loop
 from services.agent.src.agent.tools.math_tools import MATH_TOOL_SPECS, MathTools
 from shared.src.shared import events
 from shared.src.shared.config import PROJECT_ROOT, load_model_config
@@ -92,7 +92,7 @@ class _ToolTurn:
         self._math_tools = math_tools
         self.calls: list[ToolCallRecord] = []
         self.rounds = 0
-        self.out_of_budget = False
+        self.stop_reason = ANSWERED
 
     async def reply(
         self,
@@ -114,7 +114,8 @@ class _ToolTurn:
         )
         self.calls += [replace(c, round=c.round + self.rounds) for c in outcome.calls]
         self.rounds += outcome.rounds
-        self.out_of_budget = self.out_of_budget or outcome.out_of_budget
+        if self.stop_reason == ANSWERED:  # a turn keeps the first reason it was stopped for
+            self.stop_reason = outcome.stop_reason
         for call in outcome.calls:
             _log.info(
                 "math tool %s ok=%s ms=%s args=%s result=%s",
@@ -129,7 +130,8 @@ class _ToolTurn:
             tool_rounds=self.rounds,
             tool_calls=[c.public() for c in self.calls],
             tool_errors=sum(1 for c in self.calls if not c.ok),
-            tool_budget_exhausted=self.out_of_budget,
+            tool_budget_exhausted=self.stop_reason != ANSWERED,
+            tool_loop_stop=self.stop_reason,
         )
 
     def trace(self) -> ToolTrace:

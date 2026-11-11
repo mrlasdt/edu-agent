@@ -26,8 +26,10 @@ the same model a couple of times, then the call moves to the next fallback; any 
 missing Google key hands the call to OpenRouter at once. A model that fails more than
 `allowed_fails` times inside `cooldown_time` seconds is skipped until the cooldown ends, if it has
 fallbacks to skip to.
-Streaming falls back too, as long as the failure comes before the first token (litellm also
-resumes a stream that breaks midway, on the fallback).
+Streaming falls back too, as long as the failure comes before the first token. A stream that
+breaks after tokens were already sent is not resumed on the fallback (measured against a fake
+provider that cuts the connection after 3 tokens: the fallback was never asked): the call raises,
+and `/chat` ends that reply with a notice (`Outcome.agent_unavailable`).
 
 The spend cap is not the Router's job: callers check it before the call, against the dearest model
 in the chain, so a fallback can never take a call past the cap (`shared.guarded_completion`, used
