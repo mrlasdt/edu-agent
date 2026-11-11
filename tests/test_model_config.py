@@ -50,7 +50,6 @@ TEMPERATURES = {
     "orchestrator": 0,
     "quant_agent": 0.2,
     "aw_agent": 0.5,
-    "context_summarizer": 0,
     "math_retry": 0.2,
     "math_escalation": 1,
     "style_critic": 0,
@@ -71,7 +70,7 @@ MODELS = {
     },
 }
 PROMPT_PINS = {
-    "quant_agent": {"tutor": "v3", "solve": "v2", "formalize": "v1", "summarize": "v1"},
+    "quant_agent": {"tutor": "v3", "solve": "v2", "formalize": "v1"},
     "quant_agent_math_tools": {"tutor": "v1", "solve": "v1"},
     "aw_agent": {"tutor": "v1", "solve": "v1"},
     "ielts_grader": {"writing_t2": "v1"},

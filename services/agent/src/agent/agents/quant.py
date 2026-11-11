@@ -19,7 +19,7 @@ from services.agent.src.agent.tools.math_tools import MATH_TOOL_SPECS, MathTools
 from shared.src.shared import events
 from shared.src.shared.config import load_model_config
 from shared.src.shared.events import Event, Sources, Token, ToolTrace, Verified
-from shared.src.shared.models import Message, MessageRole, Mode, Session
+from shared.src.shared.models import Mode, Session
 from shared.src.shared.observability import build_llm_metadata
 from shared.src.shared.prompts import read_prompt
 from shared.src.shared.turn_meter import TurnMeter
@@ -30,9 +30,6 @@ _AGENT = "quant_agent"
 # The same prompts plus a "Math tools" section; used only when the math tools are on.
 _TOOLS_AGENT = "quant_agent_math_tools"
 _NO_REPLY = "I could not finish working that out just now. Could you send the problem again?"
-
-# A turn longer than this is clipped before it goes into a summary call.
-_SUMMARY_TURN_CHARS = 600
 
 # Maximum retries before escalating to the stronger model
 _MAX_RETRIES = 2
@@ -57,18 +54,6 @@ def _format_chunks_for_context(chunks: list[CorpusChunk]) -> str:
         + notes
     )
 
-
-def _summary_messages(
-    prompt: str, previous: str | None, added: list[Message]
-) -> list[dict[str, Any]]:
-    """The summary call: the notes so far and the new turns, each turn clipped."""
-    turns = "\n".join(
-        f"{'Student' if m.role == MessageRole.candidate else 'Tutor'}: "
-        f"{m.content[:_SUMMARY_TURN_CHARS]}"
-        for m in added
-    )
-    body = f"Notes so far:\n{previous or '(none yet)'}\n\nNew turns:\n{turns}"
-    return [{"role": "system", "content": prompt}, {"role": "user", "content": body}]
 
 
 class _ToolTurn:
@@ -221,8 +206,6 @@ class QuantAgent(BaseAgent):
         math_tools: MathTools | None = None,
         math_tools_enabled: bool | None = None,
         context_compaction: bool | None = None,
-        context_background: bool = True,
-        context_notes: bool | None = None,
     ) -> None:
         self._model_config = load_model_config(model_config_path)
         settings = get_settings()
@@ -230,12 +213,6 @@ class QuantAgent(BaseAgent):
             ContextBudget(
                 keep=settings.context_keep_messages,
                 step=settings.context_fold_step,
-                background=context_background,
-                notes=settings.context_notes_enabled if context_notes is None else context_notes,
-                salt="|".join((
-                    self._model_config.prompt_version(_AGENT, "summarize"),
-                    self._model_config.litellm_model("context_summarizer"),
-                )),
             )
             if (settings.context_compaction_enabled if context_compaction is None
                 else context_compaction)
@@ -274,7 +251,7 @@ class QuantAgent(BaseAgent):
             self._math_tools_enabled
         ) else None
         try:
-            session, context_section = await self._compact(session, meter)
+            session, context_section = self._compact(session, meter)
             with meter.phase("retrieval"):
                 chunks = await self._retrieve(session, message)
             meter.annotate(notes_retrieved=len(chunks))
@@ -476,43 +453,16 @@ class QuantAgent(BaseAgent):
             expected=claimed_answer,
         )
 
-    async def _compact(self, session: Session, meter: TurnMeter) -> tuple[Session, str]:
+    def _compact(self, session: Session, meter: TurnMeter) -> tuple[Session, str]:
         """
         The session as the model will see it, and the prompt section that stands in for the
         turns that were folded. A conversation under the budget comes back as it was.
         """
         if self._context is None:
             return session, ""
-        version = self._model_config.prompt_version(_AGENT, "summarize")
-        background = self._context.background
-
-        async def summarize(previous: str | None, added: list[Message]) -> str | None:
-            # In the background the call outlives this turn, so it has a record of its own.
-            own = TurnMeter(
-                f"{meter.trace_id}-ctx" if meter.trace_id else "", "agent", "context_summarizer",
-                "tutor", f"summarize-{version}",
-            ) if background else meter
-            try:
-                with own.phase("context_summary"):
-                    response = await own.complete(
-                        model=self._model_config.litellm_model("context_summarizer"),
-                        messages=_summary_messages(
-                            _read_prompt(_AGENT, "summarize", version), previous, added
-                        ),
-                        temperature=self._model_config.role("context_summarizer").temperature,
-                        **build_llm_metadata(
-                            trace_id=own.trace_id, prompt_version=f"summarize-{version}"
-                        ),
-                    )
-            finally:
-                if background:
-                    own.finish()
-            content = response.choices[0].message.content
-            return content.strip() if isinstance(content, str) else None
-
-        plan = await self._context.plan(session.history, summarize)
+        plan = self._context.plan(session.history)
         meter.annotate(
-            context_messages_folded=plan.folded, context_note=plan.source,
+            context_messages_folded=plan.folded,
             context_messages_sent=len(plan.recent),
         )
         if not plan.folded:

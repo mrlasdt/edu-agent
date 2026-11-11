@@ -19,16 +19,6 @@ def turn_log(tmp_path):
 
 
 @pytest.fixture(autouse=True)
-def empty_context_notes():
-    """Running notes are cached by the text of the turns they cover; start every test empty."""
-    from services.agent.src.agent import context
-
-    context.reset()
-    yield
-    context.reset()
-
-
-@pytest.fixture(autouse=True)
 def local_feedback_files(tmp_path, monkeypatch):
     """
     Feedback votes and the opt-in text capture are local files. Point them at temp paths and

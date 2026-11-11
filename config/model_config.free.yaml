@@ -41,12 +41,6 @@ roles:
     <<: *default
     temperature: 0.5
 
-  # Folds the older turns of a long tutoring session into a short note: a cheap call, so point
-  # it at a small model when cost matters (the note is a few hundred tokens in and out)
-  context_summarizer:
-    <<: *default
-    temperature: 0
-
   # Math verifier retry - same model as quant_agent
   math_retry:
     <<: *default

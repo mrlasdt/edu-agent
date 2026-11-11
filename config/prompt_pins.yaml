@@ -10,8 +10,6 @@ quant_agent:
   solve: v2
   # The independent answer check's model call: the problem as an <expr> tag, without the answer
   formalize: v1
-  # Folds the older turns of a long session into a short note (services/agent/src/agent/context.py)
-  summarize: v1
 # The Quant agent's prompts when the math tools are on (MATH_TOOLS_ENABLED): the same prompts as
 # above plus a "Math tools" section (prompts/quant_agent_math_tools/<mode>/<version>.md).
 quant_agent_math_tools:
