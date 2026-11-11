@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Any
 
 from evals.qdrant_filter_check import start_qdrant, stop_qdrant
-from services.corpus.src.corpus.main import search_candidates
+from services.corpus.src.corpus.main import passes_relevance_floor, search_candidates
 from services.corpus.src.corpus.settings import CorpusSettings
 from services.ingestion.src.ingestion import main as ingestion
 from services.ingestion.src.ingestion.settings import get_settings as get_ingestion_settings
@@ -109,19 +109,29 @@ def first_rank(expect: Sequence[str], labels: Sequence[str]) -> int | None:
     return None
 
 
-def signal(hit: Hit) -> float | None:
-    """The relevance signal the corpus floor reads for this hit (see passes_relevance_floor)."""
-    return hit.score if hit.reranked else hit.dense_score
+def floor_settings(floor: float, rerank: bool) -> CorpusSettings:
+    """The corpus settings a swept floor stands for (a rerank floor sits on the cosine floor)."""
+    if rerank:
+        return CorpusSettings(rerank_relevance_floor=floor)
+    return CorpusSettings(dense_relevance_floor=floor)
 
 
-def kept(run: QueryRun, floor: float | None) -> list[Hit]:
-    """The hits that survive a floor; floor None means no floor (today's behaviour)."""
-    if floor is None:
+def kept(run: QueryRun, settings: CorpusSettings | None) -> list[Hit]:
+    """The hits the corpus floor lets through; settings None means no floor (the old behaviour)."""
+    if settings is None:
         return list(run.hits)
-    return [h for h in run.hits if (s := signal(h)) is not None and s >= floor]
+    return [
+        h
+        for h in run.hits
+        if passes_relevance_floor(
+            {"score": h.score, "dense_score": h.dense_score, "reranked": h.reranked}, settings
+        )
+    ]
 
 
-def quality(runs: Sequence[QueryRun], floor: float | None = None) -> dict[str, Any]:
+def quality(
+    runs: Sequence[QueryRun], settings: CorpusSettings | None = None
+) -> dict[str, Any]:
     """recall@3 and MRR@3 per on-topic group; share of off-topic queries still shown a note."""
     out: dict[str, Any] = {}
     for group in GROUPS:
@@ -129,11 +139,11 @@ def quality(runs: Sequence[QueryRun], floor: float | None = None) -> dict[str, A
         if not group_runs:
             continue
         if group == "off_topic":
-            shown = sum(1 for r in group_runs if kept(r, floor))
+            shown = sum(1 for r in group_runs if kept(r, settings))
             out[group] = {"n": len(group_runs), "notes_shown": shown / len(group_runs)}
             continue
         ranks = [
-            first_rank(r.query.expect, [h.label for h in kept(r, floor)]) for r in group_runs
+            first_rank(r.query.expect, [h.label for h in kept(r, settings)]) for r in group_runs
         ]
         out[group] = {
             "n": len(group_runs),
@@ -148,22 +158,25 @@ def percentile(values: Sequence[float], q: float) -> float:
     return ordered[min(len(ordered) - 1, round(q * (len(ordered) - 1)))]
 
 
-def sweep(runs: Sequence[QueryRun], floors: Sequence[float]) -> list[dict[str, Any]]:
+def sweep(
+    runs: Sequence[QueryRun], floors: Sequence[float], rerank: bool = False
+) -> list[dict[str, Any]]:
     """Per floor: on-topic recall@3 kept, and the off-topic queries still shown a note."""
     on_topic = [r for r in runs if r.query.group != "off_topic"]
     off_topic = [r for r in runs if r.query.group == "off_topic"]
     rows = []
     for floor in floors:
+        settings = floor_settings(floor, rerank)
         found = sum(
             1
             for r in on_topic
-            if first_rank(r.query.expect, [h.label for h in kept(r, floor)]) is not None
+            if first_rank(r.query.expect, [h.label for h in kept(r, settings)]) is not None
         )
         rows.append(
             {
                 "floor": floor,
                 "on_topic_recall_at_3": found / len(on_topic),
-                "off_topic_notes_shown": sum(1 for r in off_topic if kept(r, floor))
+                "off_topic_notes_shown": sum(1 for r in off_topic if kept(r, settings))
                 / len(off_topic),
             }
         )
@@ -279,12 +292,16 @@ async def evaluate(args: argparse.Namespace) -> dict[str, Any]:
                 report["skipped"][config] = "no --reranker-url (the reranker is opt-in)"
                 continue
             runs = await run_config(queries, settings[config])
-            if config == "hybrid+rerank" and not any(h.reranked for r in runs for h in r.hits):
-                report["configs"][config] = None
-                report["skipped"][config] = "the reranker did not answer in time (fails open)"
-                continue
             reranked = config == "hybrid+rerank"
-            rows = sweep(runs, RERANK_FLOORS if reranked else COSINE_FLOORS)
+            unranked = sum(1 for r in runs if r.hits and not all(h.reranked for h in r.hits))
+            if reranked and unranked:
+                report["configs"][config] = None
+                report["skipped"][config] = (
+                    f"the reranker did not answer for {unranked} of {len(runs)} queries "
+                    "(it fails open to the RRF order)"
+                )
+                continue
+            rows = sweep(runs, RERANK_FLOORS if reranked else COSINE_FLOORS, rerank=reranked)
             latencies = [r.latency_ms for r in runs]
             report["configs"][config] = {
                 "signal": "reranker score" if reranked else "dense cosine similarity",

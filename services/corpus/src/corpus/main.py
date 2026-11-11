@@ -145,7 +145,9 @@ async def retrieve(request: RetrieveRequest) -> list[dict[str, Any]]:
     return results
 
 
-async def _rerank(query: str, ranked: list[dict[str, Any]], top_k: int) -> list[dict[str, Any]]:
+async def _rerank(
+    query: str, ranked: list[dict[str, Any]], top_k: int, url: str
+) -> list[dict[str, Any]]:
     """
     Reorder the top candidates by cross-encoder score; hits beyond the candidate
     window keep their place after them. Fails open to the incoming order.
@@ -157,7 +159,7 @@ async def _rerank(query: str, ranked: list[dict[str, Any]], top_k: int) -> list[
         scores = await rerank_texts(
             query,
             [h["payload"].get("text", "") for h in window],
-            url=get_settings().tei_reranker_url,
+            url=url,
         )
         if len(scores) != len(window):
             raise ValueError(f"reranker returned {len(scores)} scores for {len(window)} texts")
@@ -334,5 +336,5 @@ async def search_candidates(
         for h in ranked
     ]
     if settings.tei_reranker_url:
-        ranked = await _rerank(query, ranked, top_k)
+        ranked = await _rerank(query, ranked, top_k, settings.tei_reranker_url)
     return ranked[:top_k]

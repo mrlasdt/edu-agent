@@ -22,7 +22,8 @@ class CorpusSettings(ServiceSettings):
     # chunks, 46 queries): at 0.45 11 of 12 off-topic queries get no note and 2 of 34 on-topic
     # queries lose theirs (hybrid numbers, scored on the same queries that set the floor, so
     # in-sample). The rerank floor is 0 (no floor) until the reranker has been measured on hardware
-    # where it answers inside its timeout; until then a reranked hit must also clear the dense floor.
+    # where it answers inside its timeout; until then a reranked hit must also clear the dense
+    # floor.
     dense_relevance_floor: float = 0.45
     rerank_relevance_floor: float = 0.0
 

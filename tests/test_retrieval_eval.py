@@ -5,8 +5,8 @@ Behaviors under test:
   1. Every expected note in gre_retrieval.jsonl exists in the seed notes, as the chunker labels it
   2. The query set has all three groups; off-topic queries expect nothing, the others expect a note
   3. recall@3, MRR@3 and the off-topic "notes shown" rate are computed from ranked hits
-  4. A floor drops hits by their relevance signal (reranker score, else cosine) and the sweep
-     reports what each floor costs on-topic and buys off-topic
+  4. A floor drops hits by the corpus rule (cosine floor for all hits, reranker floor on top for
+     reranked ones) and the sweep reports what each floor costs on-topic and buys off-topic
 """
 from collections import Counter
 
@@ -70,18 +70,30 @@ def test_quality_recall_mrr_and_notes_shown():
     assert q["off_topic"]["notes_shown"] == 0.5
 
 
-def test_floor_reads_cosine_or_the_reranker_score():
+def test_cosine_sweep_reads_the_cosine_not_the_fused_score():
     runs = [
-        _run("exact", ["a"], [_hit("a", 0.03, dense=0.6)]),  # fused score ignored, cosine kept
-        _run("paraphrase", ["b"], [_hit("b", 0.2, dense=0.9, reranked=True)]),  # reranker wins
+        _run("exact", ["a"], [_hit("a", 0.03, dense=0.6)]),
         _run("off_topic", [], [_hit("x", 0.03, dense=0.45)]),
     ]
-    rows = {r["floor"]: r for r in sweep(runs, [0.0, 0.5, 0.7])}
-    assert rows[0.0]["on_topic_recall_at_3"] == 1.0
-    assert rows[0.5]["on_topic_recall_at_3"] == 0.5  # the reranked hit (0.2) fell below 0.5
+    rows = {r["floor"]: r for r in sweep(runs, [0.3, 0.5, 0.7])}
+    assert rows[0.3]["on_topic_recall_at_3"] == 1.0
+    assert rows[0.3]["off_topic_notes_shown"] == 1.0
+    assert rows[0.5]["on_topic_recall_at_3"] == 1.0
     assert rows[0.5]["off_topic_notes_shown"] == 0.0
-    assert rows[0.0]["off_topic_notes_shown"] == 1.0
     assert rows[0.7]["on_topic_recall_at_3"] == 0.0
+
+
+def test_rerank_sweep_applies_the_rerank_floor_on_top_of_the_cosine_floor():
+    runs = [
+        _run("exact", ["a"], [_hit("a", 0.6, dense=0.9, reranked=True)]),
+        _run("paraphrase", ["b"], [_hit("b", 0.2, dense=0.9, reranked=True)]),
+        _run("exact", ["c"], [_hit("c", 0.9, dense=0.30, reranked=True)]),  # production drops it
+        _run("off_topic", [], [_hit("x", 0.9, dense=0.30, reranked=True)]),
+    ]
+    rows = {r["floor"]: r for r in sweep(runs, [0.0, 0.5], rerank=True)}
+    assert rows[0.0]["on_topic_recall_at_3"] == pytest.approx(2 / 3)
+    assert rows[0.0]["off_topic_notes_shown"] == 0.0
+    assert rows[0.5]["on_topic_recall_at_3"] == pytest.approx(1 / 3)
 
 
 def test_best_floor_keeps_most_recall_among_floors_quiet_enough():

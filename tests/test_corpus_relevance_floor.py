@@ -18,6 +18,7 @@ import pytest
 from services.corpus.src.corpus.main import (
     RetrieveRequest,
     passes_relevance_floor,
+    search_candidates,
     search_corpus,
 )
 from services.corpus.src.corpus.settings import CorpusSettings
@@ -169,3 +170,27 @@ def test_passes_relevance_floor_signal_choice(hit, expected):
 def test_request_defaults_the_floor_off():
     request = RetrieveRequest(query="essay", candidate_id="c", school_id="", test_type="gre")
     assert request.apply_relevance_floor is False
+
+
+async def test_the_injected_settings_decide_the_reranker_url():
+    client = _client([_point("a", 0.9, "A"), _point("b", 0.8, "B")], [])
+    rerank = AsyncMock(return_value=[0.2, 0.9])
+    with (
+        patch(
+            "services.corpus.src.corpus.main.get_settings",
+            return_value=_settings(tei_reranker_url=""),
+        ),
+        patch("services.corpus.src.corpus.main.get_qdrant_client", return_value=client),
+        patch(
+            "services.corpus.src.corpus.main.embed_query",
+            new_callable=AsyncMock,
+            return_value=[0.1],
+        ),
+        patch("services.corpus.src.corpus.main.rerank_texts", rerank),
+    ):
+        ranked = await search_candidates(
+            "q", "c1", "s1", "gre", 3, settings=_settings(tei_reranker_url=RERANKER_URL)
+        )
+    assert rerank.await_args.kwargs["url"] == RERANKER_URL
+    assert [h["id"] for h in ranked] == ["b", "a"]
+    assert all(h["reranked"] for h in ranked)
