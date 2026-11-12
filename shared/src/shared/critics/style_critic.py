@@ -6,11 +6,11 @@ Returns (passed: bool, feedback: str).
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
-from shared.src.shared.config import PROJECT_ROOT, load_model_config
+from shared.src.shared.config import load_model_config
 from shared.src.shared.observability import build_llm_metadata
+from shared.src.shared.prompts import read_prompt
 from shared.src.shared.turn_meter import TurnMeter
 
 _PROMPT_AGENT = "style_critic"
@@ -19,8 +19,7 @@ _PROMPT_MODE = "rubric"
 
 def _load_rubric(version: str) -> str:
     """The rubric prompt file for `version`, without its YAML frontmatter."""
-    raw = (PROJECT_ROOT / "prompts" / _PROMPT_AGENT / _PROMPT_MODE / f"{version}.md").read_text()
-    return re.sub(r"^---\n.*?\n---\n", "", raw, flags=re.DOTALL).strip()
+    return read_prompt(_PROMPT_AGENT, _PROMPT_MODE, version)
 
 
 

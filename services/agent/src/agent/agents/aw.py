@@ -1,21 +1,24 @@
 from __future__ import annotations
 
+import logging
 import re
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from services.agent.src.agent.base import BaseAgent
 from services.agent.src.agent.capabilities.match_student_style import MatchStudentStyle
 from services.agent.src.agent.capabilities.retrieve_corpus import CorpusChunk, RetrieveCorpus
-from shared.src.shared.config import PROJECT_ROOT, load_model_config
+from services.agent.src.agent.prompting import build_messages, collect_stream
+from shared.src.shared.config import load_model_config
 from shared.src.shared.critics.citation_checker import check_citations, strip_uncited_claims
 from shared.src.shared.critics.style_critic import run_style_critic
 from shared.src.shared.events import CitationsStripped, Event, SampleEssay, Sources, Token
-from shared.src.shared.models import MessageRole, Mode, Session
+from shared.src.shared.models import Mode, Session
 from shared.src.shared.observability import build_llm_metadata
+from shared.src.shared.prompts import read_prompt
 from shared.src.shared.turn_meter import TurnMeter
 
-_PROMPT_ROOT = PROJECT_ROOT / "prompts" / "aw_agent"
+_log = logging.getLogger(__name__)
 
 _ARGUMENT_KEYWORDS = re.compile(
     r"\b(the following|the argument|critique|examine the|stated and/or unstated|"
@@ -27,9 +30,7 @@ _MIN_PERSONAL_ESSAYS = 2
 
 
 def _load_prompt(mode: Mode, version: str) -> str:
-    path = _PROMPT_ROOT / mode.value / f"{version}.md"
-    raw = path.read_text()
-    return re.sub(r"^---\n.*?\n---\n", "", raw, flags=re.DOTALL).strip()
+    return read_prompt("aw_agent", mode.value, version)
 
 
 def _format_chunks_for_context(chunks: list[CorpusChunk]) -> str:
@@ -62,26 +63,9 @@ def _build_messages(
     chunk_context: str,
     exemplar_context: str = "",
 ) -> list[dict[str, Any]]:
-    messages: list[dict[str, Any]] = [{"role": "system", "content": system_prompt}]
-    for msg in session.history:
-        role = "user" if msg.role == MessageRole.candidate else "assistant"
-        messages.append({"role": role, "content": msg.content})
-    content = user_message
-    if exemplar_context:
-        content = f"{content}\n{exemplar_context}"
-    if chunk_context:
-        content = f"{content}\n{chunk_context}"
-    messages.append({"role": "user", "content": content})
-    return messages
-
-
-async def _collect_stream(stream: AsyncIterator[Any]) -> tuple[list[str], str]:
-    tokens: list[str] = []
-    async for chunk in stream:
-        content = chunk.choices[0].delta.content
-        if content:
-            tokens.append(content)
-    return tokens, "".join(tokens)
+    """The AW turn's messages: style examples, then notes, each on a new line after the message."""
+    blocks = [f"\n{block}" for block in (exemplar_context, chunk_context) if block]
+    return build_messages(session, user_message, system_prompt, *blocks)
 
 
 class AWAgent(BaseAgent):
@@ -117,7 +101,8 @@ class AWAgent(BaseAgent):
             with meter.phase("retrieval"):
                 chunks = await self._retrieve(session, message)
             meter.annotate(notes_retrieved=len(chunks))
-            yield Sources(count=len(chunks))
+            if chunks:
+                yield Sources(count=len(chunks))
             chunk_context = _format_chunks_for_context(chunks)
             obs_meta = build_llm_metadata(trace_id=trace_id, prompt_version=version)
 
@@ -161,7 +146,7 @@ class AWAgent(BaseAgent):
             temperature=temperature,
             **(obs_meta or {}),
         )
-        tokens, full_text = await _collect_stream(response)
+        tokens, full_text = await collect_stream(response)
         valid, invalid = self._check_citations(full_text, len(chunks))
 
         if valid:
@@ -186,7 +171,7 @@ class AWAgent(BaseAgent):
             temperature=temperature,
             **(obs_meta or {}),
         )
-        tokens, full_text = await _collect_stream(response)
+        tokens, full_text = await collect_stream(response)
         valid, invalid = self._check_citations(full_text, len(chunks))
 
         if valid:
@@ -230,7 +215,7 @@ class AWAgent(BaseAgent):
             temperature=temperature,
             **(obs_meta or {}),
         )
-        tokens, full_text = await _collect_stream(response)
+        tokens, full_text = await collect_stream(response)
 
         # Style critic — one rewrite pass on structural violation
         style_ok, style_feedback = await self._run_style_critic(full_text, trace_id, meter)
@@ -251,7 +236,7 @@ class AWAgent(BaseAgent):
                 temperature=temperature,
                 **(obs_meta or {}),
             )
-            tokens, full_text = await _collect_stream(response)
+            tokens, full_text = await collect_stream(response)
 
         # Citation check
         valid, invalid = self._check_citations(full_text, len(chunks))
@@ -271,12 +256,10 @@ class AWAgent(BaseAgent):
                 temperature=temperature,
                 **(obs_meta or {}),
             )
-            tokens, full_text = await _collect_stream(response)
+            tokens, full_text = await collect_stream(response)
             valid, invalid = self._check_citations(full_text, len(chunks))
             if not valid:
-                full_text = strip_uncited_claims(full_text, invalid)
-                for token in tokens:
-                    yield Token(text=token)
+                yield Token(text=strip_uncited_claims(full_text, invalid))
                 yield SampleEssay()
                 yield CitationsStripped(stripped=True)
                 return
@@ -290,13 +273,21 @@ class AWAgent(BaseAgent):
     # ── seams ─────────────────────────────────────────────────────────────────
 
     async def _retrieve(self, session: Session, message: str) -> list[CorpusChunk]:
-        return await self._retrieve_corpus.retrieve(
-            query=message,
-            candidate_id=session.candidate_id,
-            school_id="",
-            test_type=session.test_type,
-            top_k=5,
-        )
+        """
+        Fetch grounding notes from the Corpus Service. Fails open, like the Quant agent: an
+        unreachable corpus costs the turn its grounding, not the answer.
+        """
+        try:
+            return await self._retrieve_corpus.retrieve(
+                query=message,
+                candidate_id=session.candidate_id,
+                school_id="",
+                test_type=session.test_type,
+                top_k=5,
+            )
+        except Exception:
+            _log.warning("corpus retrieval failed; answering without notes", exc_info=True)
+            return []
 
     def _check_citations(self, text: str, num_chunks: int) -> tuple[bool, list[str]]:
         return check_citations(text, num_chunks)
