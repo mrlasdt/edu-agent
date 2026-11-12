@@ -269,7 +269,7 @@ Docker Compose (`infra/docker-compose.yml`) is the one supported way to run the 
 - A soft quota (3 a day) on full-essay Solve turns; the sample-essay disclaimer is built, the quota is not.
 - On an answer leak the model check appends a notice; it does not regenerate the reply (ADR-0008).
 - A runtime `verifier-fail` event and the 1% sample of those events sent to human review (only the offline eval reports `verifier_fail`).
-- A style profile derived asynchronously from a learner's essays (`style_extractor`), and parent section chunks with summaries in the corpus (chunks are sections split into paragraphs).
+- A style profile derived asynchronously from a learner's essays, and parent section chunks with summaries in the corpus (chunks are sections split into paragraphs).
 - Upload scanning: no magic-byte check, antivirus scan, moderation of chunks or PII offer on ingested files (only extension, MIME and size limits and the admin key).
 - Nightly eval run, anchor-essay self-check and the three drift alerts (`eval-live.yml` is manual only); the style-adherence judge, citation judge and personal-style similarity judge.
 - An A/B traffic split between prompt versions: one version is pinned per agent and mode, and the turn record carries no variant.

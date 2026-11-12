@@ -53,6 +53,3 @@ class AgentRegistry:
                 known=list(self._registry.keys()),
             )
         return self._registry[key]
-
-    def is_registered(self, test_type: str, section: str) -> bool:
-        return (test_type, section) in self._registry

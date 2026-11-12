@@ -11,7 +11,9 @@ quant_agent:
   # The independent answer check's model call: the problem as an <expr> tag, without the answer
   formalize: v1
 # The Quant agent's prompts when the math tools are on (MATH_TOOLS_ENABLED): the same prompts as
-# above plus a "Math tools" section (prompts/quant_agent_math_tools/<mode>/<version>.md).
+# above plus a "Math tools" section (prompts/quant_agent_math_tools/<mode>/<version>.md). That file
+# holds only the section and `extends` the base prompt it was written against (shared/prompts.py);
+# when quant_agent gets a new version, write a new variant version that extends it.
 quant_agent_math_tools:
   tutor: v1  # tutor v3 plus: compute privately with the tools, never state a tool result
   solve: v1  # solve v2 plus: use the tools for every calculation, quote their values

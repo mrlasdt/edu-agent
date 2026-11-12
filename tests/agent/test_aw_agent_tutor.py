@@ -5,10 +5,9 @@ Behaviors under test (issue 08):
   1. Tutor mode yields a plan, not a full essay (short structured output)
   2. retrieve-corpus capability is called for every AW turn
   3. Retrieved chunks are injected into the LLM message context
-  4. Issue task vs Argument task detected and routed to different prompt sections
-  5. Citation checker is called post-generation
-  6. On citation failure → regenerate once; if still failing → strip + citation_stripped=True
-  7. run() returns an async generator + metadata dict
+  4. Citation checker is called post-generation
+  5. On citation failure → regenerate once; if still failing → strip + citation_stripped=True
+  6. run() returns an async generator + metadata dict
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -116,27 +115,7 @@ async def test_chunks_injected_into_messages():
     assert "GRE Issue task" in full_context or "strong thesis" in full_context
 
 
-# ── 4. Issue vs Argument task detection ───────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_issue_task_detected_from_prompt():
-    agent = AWAgent(model_config_path="config/model_config.dev.yaml")
-    task_type = await agent._detect_task_type("The government should invest more in education.")
-    assert task_type == "issue"
-
-
-@pytest.mark.asyncio
-async def test_argument_task_detected_from_prompt():
-    agent = AWAgent(model_config_path="config/model_config.dev.yaml")
-    task_type = await agent._detect_task_type(
-        "The following appeared in a business report: 'Our company should...' "
-        "Write a response in which you examine the stated and/or unstated assumptions."
-    )
-    assert task_type == "argument"
-
-
-# ── 5. Citation checker called post-generation ───────────────────────────────
+# ── 4. Citation checker called post-generation ───────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -156,7 +135,7 @@ async def test_citation_checker_called():
     mock_check.assert_called_once()
 
 
-# ── 6. Citation failure → regenerate once → strip on second failure ───────────
+# ── 5. Citation failure → regenerate once → strip on second failure ───────────
 
 
 @pytest.mark.asyncio
@@ -197,7 +176,7 @@ async def test_persistent_citation_failure_emits_stripped_metadata():
     assert CitationsStripped(stripped=True) in items
 
 
-# ── 7. Metadata event yielded at end ──────────────────────────────────────────
+# ── 6. Metadata event yielded at end ──────────────────────────────────────────
 
 
 @pytest.mark.asyncio

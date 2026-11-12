@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from collections.abc import AsyncGenerator, Iterator
 from typing import Any
 
@@ -14,12 +13,6 @@ from shared.src.shared.events import CitationsStripped, Event, SampleEssay, Toke
 from shared.src.shared.models import Mode, Session
 from shared.src.shared.prompts import read_prompt
 from shared.src.shared.turn_meter import TurnMeter
-
-_ARGUMENT_KEYWORDS = re.compile(
-    r"\b(the following|the argument|critique|examine the|stated and/or unstated|"
-    r"write a response in which you examine|evaluate the argument)\b",
-    re.IGNORECASE,
-)
 
 _MIN_PERSONAL_ESSAYS = 2
 
@@ -165,11 +158,6 @@ class AWAgent(BaseAgent[Turn]):
             candidate_id=session.candidate_id,
             test_type=session.test_type,
         )
-
-    async def _detect_task_type(self, message: str) -> str:
-        if _ARGUMENT_KEYWORDS.search(message):
-            return "argument"
-        return "issue"
 
 
 def _reply(

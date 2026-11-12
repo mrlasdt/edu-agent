@@ -34,8 +34,10 @@ def test_registry_unregistered_pair_raises():
 def test_registry_binds_exactly_the_catalog_pairs():
     """The gateway routes against the shared catalog; the agent must serve the same pairs."""
     registry = build_registry()
-    assert all(registry.is_registered(t, s) for t, s in SUPPORTED_PAIRS)
-    assert registry.is_registered("gre", "verbal") is False
+    for test_type, section in SUPPORTED_PAIRS:
+        registry.get(test_type, section)  # raises AgentNotRegisteredError if it is not bound
+    with pytest.raises(AgentNotRegisteredError):
+        registry.get("gre", "verbal")
     assert len(SUPPORTED_PAIRS) == 3
 
 
