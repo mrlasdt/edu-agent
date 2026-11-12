@@ -8,7 +8,6 @@ from services.gateway.src.gateway.chat.turn import ChatTurn, is_coach
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
 from services.gateway.src.gateway.guardrails.input import (
     ModerationUnavailableError,
-    check_completeness,
     check_content_safety,
 )
 from services.gateway.src.gateway.guardrails.stream import INPUT_PII_NOTICE
@@ -20,6 +19,7 @@ from services.gateway.src.gateway.ielts_coach import (
     find_report,
 )
 from services.gateway.src.gateway.orchestrator import ClarificationTurn, RouteResult
+from services.gateway.src.gateway.orchestrator.enrich import check_completeness
 from shared.src.shared.models import Mode
 from shared.src.shared.turn_outcome import Outcome
 
@@ -66,7 +66,7 @@ async def completeness(turn: ChatTurn) -> Verdict:
 
 
 async def route(turn: ChatTurn) -> Verdict:
-    result = await turn.orchestrator.process(turn.session, turn.message)
+    result = turn.orchestrator.process(turn.session, turn.message)
     if isinstance(result, ClarificationTurn):
         return Verdict.stop(Outcome.clarification_requested, result.prompt)
     assert isinstance(result, RouteResult)  # narrows type; route succeeded

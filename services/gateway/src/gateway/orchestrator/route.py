@@ -10,7 +10,6 @@ from shared.src.shared.models import Session
 @dataclass(frozen=True)
 class RouteResult:
     """The Orchestrator accepted this session: its (test_type, section) is supported."""
-    session: Session
 
 
 @dataclass(frozen=True)
@@ -32,10 +31,10 @@ class Orchestrator:
       1. Validate — reject blank messages immediately
       2. Route    — check (test_type, section) against the catalog of supported pairs
                     On miss → ClarificationTurn (not an exception; the agent service is not called)
-      3. Return   — RouteResult carries the validated session
+      3. Return   — RouteResult says the session may go on to the agent
 
     Step 2b (enrichment — a cheap LLM detecting incomplete questions) runs in the
-    gateway's /chat handler via check_completeness, after this class has validated and
+    gateway's /chat handler via `enrich.check_completeness`, after this class has validated and
     routed the turn.
     Not built: complexity classification (Basic vs Advanced), the complexity-escalation
     suggestion and the topic-relevance label. There is no code for them, not even a stub
@@ -45,7 +44,7 @@ class Orchestrator:
     def __init__(self, supported: Collection[tuple[str, str]] = SUPPORTED_PAIRS) -> None:
         self._supported = supported
 
-    async def process(self, session: Session, message: str) -> RouteResult | ClarificationTurn:
+    def process(self, session: Session, message: str) -> RouteResult | ClarificationTurn:
         # Step 1: validate
         if not message or not message.strip():
             return ClarificationTurn(
@@ -66,4 +65,4 @@ class Orchestrator:
             )
 
         # Step 3: return route result
-        return RouteResult(session=session)
+        return RouteResult()

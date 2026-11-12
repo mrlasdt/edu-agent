@@ -27,16 +27,18 @@ import pytest
 import respx
 
 from services.gateway.src.gateway.guardrails.input import (
-    DEFAULT_CLARIFICATION,
-    CompletenessVerdict,
     ModerationUnavailableError,
     _call_moderation_api,
-    check_completeness,
     check_content_safety,
 )
 from services.gateway.src.gateway.guardrails.output import check_answer_leak
 from services.gateway.src.gateway.guardrails.supportive import SUPPORTIVE_MESSAGE
 from services.gateway.src.gateway.guardrails.verdict import Verdict
+from services.gateway.src.gateway.orchestrator.enrich import (
+    DEFAULT_CLARIFICATION,
+    CompletenessVerdict,
+    check_completeness,
+)
 from services.gateway.src.gateway.settings import GatewaySettings
 from shared.src.shared.llm_router import use_router
 from shared.src.shared.models import Message, MessageRole, Mode, Session

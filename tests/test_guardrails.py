@@ -17,13 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
-from services.gateway.src.gateway.guardrails.input import (
-    COMPLETENESS_MAX_TOKENS,
-    DEFAULT_CLARIFICATION,
-    CompletenessVerdict,
-    check_completeness,
-    check_content_safety,
-)
+from services.gateway.src.gateway.guardrails.input import check_content_safety
 from services.gateway.src.gateway.guardrails.output import (
     LEAK_CHECK_MAX_TOKENS,
     check_answer_leak,
@@ -33,6 +27,12 @@ from services.gateway.src.gateway.guardrails.rate_limit import (
     RateLimiter,
 )
 from services.gateway.src.gateway.guardrails.verdict import Verdict
+from services.gateway.src.gateway.orchestrator.enrich import (
+    COMPLETENESS_MAX_TOKENS,
+    DEFAULT_CLARIFICATION,
+    CompletenessVerdict,
+    check_completeness,
+)
 from services.gateway.src.gateway.settings import GatewaySettings as Settings
 from shared.src.shared.config import clear_settings_caches
 from shared.src.shared.models import Message, MessageRole, Mode, Session
@@ -109,7 +109,7 @@ async def test_moderation_is_never_skipped_outside_dev(env):
 
 @pytest.mark.asyncio
 async def test_incomplete_quant_question_returns_clarification():
-    with patch("services.gateway.src.gateway.guardrails.input._call_enrichment_llm",
+    with patch("services.gateway.src.gateway.orchestrator.enrich._call_enrichment_llm",
                new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = CompletenessVerdict(
             complete=False, clarification="What is the full problem?"
@@ -120,7 +120,7 @@ async def test_incomplete_quant_question_returns_clarification():
 
 @pytest.mark.asyncio
 async def test_incomplete_question_without_a_clarification_gets_the_default_one():
-    with patch("services.gateway.src.gateway.guardrails.input._call_enrichment_llm",
+    with patch("services.gateway.src.gateway.orchestrator.enrich._call_enrichment_llm",
                new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = CompletenessVerdict(complete=False)
         verdict = await check_completeness("solve this", make_session(), "trace-3b")
@@ -129,7 +129,7 @@ async def test_incomplete_question_without_a_clarification_gets_the_default_one(
 
 @pytest.mark.asyncio
 async def test_complete_question_passes():
-    with patch("services.gateway.src.gateway.guardrails.input._call_enrichment_llm",
+    with patch("services.gateway.src.gateway.orchestrator.enrich._call_enrichment_llm",
                new_callable=AsyncMock) as mock_llm:
         mock_llm.return_value = CompletenessVerdict(complete=True)
         verdict = await check_completeness(

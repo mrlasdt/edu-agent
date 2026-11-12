@@ -50,6 +50,10 @@ _BARE_ASSIGNMENT = re.compile(
 )
 _LEAK_PATTERNS = (_ANSWER_TAG, _BOLD_ANSWER, _ANSWER_IS, _CONCLUSION, _BARE_ASSIGNMENT)
 
+# The model role of the leak check: the cheap guard model, set apart from the `orchestrator` role
+# so a change to one does not move the other.
+LEAK_CHECK_ROLE = "guard"
+
 # The verdict is one word (LEAK or SAFE). A reasoning model also spends hidden thinking tokens
 # against this cap, so it is sized well above the visible answer: low enough to stop a runaway
 # reply from stalling the turn's last step, high enough that a reasoning model still finishes.
@@ -95,14 +99,14 @@ async def _call_leak_checker(text: str, meter: TurnMeter | None = None) -> bool:
     cfg = load_model_config()
     settings = get_settings()
     keys = {"openai": settings.openai_api_key, "anthropic": settings.anthropic_api_key}
-    provider = cfg.role("orchestrator").provider
+    provider = cfg.role(LEAK_CHECK_ROLE).provider
     if provider in keys and not keys[provider]:
         return False
     version = cfg.prompt_version("orchestrator", "leak_check")
     system = read_prompt("orchestrator", "leak_check", version)
     try:
         response = await (meter or TurnMeter.detached()).complete(
-            model=cfg.litellm_model("orchestrator"),
+            model=cfg.litellm_model(LEAK_CHECK_ROLE),
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": text},
