@@ -6,8 +6,6 @@ validated and routed the turn.
 
 from __future__ import annotations
 
-import logging
-
 from pydantic import BaseModel, StrictBool
 
 from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
@@ -20,8 +18,6 @@ from shared.src.shared.prompts import read_prompt
 from shared.src.shared.structured import parse_structured, response_format_for
 from shared.src.shared.turn_meter import TurnMeter
 from shared.src.shared.turn_outcome import Outcome
-
-_log = logging.getLogger(__name__)
 
 _HISTORY_TURNS = 6
 
