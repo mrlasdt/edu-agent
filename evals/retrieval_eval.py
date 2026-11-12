@@ -48,7 +48,7 @@ GOLDEN_PATH = Path(__file__).parent / "golden" / "gre_retrieval.jsonl"
 SEED_DIR = "seed/gre-quant"
 EMBEDDER_MODEL = "BAAI/bge-m3"  # what infra/docker-compose.yml serves as tei-embedder
 GROUPS = ("exact", "paraphrase", "off_topic")
-TOP_K = 3  # what the Quant tutor asks for (agents/quant.py `_retrieve`)
+TOP_K = 3  # what the Quant tutor asks for (`QuantAgent.TOP_K` in agents/quant.py)
 CONFIGS = ("dense", "hybrid", "hybrid+rerank")
 # Candidate floors swept per signal: cosine similarity and the reranker's 0..1 score.
 COSINE_FLOORS = tuple(round(0.30 + 0.025 * i, 3) for i in range(0, 17))

@@ -29,11 +29,15 @@ def build_messages(
     ]
 
 
-async def collect_stream(stream: AsyncIterator[Any]) -> tuple[list[str], str]:
-    """Drain a litellm stream: the non-empty tokens, and the full text."""
-    tokens: list[str] = []
+async def token_stream(stream: AsyncIterator[Any]) -> AsyncIterator[str]:
+    """The non-empty content of each chunk of a litellm stream, as it arrives."""
     async for chunk in stream:
         content = chunk.choices[0].delta.content
         if content:
-            tokens.append(content)
+            yield content
+
+
+async def collect_stream(stream: AsyncIterator[Any]) -> tuple[list[str], str]:
+    """Drain a litellm stream: the non-empty tokens, and the full text."""
+    tokens = [token async for token in token_stream(stream)]
     return tokens, "".join(tokens)

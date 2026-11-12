@@ -17,7 +17,7 @@ The limit is ADR-0012's: only questions whose answer is a number the solver can 
 checked. "agrees" means two routes (the working, and the model's equation run by a solver) reached
 the same number. It does not mean the problem was read correctly: a model that misreads the
 problem the same way twice agrees with itself. Every function here is pure or goes through the
-verify-math capability; the model call lives in `QuantAgent._formalize`.
+verify-math capability; the model call lives in `QuantAgent.formalize`.
 """
 from __future__ import annotations
 

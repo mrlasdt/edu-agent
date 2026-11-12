@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from services.agent.src.agent.base import BaseAgent
@@ -34,13 +34,13 @@ class AgentRegistry:
     """
 
     def __init__(self) -> None:
-        self._registry: dict[tuple[str, str], type[BaseAgent]] = {}
+        self._registry: dict[tuple[str, str], type[BaseAgent[Any]]] = {}
 
-    def register(self, test_type: str, section: str, agent_cls: type[BaseAgent]) -> None:
+    def register(self, test_type: str, section: str, agent_cls: type[BaseAgent[Any]]) -> None:
         """Register an agent class for a (test_type, section) pair."""
         self._registry[(test_type, section)] = agent_cls
 
-    def get(self, test_type: str, section: str) -> type[BaseAgent]:
+    def get(self, test_type: str, section: str) -> type[BaseAgent[Any]]:
         """
         Return the registered agent class.
         Raises AgentNotRegisteredError with full context if not found.
