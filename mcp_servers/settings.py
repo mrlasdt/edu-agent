@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from shared.src.shared.config import ServiceSettings
 
@@ -16,6 +17,9 @@ class McpSettings(ServiceSettings):
     # corpus gives an empty id no tier at all).
     mcp_candidate_id: str = ""
     mcp_school_id: str = ""
+    # Where the candidate server reads its practice questions (gre_quant.jsonl, gre_aw.jsonl). The
+    # default is the repo's golden files; point it elsewhere to serve a different question bank.
+    mcp_practice_dir: str = str(Path(__file__).resolve().parent.parent / "evals" / "golden")
 
 
 @lru_cache

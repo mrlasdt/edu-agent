@@ -210,6 +210,7 @@ For Claude Desktop or any MCP client. Tools are named `<area>_<verb>` so a clien
 | Admin | `ingestion_submit_document(file_path, test_type)`, `ingestion_list_jobs(limit)`, `ingestion_get_job(job_id)` (sends `INGESTION_ADMIN_KEY`; the ingestion service answers 503 to every admin call while that key is unset) |
 
 - **Who is asking is configuration, not an argument.** The candidate server searches as `MCP_CANDIDATE_ID` and `MCP_SCHOOL_ID` from its own environment; the model cannot name them. Unset, only the global notes are searched.
+- **Practice questions come from files, not from the eval package.** The candidate server reads `gre_quant.jsonl` and `gre_aw.jsonl` from `MCP_PRACTICE_DIR` (default: the repo's `evals/golden/`), so it imports nothing from `evals/`.
 - **A practice question never carries its answer.** `practice_get_question` returns the question and its id; `essay_get_model` takes that id and returns the anchor essay at a tier.
 - **An error says what would have worked.** A mistyped `question_type`, an unknown `prompt_id` or a tier an essay does not have comes back as an error result listing the valid values.
 - **`corpus_search` is concise by default** (source and the first 300 characters of up to 5 notes); `response_format="detailed"` returns each note in full with its source file and score.
