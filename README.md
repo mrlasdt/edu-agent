@@ -134,7 +134,7 @@ Each `/chat` turn is metered (model calls, tokens, estimated USD, time to first 
 
 - `uv run python -m evals turn-report --feedback` adds the thumbs-down rate per agent and prompt version (the latest vote per turn counts) and lists each thumbs-down with its trace id. With one learner a rate is an anecdote, not a statistic.
 - `uv run python -m evals feedback-to-item <trace_id>` writes a draft eval item to `.turn-log/draft-items.jsonl` for the owner to complete (question type, ground truth, tag) before it moves into a golden file.
-- The question and the reply are not stored by default, so a draft is a stub (trace id, agent, prompt version, vote) and the question is re-entered by hand. `TURN_CAPTURE_TEXT=1` (default off) makes the gateway also write the question (after PII redaction) and the reply to `.turn-log/capture.jsonl` (`TURN_CAPTURE_PATH`), keyed by trace id; `feedback_to_item` then fills the draft in. The file is local, gitignored and never sent anywhere.
+- The question and the reply are not stored by default, so a draft is a stub (trace id, agent, prompt version, vote) and the question is re-entered by hand. `TURN_CAPTURE_TEXT=1` (default off) makes the gateway also write the question (after PII redaction) and the reply to `.turn-log/capture.jsonl` (`TURN_CAPTURE_PATH`), keyed by trace id; `feedback-to-item` then fills the draft in. The file is local, gitignored and never sent anywhere.
 
 ## IELTS Writing mock
 
