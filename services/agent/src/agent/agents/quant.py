@@ -11,7 +11,6 @@ from services.agent.src.agent.base import BaseAgent
 from services.agent.src.agent.capabilities.retrieve_corpus import CorpusChunk, RetrieveCorpus
 from services.agent.src.agent.capabilities.verify_math import VerifyMath, VerifyMathResult
 from services.agent.src.agent.context import ContextBudget
-from services.agent.src.agent.independent_check import IndependentCheck
 from services.agent.src.agent.prompting import build_messages, collect_stream
 from services.agent.src.agent.settings import get_settings
 from services.agent.src.agent.tool_loop import ANSWERED, ToolCallRecord, run_tool_loop
@@ -144,8 +143,8 @@ class _SolveChecks:
         self._meter = meter
         self._asked = False
         self._expression: str | None = None
-        self.last = IndependentCheck(
-            independent_check.NOT_CHECKABLE, reason="no answer has been checked yet"
+        self.last = events.IndependentCheck(
+            verdict=events.NOT_CHECKABLE, reason="no answer has been checked yet"
         )
         self._record()
 
@@ -154,8 +153,8 @@ class _SolveChecks:
         with self._meter.phase("verify"):
             well_formed = await self._agent.verify_well_formed(full_text, claimed)
         if not well_formed.verified:
-            self.last = IndependentCheck(
-                independent_check.NOT_CHECKABLE, reason="the answer is not well-formed"
+            self.last = events.IndependentCheck(
+                verdict=events.NOT_CHECKABLE, reason="the answer is not well-formed"
             )
             self._record()
             return False
@@ -167,7 +166,7 @@ class _SolveChecks:
         with self._meter.phase("independent_check"):
             self.last = await self._agent.check_independently(self._expression, claimed)
         self._record()
-        return self.last.verdict != independent_check.DISAGREES
+        return self.last.verdict != events.DISAGREES
 
     def _record(self) -> None:
         fields: dict[str, Any] = {"verified_independent": self.last.verdict}
@@ -179,7 +178,7 @@ class _SolveChecks:
 
     def retry_note(self, prev_answer: str) -> str:
         """What the model is told before its second attempt."""
-        if self.last.verdict == independent_check.DISAGREES:
+        if self.last.verdict == events.DISAGREES:
             return (
                 f"[My previous answer {prev_answer!r} disagreed with an independent calculation "
                 f"of the problem, which gave {self.last.solver}. Let me check my work and "
@@ -188,7 +187,7 @@ class _SolveChecks:
         return f"[My previous answer {prev_answer!r} could not be verified. Let me try again.]"
 
     def report(self) -> events.IndependentCheck:
-        return self.last.event()
+        return self.last.model_copy(update={"reason": ""})
 
 
 class QuantAgent(BaseAgent):
@@ -548,6 +547,6 @@ class QuantAgent(BaseAgent):
 
     async def check_independently(
         self, expression: str | None, claimed_answer: str
-    ) -> IndependentCheck:
+    ) -> events.IndependentCheck:
         """Compute `expression` with the solver and compare it with the claimed answer."""
         return await independent_check.compare(self._verify_math, expression, claimed_answer)

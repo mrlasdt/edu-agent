@@ -14,11 +14,15 @@ unchanged; the agent service's `/generate` is the one place that turns events in
 """
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Final, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 Verdict = Literal["agrees", "disagrees", "not_checkable"]
+VERDICTS: Final = get_args(Verdict)
+AGREES: Final = "agrees"
+DISAGREES: Final = "disagrees"
+NOT_CHECKABLE: Final = "not_checkable"
 
 
 class _Event(BaseModel):
@@ -49,11 +53,14 @@ class Verified(_Event):
 
 class IndependentCheck(_Event):
     """What the independent answer check said (see `agent.independent_check`). Solve mode, just
-    before `Verified`. `solver`, the value the solver computed, is set only for "disagrees"."""
+    before `Verified`. `solver`, the value the solver computed, is set only for "disagrees".
+    `reason` says why a check was "not_checkable"; it is for the turn record, so the turn's report
+    leaves it empty and `public()` never includes it."""
 
     kind: Literal["independent_check"] = "independent_check"
     verdict: Verdict
     solver: str = ""
+    reason: str = ""
 
     def public(self) -> dict[str, str]:
         """The trailer's entry for it: the verdict, and the solver's value when they disagree."""
