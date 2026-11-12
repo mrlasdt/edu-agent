@@ -16,23 +16,10 @@ Three ideas, all standard:
 """
 from __future__ import annotations
 
-import math
 from collections.abc import Mapping, Sequence
 
 from evals.agent_eval.results import GroupStats, Rate
-
-Z95 = 1.959964  # two-sided 95% normal quantile
-
-
-def wilson(successes: float, n: int, z: float = Z95) -> tuple[float, float] | None:
-    """Wilson score interval for a proportion (successes may be fractional); None when n is 0."""
-    if n <= 0:
-        return None
-    p = successes / n
-    denom = 1 + z * z / n
-    centre = (p + z * z / (2 * n)) / denom
-    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
-    return max(0.0, centre - half), min(1.0, centre + half)
+from shared.src.shared.stats import wilson
 
 
 def mean_rate_ci(mean: float, n_items: int) -> tuple[float, float] | None:

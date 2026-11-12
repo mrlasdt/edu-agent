@@ -158,8 +158,8 @@ def _build_blind_pool(args: argparse.Namespace, directory: Path) -> int:
     import asyncio
     import os
 
-    from evals.agent_eval.budget import spend_ledger
     from evals.agent_eval.transport import MeteredTransport
+    from shared.src.shared.budget import spend_ledger
     from shared.src.shared.llm_router import get_router
 
     if not (os.environ.get("OPENAI_API_KEY") or os.environ.get("OPENROUTER_API_KEY")):

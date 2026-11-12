@@ -16,7 +16,6 @@ import pytest
 
 from evals import read_transcripts
 from evals.agent_eval import cli, graders, quant_suite, runner, stats
-from evals.agent_eval.budget import Ledger
 from evals.agent_eval.results import (
     QuantAttempt,
     QuantBaseline,
@@ -28,6 +27,7 @@ from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport, c
 from evals.judges.quant_judge import grade_quant_item
 from evals.loader import load_golden_set
 from services.agent.src.agent.agents.quant import QuantAgent
+from shared.src.shared.budget import Ledger
 from tests.eval_result_fakes import aw_result, eval_report, run_meta
 from tests.llm_fakes import ScriptedRouter
 

@@ -33,6 +33,7 @@ from evals.exam_set.schema import (
 )
 from services.gateway.src.gateway.settings import GatewaySettings
 from shared.src.shared.ielts.scoring import round_overall
+from shared.src.shared.stats import is_half_band
 
 ESSAYS_MD = "essays.md"
 ESSAYS_JSONL = "essays.jsonl"
@@ -223,7 +224,7 @@ def _half_band(raw: str, essay_id: str, criterion: str) -> float:
         value = float(raw)
     except ValueError as exc:
         raise ScoreSheetError(f"{essay_id}: {criterion} is not a number: {raw!r}") from exc
-    if not 0.0 <= value <= 9.0 or (value * 2) % 1 != 0:
+    if not is_half_band(value):
         raise ScoreSheetError(f"{essay_id}: {criterion} must be a half band 0..9, got {raw!r}")
     return value
 

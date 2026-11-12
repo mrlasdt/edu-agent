@@ -7,11 +7,12 @@ model, and the median of several samples is used per criterion.
 from __future__ import annotations
 
 import json
-import math
 import re
 import statistics
 from collections.abc import Sequence
 from dataclasses import dataclass
+
+from shared.src.shared.stats import round_half_band
 
 CRITERIA: tuple[str, ...] = ("TR", "CC", "LR", "GRA")
 CRITERION_NAMES = {
@@ -38,13 +39,13 @@ class GradeSample:
 
 
 def snap_band(value: float) -> float:
-    return min(9.0, max(0.0, math.floor(value * 2 + 0.5) / 2))
+    return min(9.0, max(0.0, round_half_band(value)))
 
 
 def round_overall(criteria: dict[str, float]) -> float:
     """Mean of the four criteria rounded to the nearest half band (a quarter rounds up)."""
     mean = sum(criteria[c] for c in CRITERIA) / len(CRITERIA)
-    return math.floor(mean * 2 + 0.5) / 2
+    return round_half_band(mean)
 
 
 def median_band(values: Sequence[float]) -> float:

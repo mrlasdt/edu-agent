@@ -19,9 +19,9 @@ from evals.qdrant_filter_check import (
     exact_top_k,
     format_table,
     make_corpus,
-    percentile,
     sample_callers,
 )
+from shared.src.shared.stats import percentile
 from shared.src.shared.vectorstore import DENSE_VECTOR
 
 DIM = 8
