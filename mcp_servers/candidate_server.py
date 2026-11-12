@@ -20,14 +20,15 @@ Run with (stdio by default; MCP_TRANSPORT=sse serves SSE on 127.0.0.1:8091):
 """
 from __future__ import annotations
 
+import json
 import random
+from pathlib import Path
 from typing import Any, Literal, cast
 
 import httpx
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
-from evals.loader import load_golden_set
 from mcp_servers.launch import bind_host, run
 from mcp_servers.settings import get_settings
 
@@ -177,15 +178,22 @@ _QUANT_FIELDS = ("id", "question_type", "question", "expression")
 _AW_FIELDS = ("id", "task_type", "prompt")
 
 
+def _load_practice_rows(section: str) -> list[dict[str, Any]]:
+    """Read the practice file for `section` from the directory in MCP_PRACTICE_DIR."""
+    path = Path(get_settings().mcp_practice_dir) / f"gre_{section}.jsonl"
+    with open(path) as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
 def _practice_rows(section: str) -> tuple[list[dict[str, Any]], tuple[str, ...], str]:
     """The rows a candidate can be given for `section`, the fields to show, the type key."""
     if section == "quant":
         # Only "solve" rows are practice questions; tutor, tutor_multiturn and security rows
         # are eval scenarios (a security row is a prompt-injection test string).
-        rows = [i for i in load_golden_set("quant") if i.get("kind") == "solve"]
+        rows = [i for i in _load_practice_rows("quant") if i.get("kind") == "solve"]
         return rows, _QUANT_FIELDS, "question_type"
     if section == "aw":
-        return load_golden_set("aw"), _AW_FIELDS, "task_type"
+        return _load_practice_rows("aw"), _AW_FIELDS, "task_type"
     raise ToolError(f"section {section!r} is not available. Valid sections: 'quant', 'aw'.")
 
 
@@ -205,7 +213,7 @@ async def _get_random_question(section: str, question_type: str) -> dict[str, An
 
 
 async def _get_model_essay(prompt_id: str, score_tier: int) -> dict[str, Any]:
-    items = {str(i["id"]): i for i in load_golden_set("aw") if "anchor_essays" in i}
+    items = {str(i["id"]): i for i in _load_practice_rows("aw") if "anchor_essays" in i}
     item = items.get(prompt_id)
     if item is None:
         raise ToolError(
