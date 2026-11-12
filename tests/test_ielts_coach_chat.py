@@ -24,7 +24,7 @@ from shared.src.shared.wire import GenerateRequest
 from tests.gateway_fakes import agent_replies
 
 client = TestClient(app)
-GATEWAY = "services.gateway.src.gateway.main"
+GATEWAY = "services.gateway.src.gateway.chat.gates"
 
 _BODY = {
     "candidate_id": "c1", "test_type": "ielts", "section": "writing",

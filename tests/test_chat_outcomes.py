@@ -16,17 +16,18 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from services.gateway.src.gateway.guardrails.input import CompletenessVerdict
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
 from services.gateway.src.gateway.guardrails.stream import AGENT_UNAVAILABLE_NOTICE
 from services.gateway.src.gateway.guardrails.supportive import SUPPORTIVE_MESSAGE
 from services.gateway.src.gateway.main import app
 from services.gateway.src.gateway.orchestrator import ClarificationTurn
+from services.gateway.src.gateway.orchestrator.enrich import CompletenessVerdict
 from services.gateway.src.gateway.settings import GatewaySettings
 from shared.src.shared.turn_outcome import Outcome
 from tests.gateway_fakes import agent_replies, orchestrator_of, rate_limiter_of
 
 _INPUT = "services.gateway.src.gateway.guardrails.input"
+_ENRICH = "services.gateway.src.gateway.orchestrator.enrich"
 _OUTPUT = "services.gateway.src.gateway.guardrails.output"
 _BODY = {"candidate_id": "c1", "test_type": "gre", "section": "quant", "message": "Solve 2x+3=11"}
 _SAFE = {"flagged": False, "categories": {}}
@@ -70,7 +71,7 @@ def _run(
     with (
         patch(f"{_INPUT}.get_settings", return_value=GatewaySettings(openai_api_key="k", env=env)),
         patch(f"{_INPUT}._call_moderation_api", moderation_mock),
-        patch(f"{_INPUT}._call_enrichment_llm", completeness_mock),
+        patch(f"{_ENRICH}._call_enrichment_llm", completeness_mock),
         patch(f"{_OUTPUT}._call_leak_checker", AsyncMock(return_value=llm_leak)),
         agent_replies(agent),
         rate_limiter_of(limiter or RateLimiter()),
@@ -175,7 +176,7 @@ def test_rate_limited_turn_streams_the_limit_message_and_records_rate_limited(cl
 
 def test_an_injected_orchestrator_decides_the_route(client, turn_log):
     class Unroutable:
-        async def process(self, session: Any, message: str) -> ClarificationTurn:
+        def process(self, session: Any, message: str) -> ClarificationTurn:
             return ClarificationTurn(prompt="Pick a section first.", reason="test")
 
     with orchestrator_of(Unroutable()):
@@ -235,7 +236,7 @@ def test_a_midstream_failure_whose_flushed_reply_trips_the_leak_check_keeps_the_
 def test_a_bug_in_the_guards_is_still_an_error_not_a_notice(client, turn_log):
     # only the agent call is guarded: a failure elsewhere in the turn must stay loud
     with patch(
-        "services.gateway.src.gateway.main.ReplyGuard", side_effect=RuntimeError("guard bug")
+        "services.gateway.src.gateway.chat.answer.ReplyGuard", side_effect=RuntimeError("guard bug")
     ):
         resp = _run(client)
     assert "Tutor unavailable" not in resp.text

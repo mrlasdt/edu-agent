@@ -23,6 +23,8 @@ from pydantic import ValidationError
 from services.agent.src.agent import main as agent_main
 from services.gateway.src.gateway import agent_client
 from services.gateway.src.gateway import main as gateway_main
+from services.gateway.src.gateway.chat import answer as chat_answer
+from services.gateway.src.gateway.chat import gates as chat_gates
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
 from services.gateway.src.gateway.guardrails.verdict import Verdict
 from shared.src.shared.events import Sources, Token
@@ -79,9 +81,9 @@ def test_the_agent_accepts_what_the_gateway_forwards_after_redaction_grew_it() -
     with (
         patch.object(agent_main, "_registry", _Registry(Echo)),
         patch.object(agent_client.httpx, "AsyncClient", into_agent_app),
-        patch.object(gateway_main, "check_content_safety", AsyncMock(return_value=Verdict.allow())),
-        patch.object(gateway_main, "check_completeness", AsyncMock(return_value=Verdict.allow())),
-        patch.object(gateway_main, "check_answer_leak", AsyncMock(return_value=Verdict.allow())),
+        patch.object(chat_gates, "check_content_safety", AsyncMock(return_value=Verdict.allow())),
+        patch.object(chat_gates, "check_completeness", AsyncMock(return_value=Verdict.allow())),
+        patch.object(chat_answer, "check_answer_leak", AsyncMock(return_value=Verdict.allow())),
         rate_limiter_of(RateLimiter()),
     ):
         resp = TestClient(gateway_main.app).post("/chat", json=body)

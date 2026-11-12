@@ -16,7 +16,6 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
 from services.gateway.src.gateway.ielts_store import (
     ALLOWED_S,
     DRAFT_MAX_CHARS,
@@ -25,6 +24,7 @@ from services.gateway.src.gateway.ielts_store import (
     AttemptStateError,
     AttemptStore,
 )
+from services.gateway.src.gateway.limits import ielts_limiter
 from services.gateway.src.gateway.settings import get_settings
 from shared.src.shared.budget import (
     BudgetExceededError,
@@ -44,7 +44,6 @@ _log = logging.getLogger(__name__)
 router = APIRouter(prefix="/ielts", tags=["ielts"])
 
 _CANDIDATE = "ielts-local"  # single local user
-_limiter = RateLimiter(max_per_minute=10, max_per_day=60)
 
 # One mock costs about 0.01 to 0.02 USD with the default model. A new attempt (or a retry) is
 # refused unless at least this much of the spend cap is left, so a candidate is not asked to
@@ -195,7 +194,7 @@ def _require_budget(ledger: Ledger) -> None:
 
 
 def _limit() -> None:
-    allowed, message = _limiter.check(_CANDIDATE)
+    allowed, message = ielts_limiter().check(_CANDIDATE)
     if not allowed:
         raise HTTPException(429, message)
 

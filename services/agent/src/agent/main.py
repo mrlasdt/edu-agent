@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
 from services.agent.src.agent.bootstrap import build_registry
+from services.agent.src.agent.clients.pool import open_pool
 from services.agent.src.agent.registry import AgentNotRegisteredError
 from shared.src.shared.events import (
     CitationsStripped,
@@ -26,7 +27,15 @@ from shared.src.shared.observability import setup_observability
 from shared.src.shared.trailer import encode, strip_mark
 from shared.src.shared.wire import GenerateRequest
 
-app = FastAPI(title="Agent Service")
+
+@contextlib.asynccontextmanager
+async def _lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Keep one HTTP client open for the service's whole life (corpus and math-verifier calls)."""
+    async with open_pool():
+        yield
+
+
+app = FastAPI(title="Agent Service", lifespan=_lifespan)
 
 # The agent's own INFO lines (one per model-called math tool) reach stderr; every other logger
 # keeps the default WARNING level, so libraries stay quiet. Uvicorn configures only its own

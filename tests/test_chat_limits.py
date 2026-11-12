@@ -41,11 +41,11 @@ def pipeline():
         yield b"ok"
 
     with patch(
-        "services.gateway.src.gateway.main.check_content_safety", new_callable=AsyncMock
+        "services.gateway.src.gateway.chat.gates.check_content_safety", new_callable=AsyncMock
     ) as safety, patch(
-        "services.gateway.src.gateway.main.check_completeness", new_callable=AsyncMock
+        "services.gateway.src.gateway.chat.gates.check_completeness", new_callable=AsyncMock
     ) as completeness, patch(
-        "services.gateway.src.gateway.main.check_answer_leak", new_callable=AsyncMock
+        "services.gateway.src.gateway.chat.answer.check_answer_leak", new_callable=AsyncMock
     ) as leak, agent_replies(fake_stream), rate_limiter_of(RateLimiter()):
         safety.return_value = Verdict.allow()
         completeness.return_value = Verdict.allow()

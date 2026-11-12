@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from services.agent.src.agent import independent_check
-from services.agent.src.agent.independent_check import IndependentCheck
 from shared.src.shared import events
 from shared.src.shared.models import Session
 from shared.src.shared.turn_meter import TurnMeter
@@ -34,8 +32,8 @@ class SolveChecks:
         self._meter = meter
         self._asked = False
         self._expression: str | None = None
-        self.last = IndependentCheck(
-            independent_check.NOT_CHECKABLE, reason="no answer has been checked yet"
+        self.last = events.IndependentCheck(
+            verdict=events.NOT_CHECKABLE, reason="no answer has been checked yet"
         )
         self._record()
 
@@ -44,8 +42,8 @@ class SolveChecks:
         with self._meter.phase("verify"):
             well_formed = await self._agent.verify_well_formed(full_text, claimed)
         if not well_formed.verified:
-            self.last = IndependentCheck(
-                independent_check.NOT_CHECKABLE, reason="the answer is not well-formed"
+            self.last = events.IndependentCheck(
+                verdict=events.NOT_CHECKABLE, reason="the answer is not well-formed"
             )
             self._record()
             return False
@@ -57,7 +55,7 @@ class SolveChecks:
         with self._meter.phase("independent_check"):
             self.last = await self._agent.check_independently(self._expression, claimed)
         self._record()
-        return self.last.verdict != independent_check.DISAGREES
+        return self.last.verdict != events.DISAGREES
 
     def _record(self) -> None:
         fields: dict[str, Any] = {"verified_independent": self.last.verdict}
@@ -69,7 +67,7 @@ class SolveChecks:
 
     def retry_note(self, prev_answer: str) -> str:
         """What the model is told before its second attempt."""
-        if self.last.verdict == independent_check.DISAGREES:
+        if self.last.verdict == events.DISAGREES:
             return (
                 f"[My previous answer {prev_answer!r} disagreed with an independent calculation "
                 f"of the problem, which gave {self.last.solver}. Let me check my work and "
@@ -78,4 +76,4 @@ class SolveChecks:
         return f"[My previous answer {prev_answer!r} could not be verified. Let me try again.]"
 
     def report(self) -> events.IndependentCheck:
-        return self.last.event()
+        return self.last.model_copy(update={"reason": ""})

@@ -14,7 +14,9 @@ from typing import Any, cast
 
 import httpx
 
+from services.agent.src.agent.clients import pool
 from services.agent.src.agent.settings import get_settings
+from shared.src.shared.http import post_json
 
 _log = logging.getLogger(__name__)
 
@@ -35,10 +37,11 @@ class VerifyMath:
     """
     Client capability for the math-verifier service's verify_math route.
 
-    The service runs at MATH_VERIFIER_URL (default localhost:8090). By default each call opens
-    its own `httpx.AsyncClient`; pass `client` to choose the transport. Tests and the evals hand
-    in an `httpx.AsyncClient(transport=httpx.ASGITransport(app=...))` so a call reaches the
-    real route in process.
+    The service runs at MATH_VERIFIER_URL (default localhost:8090). By default calls share the
+    agent service's pooled client (or open one of their own when no pool is open); pass `client`
+    to choose the transport. Tests and the evals hand in an
+    `httpx.AsyncClient(transport=httpx.ASGITransport(app=...))` so a call reaches the real route
+    in process.
     """
 
     def __init__(
@@ -46,7 +49,7 @@ class VerifyMath:
     ) -> None:
         settings = get_settings()
         self._server_url = server_url or settings.math_verifier_url
-        self._client = client
+        self._client = client or pool.current()
 
     async def verify(self, expression: str, expected: str) -> VerifyMathResult:
         """
@@ -70,11 +73,7 @@ class VerifyMath:
 
     async def _post_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """POST the arguments to `/tools/{tool_name}` and return the JSON body."""
-        url = f"{self._server_url}/tools/{tool_name}"
-        if self._client is not None:
-            response = await self._client.post(url, json=arguments)
-        else:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(url, json=arguments)
-        response.raise_for_status()
-        return cast(dict[str, Any], response.json())
+        reply = await post_json(
+            f"{self._server_url}/tools/{tool_name}", arguments, client=self._client, timeout=10.0
+        )
+        return cast(dict[str, Any], reply)

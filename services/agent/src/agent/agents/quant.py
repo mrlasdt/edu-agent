@@ -11,7 +11,6 @@ from services.agent.src.agent.base import BaseAgent, Turn, with_note
 from services.agent.src.agent.capabilities.retrieve_corpus import CorpusChunk, RetrieveCorpus
 from services.agent.src.agent.capabilities.verify_math import VerifyMath, VerifyMathResult
 from services.agent.src.agent.context import ContextBudget
-from services.agent.src.agent.independent_check import IndependentCheck
 from services.agent.src.agent.prompting import build_messages, collect_stream, token_stream
 from services.agent.src.agent.settings import get_settings
 from services.agent.src.agent.solve_checks import SolveChecks
@@ -19,7 +18,7 @@ from services.agent.src.agent.tools.math_tools import MATH_TOOL_SPECS, MathTools
 from services.agent.src.agent.tools.notes_tools import NOTES_TOOL_SPECS, NotesTools
 from services.agent.src.agent.tools.tool_turn import ToolTurn
 from services.agent.src.agent.tools.toolbox import ToolBox
-from shared.src.shared.events import Event, Sources, Token, Verified
+from shared.src.shared.events import Event, IndependentCheck, Sources, Token, Verified
 from shared.src.shared.models import Mode, Session
 from shared.src.shared.observability import build_llm_metadata
 from shared.src.shared.prompts import read_prompt

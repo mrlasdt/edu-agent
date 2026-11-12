@@ -70,13 +70,13 @@ def test_is_number_list(text: str, ok: bool) -> None:
 
 async def test_agrees_when_the_solver_gets_the_claimed_values(verify_math) -> None:
     check = await ic.compare(verify_math, "x^2 - 5x + 6 = 0", "3, 2")
-    assert check == ic.IndependentCheck(ic.AGREES)
+    assert check == IndependentCheck(verdict=ic.AGREES)
 
 
 async def test_disagrees_and_names_what_the_solver_computed(verify_math) -> None:
     check = await ic.compare(verify_math, "x^2 - 5x + 6 = 0", "2, 4")
     assert (check.verdict, check.solver) == (ic.DISAGREES, "2, 3")
-    assert check.event().public() == {"verdict": "disagrees", "solver": "2, 3"}
+    assert check.public() == {"verdict": "disagrees", "solver": "2, 3"}
 
 
 async def test_a_single_wrong_value_disagrees(verify_math) -> None:

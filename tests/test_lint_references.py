@@ -211,7 +211,7 @@ async def test_the_style_critic_reports_its_own_prompt_version_and_sends_its_rub
 
 @pytest.mark.asyncio
 async def test_the_completeness_check_reports_a_pinned_version_and_fills_in_the_section():
-    from services.gateway.src.gateway.guardrails import input as guard
+    from services.gateway.src.gateway.orchestrator import enrich as guard
     from shared.src.shared.config import load_model_config
     from shared.src.shared.models import Session
 

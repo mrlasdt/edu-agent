@@ -43,7 +43,7 @@ question_pipeline:
   baseline: v1
 # Guardrail and critic prompts (prompts/<agent>/<mode>/<version>.md)
 orchestrator:
-  completeness: v1  # the input guardrail's "is this message answerable" check
+  completeness: v1  # the Orchestrator's enrichment: "is this message answerable" check
   leak_check: v1  # the tutor-mode answer-leak check (LEAK or SAFE)
 style_critic:
   rubric: v1  # the AW essay structure check; reported under its own key, not aw_agent's

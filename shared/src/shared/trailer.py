@@ -11,9 +11,9 @@ gateway re-emits it, validated, for the web app.
 from __future__ import annotations
 
 import json
-from typing import Any, get_args
+from typing import Any
 
-from shared.src.shared.events import Verdict
+from shared.src.shared.events import VERDICTS
 
 MARK = "\x1e"  # ASCII record separator: never part of an answer
 
@@ -54,7 +54,6 @@ class TrailerSplitter:
         return value if isinstance(value, dict) else {}
 
 
-_VERDICTS = get_args(Verdict)
 _SOLVER_MAX_CHARS = 80
 
 
@@ -65,7 +64,7 @@ def independent_check_trailer(value: object) -> dict[str, str]:
     The gateway re-emits it for the web app, so it is checked on the way: one of three verdicts,
     and a `solver` text (the value the solver computed) only for "disagrees", short and printable.
     """
-    if not isinstance(value, dict) or value.get("verdict") not in _VERDICTS:
+    if not isinstance(value, dict) or value.get("verdict") not in VERDICTS:
         return {}
     out = {"verdict": str(value["verdict"])}
     solver = value.get("solver")

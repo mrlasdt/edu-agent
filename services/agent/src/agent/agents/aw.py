@@ -8,7 +8,7 @@ from services.agent.src.agent.base import BaseAgent, Turn, with_note
 from services.agent.src.agent.capabilities.match_student_style import MatchStudentStyle
 from services.agent.src.agent.capabilities.retrieve_corpus import CorpusChunk, RetrieveCorpus
 from services.agent.src.agent.prompting import build_messages
-from shared.src.shared.critics.citation_checker import check_citations, strip_uncited_claims
+from shared.src.shared.critics.citation_checker import check_citations, drop_uncited
 from shared.src.shared.critics.style_critic import run_style_critic
 from shared.src.shared.events import CitationsStripped, Event, SampleEssay, Token
 from shared.src.shared.models import Mode, Session
@@ -184,7 +184,7 @@ def _reply(
         for token in tokens:
             yield Token(text=token)
     else:
-        yield Token(text=strip_uncited_claims(full_text, invalid))
+        yield Token(text=drop_uncited(full_text, invalid)[0])
     if sample:
         yield SampleEssay()
     yield CitationsStripped(stripped=not valid)

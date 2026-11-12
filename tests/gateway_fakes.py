@@ -7,7 +7,8 @@ from typing import Any
 
 from services.gateway.src.gateway.agent_client import get_agent_client
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
-from services.gateway.src.gateway.main import app, get_orchestrator, get_rate_limiter
+from services.gateway.src.gateway.limits import chat_limiter
+from services.gateway.src.gateway.main import app, get_orchestrator
 from shared.src.shared.wire import GenerateRequest
 
 AgentStream = Callable[..., AsyncIterator[bytes]]
@@ -43,7 +44,7 @@ def agent_replies(fn: AgentStream):
 
 
 def rate_limiter_of(limiter: RateLimiter):
-    return override(get_rate_limiter, limiter)
+    return override(chat_limiter, limiter)
 
 
 def orchestrator_of(orchestrator: Any):

@@ -26,6 +26,11 @@ roles:
     <<: *default
     temperature: 0
 
+  # Guard - the cheap model that checks a finished tutor reply for a leaked answer
+  guard:
+    <<: *default
+    temperature: 0
+
   # Main agents
   quant_agent:
     <<: *default

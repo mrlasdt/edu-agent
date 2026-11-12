@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from qdrant_client import AsyncQdrantClient
 
 from services.ingestion.src.ingestion import main as ingestion_main
+from services.ingestion.src.ingestion import pipeline as ingestion_pipeline
 from services.ingestion.src.ingestion.main import app
 from services.ingestion.src.ingestion.settings import get_settings
 from shared.src.shared.config import ADMIN_KEY_HEADER
@@ -48,7 +49,7 @@ def test_small_txt_upload_returns_completed(client):
     content = b"This is a test document.\n\nSecond paragraph here."
 
     with patch(
-        "services.ingestion.src.ingestion.main.run_ingestion_pipeline", new_callable=AsyncMock
+        "services.ingestion.src.ingestion.pipeline.run_ingestion_pipeline", new_callable=AsyncMock
     ) as mock_pipeline:
         mock_pipeline.return_value = {"chunks_indexed": 2}
         response = client.post(
@@ -88,8 +89,8 @@ class _Corpus:
 @pytest.fixture
 def corpus(client):
     c = _Corpus()
-    with patch.object(ingestion_main, "get_qdrant_client", lambda url: c.client), \
-         patch.object(ingestion_main, "embed_texts", c.embed), \
+    with patch.object(ingestion_pipeline, "get_qdrant_client", lambda url: c.client), \
+         patch.object(ingestion_pipeline, "embed_texts", c.embed), \
          patch.object(c.client, "close", AsyncMock()):
         yield c
 
@@ -224,7 +225,8 @@ def test_uploaded_chunks_have_correct_metadata(client):
         return {"chunks_indexed": len(chunks)}
 
     with patch(
-        "services.ingestion.src.ingestion.main.run_ingestion_pipeline", side_effect=capture_pipeline
+        "services.ingestion.src.ingestion.pipeline.run_ingestion_pipeline",
+        side_effect=capture_pipeline,
     ):
         client.post(
             "/admin/documents",

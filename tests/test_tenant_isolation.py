@@ -18,7 +18,7 @@ Cases:
   2. A candidate with an empty `school_id` does not see school-tier chunks that
      lack a school id (null or absent), nor candidate-tier chunks that lack an id.
   3. Mutation test: the same check fails when the candidate or school clause is
-     dropped from `_build_acl_filter`, so the test can detect the bug it guards.
+     dropped from `build_acl_filter`, so the test can detect the bug it guards.
 """
 
 from __future__ import annotations
@@ -292,7 +292,7 @@ async def test_empty_candidate_id_sees_no_candidate_tier_chunks(
 
 
 def _drop_clause(tier: str) -> Any:
-    real = retriever._build_acl_filter
+    real = retriever.build_acl_filter
 
     def mutated(candidate_id: str, school_id: str) -> dict[str, Any]:
         acl = real(candidate_id, school_id)
@@ -319,7 +319,7 @@ async def test_mutation_dropping_an_acl_clause_is_detected(
     The leak arm is proven by the loosened mutation below.
     """
     client, chunks = store
-    monkeypatch.setattr(retriever, "_build_acl_filter", _drop_clause(dropped_tier))
+    monkeypatch.setattr(retriever, "build_acl_filter", _drop_clause(dropped_tier))
     problems = await _leaks(client, chunks, ALICE, school_id=ALICE.school_id)
     assert problems, f"dropping the {dropped_tier} clause went undetected"
 
@@ -329,7 +329,7 @@ async def test_mutation_unscoped_candidate_clause_leaks_and_is_detected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The realistic bug: the candidate clause loses its `candidate_id` condition."""
-    real = retriever._build_acl_filter
+    real = retriever.build_acl_filter
 
     def mutated(candidate_id: str, school_id: str) -> dict[str, Any]:
         acl = real(candidate_id, school_id)
@@ -339,7 +339,7 @@ async def test_mutation_unscoped_candidate_clause_leaks_and_is_detected(
                 clause["must"] = clause_must[:1]  # tier=candidate, no candidate_id check
         return acl
 
-    monkeypatch.setattr(retriever, "_build_acl_filter", mutated)
+    monkeypatch.setattr(retriever, "build_acl_filter", mutated)
     client, chunks = store
     problems = await _leaks(client, chunks, ALICE, school_id=ALICE.school_id)
     leaked = [p for p in problems if "leaked" in p]
