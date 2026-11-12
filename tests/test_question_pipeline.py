@@ -25,7 +25,6 @@ from services.agent.src.agent.pipeline.graph import QuestionPipeline, rule_based
 from services.agent.src.agent.pipeline.llm import (
     LiteLLMCompleter,
     extract_json,
-    load_prompt,
 )
 from services.agent.src.agent.pipeline.schema import (
     GenerationRequest,
@@ -34,6 +33,7 @@ from services.agent.src.agent.pipeline.schema import (
 )
 from shared.src.shared.budget import BudgetExceededError, Ledger
 from shared.src.shared.config import load_model_config
+from shared.src.shared.prompts import read_prompt
 from tests.llm_fakes import ScriptedRouter
 
 VERIFY_MATH = in_process_verify_math()
@@ -286,8 +286,10 @@ def test_prompts_and_roles_exist_for_every_pipeline_step():
     for role in ("question_planner", "question_generator", "question_critic"):
         assert cfg.litellm_model(role)
     for name in ("planner", "numeric_expert", "choice_expert", "comparison_expert", "critic"):
-        assert load_prompt(name, cfg.prompt_version("question_pipeline", name))
-    assert load_prompt("baseline", cfg.prompt_version("question_pipeline", "baseline"))
+        assert read_prompt("question_pipeline", name, cfg.prompt_version("question_pipeline", name))
+    assert read_prompt(
+        "question_pipeline", "baseline", cfg.prompt_version("question_pipeline", "baseline")
+    )
 
 
 async def test_completer_uses_role_model_and_trace_metadata(monkeypatch: pytest.MonkeyPatch):

@@ -107,16 +107,13 @@ def test_load_model_config_works_from_another_working_directory(tmp_path, monkey
 
 
 def test_agent_prompts_load_from_another_working_directory(tmp_path, monkeypatch):
-    from services.agent.src.agent.agents import aw, quant
-    from services.agent.src.agent.pipeline import llm as pipeline_llm
-    from shared.src.shared.ielts import llm as ielts_llm
-    from shared.src.shared.models import Mode
+    from shared.src.shared.prompts import read_prompt
 
     monkeypatch.chdir(tmp_path)
-    assert aw._load_prompt(Mode.tutor, "v1")
-    assert quant._load_prompt(Mode.tutor, "v1")
-    assert ielts_llm.load_prompt("ielts_grader", "writing_t2", "v1")
-    assert pipeline_llm.load_prompt("planner", "v1")
+    assert read_prompt("aw_agent", "tutor", "v1")
+    assert read_prompt("quant_agent", "tutor", "v1")
+    assert read_prompt("ielts_grader", "writing_t2", "v1")
+    assert read_prompt("question_pipeline", "planner", "v1")
 
 
 def test_ielts_calibration_is_read_from_another_working_directory(tmp_path, monkeypatch):

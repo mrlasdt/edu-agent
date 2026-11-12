@@ -24,6 +24,7 @@ from shared.src.shared.ielts.scoring import (
     parse_sample,
     round_overall,
 )
+from shared.src.shared.prompts import read_prompt
 
 GRADER_MAX_TOKENS = 2000  # a cap: leaves room for models that reason before they answer
 PARSE_ATTEMPTS = 2
@@ -100,7 +101,7 @@ async def grade_essay(
         raise EssayNotMarkableError(checks.blocked.message)
 
     version = llm.prompt_version(llm.GRADER_ROLE)
-    system = llm.load_prompt("ielts_grader", "writing_t2", version)
+    system = read_prompt("ielts_grader", "writing_t2", version)
     messages = grade_request(prompt, essay, system)
     temperature = llm.role_temperature(llm.GRADER_ROLE)
     results = await asyncio.gather(

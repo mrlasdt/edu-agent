@@ -39,11 +39,6 @@ COMPLETENESS_MAX_TOKENS = 512
 
 
 
-def _load_completeness_prompt(version: str) -> str:
-    """The completeness prompt file for `version`, without its YAML frontmatter."""
-    return read_prompt("orchestrator", "completeness", version)
-
-
 # Sent when the check finds the question incomplete but writes no clarifying question.
 DEFAULT_CLARIFICATION = "Could you share the full question so I can help?"
 
@@ -190,7 +185,8 @@ async def _call_enrichment_llm(
     model = cfg.litellm_model("orchestrator")
     history = history_to_messages(session.history[-_HISTORY_TURNS:])
     version = cfg.prompt_version("orchestrator", "completeness")
-    system = _load_completeness_prompt(version).replace("{section}", session.section.upper())
+    system = read_prompt("orchestrator", "completeness", version)
+    system = system.replace("{section}", session.section.upper())
     response = await (meter or TurnMeter.detached()).complete(
         model=model,
         messages=[

@@ -73,7 +73,7 @@ async def test_quant_agent_loads_configured_prompt_version():
     with (
         patch.object(ModelConfig, "prompt_version", return_value="v7"),
         patch(
-            "services.agent.src.agent.agents.quant._load_prompt", return_value="STUB"
+            "services.agent.src.agent.agents.quant.read_prompt", return_value="STUB"
         ) as mock_load,
         patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm,
     ):
@@ -81,7 +81,7 @@ async def test_quant_agent_loads_configured_prompt_version():
         async for _ in agent.run(session, "Solve x^2-5x+6=0", trace_id="t1"):
             pass
 
-    mock_load.assert_called_with(Mode.tutor, "v7")
+    mock_load.assert_called_with("quant_agent", "tutor", "v7")
 
 
 @pytest.mark.asyncio
@@ -93,7 +93,7 @@ async def test_quant_agent_reports_configured_version_to_langfuse():
 
     with (
         patch.object(ModelConfig, "prompt_version", return_value="v7"),
-        patch("services.agent.src.agent.agents.quant._load_prompt", return_value="STUB"),
+        patch("services.agent.src.agent.agents.quant.read_prompt", return_value="STUB"),
         patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm,
     ):
         mock_llm.return_value = mock_stream(["hint"])
@@ -116,7 +116,7 @@ async def test_aw_agent_loads_configured_prompt_version():
 
     with (
         patch.object(ModelConfig, "prompt_version", return_value="v5"),
-        patch("services.agent.src.agent.agents.aw._load_prompt", return_value="STUB") as mock_load,
+        patch("services.agent.src.agent.agents.aw.read_prompt", return_value="STUB") as mock_load,
         patch.object(agent, "_retrieve", new_callable=AsyncMock, return_value=[]),
         patch.object(agent, "_check_citations", return_value=(True, [])),
         patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm,
@@ -125,7 +125,7 @@ async def test_aw_agent_loads_configured_prompt_version():
         async for _ in agent.run(session, "Discuss technology"):
             pass
 
-    mock_load.assert_called_with(Mode.tutor, "v5")
+    mock_load.assert_called_with("aw_agent", "tutor", "v5")
 
 
 
@@ -134,9 +134,9 @@ async def test_aw_agent_loads_configured_prompt_version():
 
 @pytest.mark.parametrize("mode", [Mode.tutor, Mode.solve])
 def test_dev_config_prompt_versions_load(mode):
-    from services.agent.src.agent.agents import aw, quant
     from shared.src.shared.config import load_model_config
+    from shared.src.shared.prompts import read_prompt
 
     cfg = load_model_config("config/model_config.dev.yaml")
-    assert quant._load_prompt(mode, cfg.prompt_version("quant_agent", mode.value))
-    assert aw._load_prompt(mode, cfg.prompt_version("aw_agent", mode.value))
+    assert read_prompt("quant_agent", mode.value, cfg.prompt_version("quant_agent", mode.value))
+    assert read_prompt("aw_agent", mode.value, cfg.prompt_version("aw_agent", mode.value))

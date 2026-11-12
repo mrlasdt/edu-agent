@@ -29,10 +29,6 @@ _ARGUMENT_KEYWORDS = re.compile(
 _MIN_PERSONAL_ESSAYS = 2
 
 
-def _load_prompt(mode: Mode, version: str) -> str:
-    return read_prompt("aw_agent", mode.value, version)
-
-
 def _format_chunks_for_context(chunks: list[CorpusChunk]) -> str:
     if not chunks:
         return ""
@@ -134,7 +130,7 @@ class AWAgent(BaseAgent):
         version: str = "v1",
         obs_meta: dict[str, Any] | None = None,
     ) -> AsyncGenerator[Event, None]:
-        system_prompt = _load_prompt(Mode.tutor, version)
+        system_prompt = read_prompt("aw_agent", Mode.tutor.value, version)
         messages = _build_messages(session, message, system_prompt, chunk_context)
         model = self._model_config.litellm_model("aw_agent")
         temperature = self._model_config.role("aw_agent").temperature
@@ -196,7 +192,7 @@ class AWAgent(BaseAgent):
         obs_meta: dict[str, Any] | None = None,
         trace_id: str = "",
     ) -> AsyncGenerator[Event, None]:
-        system_prompt = _load_prompt(Mode.solve, version)
+        system_prompt = read_prompt("aw_agent", Mode.solve.value, version)
         model = self._model_config.litellm_model("aw_agent")
         temperature = self._model_config.role("aw_agent").temperature
 
