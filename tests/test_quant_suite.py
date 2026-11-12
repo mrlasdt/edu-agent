@@ -593,10 +593,11 @@ def test_comparing_a_baseline_with_itself_moves_nothing(capsys):
 # ── the math-tools switch in the eval ────────────────────────────────────────
 
 
-def _offline_quant(tmp_path: Path, flag: str) -> dict[str, Any]:
-    out = tmp_path / flag
+def _offline_quant(tmp_path: Path, flag: str, *extra: str) -> dict[str, Any]:
+    out = tmp_path / (flag + "".join(extra))
     argv = ["--mode", "offline", "--suite", "quant", "--samples", "1", "--math-tools", flag,
-            "--ledger", str(tmp_path / f"{flag}.json"), "--out-dir", str(out)]
+            "--ledger", str(tmp_path / f"{flag}{''.join(extra)}.json"), "--out-dir", str(out),
+            *extra]
     assert cli.main(argv) == 0
     report: dict[str, Any] = json.loads(next(out.glob("*.json")).read_text())
     return report
@@ -613,6 +614,23 @@ def test_the_same_suite_runs_with_tools_off_and_on_and_the_report_says_which(
     assert solve_off["tool_calls_per_turn_mean"] == 0 and solve_off["tool_error_rate"] is None
     assert solve_on["tool_calls_per_turn_mean"] > 0 and solve_on["tool_error_rate"] == 0.0
     assert solve_on["llm_calls_per_turn_mean"] > solve_off["llm_calls_per_turn_mean"]
+
+
+def test_the_retrieval_switch_changes_what_a_tutor_turn_is_shown_and_the_report_says_which(
+    tmp_path: Path, block_network: None
+):
+    upfront = _offline_quant(tmp_path, "off")
+    jit = _offline_quant(tmp_path, "off", "--retrieval", "just_in_time")
+    assert upfront["run_meta"]["retrieval"] == "upfront"
+    assert jit["run_meta"]["retrieval"] == "just_in_time"
+    assert "notes_tool" in jit["run_meta"]["prompt_versions"]
+    assert "notes_tool" not in upfront["run_meta"]["prompt_versions"]
+    tutor_up = upfront["suites"]["quant"]["groups"]["tutor"]["cost_latency"]
+    tutor_jit = jit["suites"]["quant"]["groups"]["tutor"]["cost_latency"]
+    # t006 and t007 carry reference notes: up front they are shown; just in time the offline
+    # fake model never calls notes_search, so no turn is shown any (wiring, not model quality)
+    assert tutor_up["turns_with_notes"] == 2 and tutor_jit["turns_with_notes"] == 0
+    assert tutor_jit["tool_calls_per_turn_mean"] == 0
 
 
 def test_the_transcript_of_a_tool_turn_shows_the_calls_between_question_and_reply(

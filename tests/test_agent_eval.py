@@ -574,6 +574,7 @@ async def test_quant_judge_suite_never_reaches_the_corpus_service(
         ledger=str(tmp_path / "l.json"), ceiling=20.0, out_dir=str(tmp_path),
         baseline=None, write_baseline=None, min_coverage=0.8,
         cache_dir=str(tmp_path / "c"), no_cache=True, math_tools="on", context_budget="on",
+        retrieval="upfront",
     )
     report, code = await cli.run(args)
     assert code == 0 and report.suite("quant_judge", QuantJudgeResult).n_items == 3
@@ -594,6 +595,7 @@ async def test_failed_run_exits_nonzero_and_emits_no_regression_metrics(
         ledger=str(tmp_path / "l.json"), ceiling=20.0, out_dir=str(tmp_path),
         baseline=None, write_baseline=None, min_coverage=0.8,
         cache_dir=str(tmp_path / "c"), no_cache=True, math_tools="on", context_budget="on",
+        retrieval="upfront",
     )
     report, code = await cli.run(args)
     assert code == 2

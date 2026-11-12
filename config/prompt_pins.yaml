@@ -15,6 +15,10 @@ quant_agent:
 quant_agent_math_tools:
   tutor: v1  # tutor v3 plus: compute privately with the tools, never state a tool result
   solve: v1  # solve v2 plus: use the tools for every calculation, quote their values
+# The Quant tutor's notes section when RETRIEVAL_MODE=just_in_time: appended to the tutor prompt
+# above (either variant). Notes are not injected; the model calls notes_search when it needs one.
+quant_agent_notes_tool:
+  tutor: v1
 aw_agent:
   tutor: v1
   solve: v1

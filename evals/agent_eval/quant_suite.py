@@ -115,6 +115,7 @@ class TurnCollector(TurnLog):
             tool_budget_exhausted=any(r.get("tool_budget_exhausted") for r in recs),
             latency_ms=sum(r.get("total_ms", 0.0) for r in recs),
             estimated=any(r.get("usage") in ("estimate", "mixed") for r in recs),
+            notes_retrieved=sum(r.get("notes_retrieved", 0) for r in recs),
         )
 
 
@@ -421,6 +422,7 @@ def _cost_block(rows: list[QuantAttempt]) -> TurnCost:
         latency_ms_p50=_pct(latency, 0.5),
         latency_ms_p95=_pct(latency, 0.95),
         turns_with_estimated_tokens=sum(1 for t in turns if t.estimated),
+        turns_with_notes=sum(1 for t in turns if t.notes_retrieved),
     )
 
 

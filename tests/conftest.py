@@ -132,6 +132,18 @@ def math_tools_off_whatever_the_environment_says(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(get_settings(), "math_tools_enabled", False)
 
 
+@pytest.fixture(autouse=True)
+def upfront_retrieval_whatever_the_environment_says(monkeypatch: pytest.MonkeyPatch):
+    """
+    The product default is the up-front search and most agent tests script one streamed reply.
+    A developer's `.env` with RETRIEVAL_MODE=just_in_time must not change that. Tests of the
+    just-in-time path build their agent with `retrieval_mode="just_in_time"`.
+    """
+    from services.agent.src.agent.settings import get_settings
+
+    monkeypatch.setattr(get_settings(), "retrieval_mode", "upfront")
+
+
 @pytest.fixture
 def block_network(monkeypatch: pytest.MonkeyPatch) -> None:
     """

@@ -99,6 +99,7 @@ def build_quant_agent(
     retrieve_corpus: RetrieveCorpus,
     math_tools_enabled: bool = False,
     context_compaction: bool = True,
+    retrieval_mode: str = "upfront",
     verify_math: VerifyMath | None = None,
 ) -> QuantAgent:
     """
@@ -114,6 +115,7 @@ def build_quant_agent(
         math_tools=in_process_math_tools(),
         math_tools_enabled=math_tools_enabled,
         context_compaction=context_compaction,
+        retrieval_mode=retrieval_mode,
     )
 
 
