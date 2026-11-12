@@ -236,7 +236,12 @@ export function IeltsMock({ pollMs = POLL_MS, autosaveMs }: IeltsMockProps) {
         />
       )}
       {view.kind === "report" && (
-        <ReportView report={view.report} essay={view.attempt.draft} onAnother={() => void another()} />
+        <ReportView
+          report={view.report}
+          essay={view.attempt.draft}
+          attemptId={view.attempt.id}
+          onAnother={() => void another()}
+        />
       )}
     </main>
   );

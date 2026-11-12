@@ -83,8 +83,8 @@ async def test_clarification_for_empty_message_prompts_candidate():
 @pytest.mark.asyncio
 async def test_returns_clarification_for_unsupported_section():
     orchestrator = Orchestrator()
-    # "ielts" is not a supported chat pair
-    session = make_session("ielts", "writing")
+    # "ielts/speaking" is not a supported chat pair (ielts/writing is the coach)
+    session = make_session("ielts", "speaking")
     result = await orchestrator.process(session, "Help me with my essay")
     assert isinstance(result, ClarificationTurn)
 
@@ -92,9 +92,9 @@ async def test_returns_clarification_for_unsupported_section():
 @pytest.mark.asyncio
 async def test_clarification_for_unsupported_section_mentions_availability():
     orchestrator = Orchestrator()
-    session = make_session("ielts", "writing")
+    session = make_session("ielts", "speaking")
     result = await orchestrator.process(session, "Help me")
     assert isinstance(result, ClarificationTurn)
     # Should tell the candidate what IS available
-    assert "Currently available: gre/aw, gre/quant." in result.prompt
+    assert "Currently available: gre/aw, gre/quant, ielts/writing." in result.prompt
     assert result.reason == "agent_not_registered"

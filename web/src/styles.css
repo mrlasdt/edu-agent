@@ -31,7 +31,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .app-header h1 { margin: 0; font-size: 1.25rem; }
 
 .subject-picker { margin: auto; text-align: center; }
-.subject-buttons { display: flex; gap: 12px; justify-content: center; }
+.subject-buttons { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
 .subject-buttons button { min-width: 120px; padding: 0.9rem 1.2rem; }
 
 .messages { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px 0; }
@@ -98,6 +98,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .ielts h3 { font-size: 1rem; margin: 0; }
 .ielts p { line-height: 1.55; }
 .ielts button { min-height: 40px; }
+a.ielts-primary { display: inline-block; box-sizing: border-box; min-height: 40px; padding: 0.5rem 0.9rem; margin-right: 8px; line-height: 1.5; border: 1px solid var(--accent); border-radius: 8px; text-decoration: none; }
 .ielts-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 @media (prefers-color-scheme: dark) { .ielts-primary { color: #10131f; } }
 .ielts-hint { font-size: 0.85rem; opacity: 0.75; }

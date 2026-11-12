@@ -23,4 +23,15 @@ describe("SubjectPicker", () => {
     await userEvent.click(screen.getByRole("button", { name: /aw/i }));
     expect(onSelect).toHaveBeenCalledWith("aw");
   });
+
+  it("offers IELTS Writing as a button, next to the link to the mock", async () => {
+    const onSelect = vi.fn();
+    render(<SubjectPicker onSelect={onSelect} />);
+    await userEvent.click(screen.getByRole("button", { name: "IELTS Writing" }));
+    expect(onSelect).toHaveBeenCalledWith("ielts_writing");
+    expect(screen.getByRole("link", { name: /take an ielts writing mock/i })).toHaveAttribute(
+      "href",
+      "/ielts-mock"
+    );
+  });
 });

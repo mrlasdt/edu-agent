@@ -114,7 +114,8 @@ CASES = [
     ),
     pytest.param(
         {"body": {"section": "verbal", "message": "hi"}},
-        "I'm not set up to help with GRE verbal yet. Currently available: gre/aw, gre/quant. "
+        "I'm not set up to help with GRE verbal yet. "
+        "Currently available: gre/aw, gre/quant, ielts/writing. "
         "Please start a new session with one of these.",
         "clarification_requested", [], id="clarification-from-the-orchestrator",
     ),

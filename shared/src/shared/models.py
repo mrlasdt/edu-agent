@@ -34,6 +34,10 @@ class Session(BaseModel):
     mode: Mode = Mode.tutor
     history: list[Message] = Field(default_factory=list)
     personal_style_enabled: bool = False
+    # What the gateway resolved for this turn and the agent cannot look up itself: the IELTS
+    # Writing coach's digest of the learner's graded report (shared/ielts/digest.py). Empty for
+    # the GRE agents.
+    report_digest: str = ""
 
     def append_message(self, role: MessageRole, content: str) -> Session:
         return self.model_copy(

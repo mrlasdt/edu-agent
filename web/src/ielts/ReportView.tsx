@@ -7,6 +7,8 @@ interface Props {
   report: Report;
   essay: string;
   onAnother: () => void;
+  // The attempt this report belongs to: when given, the footer links to the chat coach on it.
+  attemptId?: string;
 }
 
 const CONFIDENCE_TEXT = {
@@ -128,7 +130,7 @@ function CriterionCard({ c }: { c: CriterionReport }) {
   );
 }
 
-export function ReportView({ report, essay, onAnother }: Props) {
+export function ReportView({ report, essay, onAnother, attemptId }: Props) {
   const flags = report.flags.filter((f) => f.severity !== "info");
   const est = report.estimated_band;
 
@@ -274,6 +276,11 @@ export function ReportView({ report, essay, onAnother }: Props) {
           An IELTS mock. It is good for spotting patterns and tracking change across attempts; it
           cannot replace an examiner's mark. Use the criterion feedback more than the exact number.
         </p>
+        {attemptId && report.status === "graded" && (
+          <a className="ielts-primary" href={`/?attempt=${encodeURIComponent(attemptId)}`}>
+            Discuss this report
+          </a>
+        )}
         <button className="ielts-primary" onClick={onAnother}>
           Write another essay
         </button>

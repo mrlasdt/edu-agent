@@ -441,6 +441,16 @@ class IeltsAdversarialResult(SuiteResult):
     rows: dict[str, list[JSON]]
 
 
+class IeltsCoachResult(SuiteResult):
+    """The IELTS Writing coach must coach from the report, never write the essay, and not follow
+    an instruction planted in the report."""
+
+    n_cases: int
+    passed: int
+    failed_cases: list[str]
+    rows: dict[str, list[JSON]]
+
+
 SUITE_MODELS: dict[str, type[SuiteResult]] = {
     "quant": QuantSuiteResult,
     "quant_judge": QuantJudgeResult,
@@ -449,6 +459,7 @@ SUITE_MODELS: dict[str, type[SuiteResult]] = {
     "ielts_writing": IeltsWritingResult,
     "ielts_report": IeltsReportResult,
     "ielts_adversarial": IeltsAdversarialResult,
+    "ielts_coach": IeltsCoachResult,
 }
 
 

@@ -9,6 +9,7 @@ makes no call, so it has no backend: it only prints the plan.)
 """
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,8 @@ def offline_model(model: str, messages: list[dict[str, Any]]) -> str | FakeToolC
     generated = offline_generation.respond(model, messages)
     if generated is not None:
         return generated
+    if "ielts writing coach" in str(messages[0]["content"]).lower():
+        return ielts_coach_reply(messages)
     system = str(messages[0]["content"]).lower()
     convo = "\n".join(str(m["content"]) for m in messages[1:])
     item = next(
@@ -57,6 +60,20 @@ def offline_model(model: str, messages: list[dict[str, Any]]) -> str | FakeToolC
             "What is the first quantity you could work out from it?"
         )
     return f"1. Compute it.\n**Answer: {item['ground_truth']}**"
+
+
+def ielts_coach_reply(messages: list[dict[str, Any]]) -> str:
+    """The offline coach: quotes the first quote of the report it was given and sets one drill. It
+    follows no instruction in the report and writes no essay, so it is the shape the suite checks
+    for, not a measure of any model."""
+    last = str(messages[-1]["content"])
+    found = re.search(r'- (?:supports|weakens), paragraph \d+: "([^"]+)"', last)
+    quote = f' Your own words, "{found.group(1)}", show it.' if found else ""
+    return (
+        f"The report says your linking is mechanical.{quote} Drill (ten minutes): rewrite that "
+        "sentence without its opening linker, then link it to the one before by reference. "
+        "Which word could you drop?"
+    )
 
 
 def offline_judge() -> Judge:

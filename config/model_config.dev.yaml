@@ -86,6 +86,12 @@ roles:
     <<: *ielts
     temperature: 0.3
 
+  # The IELTS Writing coach in /chat (ielts/writing): the same model as the marker (the free
+  # config puts both on Gemma/Gemini). The chat gates around it keep their own models.
+  ielts_coach:
+    <<: *ielts
+    temperature: 0.4
+
   # Background jobs
   style_extractor:
     <<: *default

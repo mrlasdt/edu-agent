@@ -8,7 +8,7 @@ What it covers today, by exam:
 |---|---|---|
 | GRE Quant | Tutor (Socratic hints) and Solve (worked solution, answer checked by sympy for well-formedness, and independently for numeric answers: a model-written equation solved by sympy, shown as agrees / disagrees / not checkable), grounded in a seeded corpus | Failure-seeded eval suite, question-generation pipeline, opt-in math tools |
 | GRE Analytical Writing | Tutor and Solve (scored sample essay), needs an ingested corpus | 2 golden items |
-| IELTS Writing (Task 2) | Not in the chat. A separate timed mock at `/ielts-mock` with per-criterion mock scores and feedback | Grader eval suites (`ielts_writing`, `ielts_report`, `ielts_adversarial`) |
+| IELTS Writing (Task 2) | Chat coach (`ielts/writing`, tutor only) that coaches from your graded mock report and never writes the essay; the timed mock itself is at `/ielts-mock` with per-criterion mock scores and feedback | Grader eval suites (`ielts_writing`, `ielts_report`, `ielts_adversarial`) |
 | IELTS Reading | None | 41 golden items |
 | SAT Math | None | 33 golden items from 11 solver-verified templates |
 
@@ -163,6 +163,7 @@ uv run python -m evals.agent_eval --mode live --provider free+openai    # free c
 | `aw` | LLM-judge calibration on the 2 AW anchor essays |
 | `generation` | question-generation pipeline against a single-call baseline on 12 requests |
 | `ielts_writing` | the IELTS grader against labelled essays; needs local third-party data, so it is opt-in |
+| `ielts_coach` | the chat coach on a seeded report (rules, no judge; offline 0 USD) |
 | `ielts_adversarial`, `ielts_report` | 12 injection and off-topic cases; structural checks on the feedback report |
 
 `uv run python -m evals.tool_use_eval --mode offline|live` is a separate small eval of the candidate MCP server's tools: 10 plain requests (`evals/golden/mcp_tool_use.jsonl`), each scored on whether the first call is to the right tool, carries the right arguments, and how many calls error (errors divided by calls, as in the quant suite). Offline uses a keyword router in place of a model and only proves the wiring; `--mode live` uses the free OpenRouter chain, and `evals/baselines/tool_use.json` holds one such run (10 tasks, so every rate has a wide interval).

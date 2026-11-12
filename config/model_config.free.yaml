@@ -100,6 +100,13 @@ roles:
     <<: *ielts
     temperature: 0.3
 
+  # The IELTS Writing coach in /chat (ielts/writing): same model as the marker, so the coach reads
+  # a report in the voice and on the model that wrote it. Only this role is on Gemma/Gemini; the
+  # chat gates around it (moderation, completeness, answer-leak check) keep their own models.
+  ielts_coach:
+    <<: *ielts
+    temperature: 0.4
+
   # Background jobs
   style_extractor:
     <<: *default

@@ -22,6 +22,9 @@ quant_agent_notes_tool:
 aw_agent:
   tutor: v1
   solve: v1
+# IELTS Writing coach in /chat: tutor only (prompts/ielts_coach/tutor/<version>.md)
+ielts_coach:
+  tutor: v1
 # IELTS mock (prompts/<agent>/writing_t2/<version>.md)
 ielts_grader:
   writing_t2: v1

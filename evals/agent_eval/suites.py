@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import Any, Protocol
 
-from evals.agent_eval import generation, ielts_writing, quant_suite, runner
+from evals.agent_eval import generation, ielts_coach, ielts_writing, quant_suite, runner
 from evals.agent_eval.backend import Backend
 from evals.agent_eval.judges import Judge
 from evals.agent_eval.results import (
@@ -22,6 +22,7 @@ from evals.agent_eval.results import (
     EvalReport,
     GenerationResult,
     IeltsAdversarialResult,
+    IeltsCoachResult,
     IeltsReportResult,
     IeltsWritingResult,
     QuantJudgeResult,
@@ -323,10 +324,29 @@ class IeltsAdversarialSuite:
         return {"ielts_adversarial_pass_rate": result.passed / result.n_cases}
 
 
+class IeltsCoachSuite:
+    name = "ielts_coach"
+    description = "the IELTS Writing chat coach on a seeded report (rules, no judge; 0 USD offline)"
+    default = False
+    result_type = IeltsCoachResult
+
+    def plan(self, ctx: PlanContext) -> SuitePlan:
+        return SuitePlan(items=len(ielts_coach.CASES), agent_calls=len(ielts_coach.CASES))
+
+    async def run(self, ctx: RunContext) -> IeltsCoachResult:
+        # every role on the backend's model (a live run names the coach's own with --model)
+        return await ielts_coach.run_ielts_coach(runner.write_model_config(ctx.backend.model))
+
+    def metrics(self, result: IeltsCoachResult) -> dict[str, float]:
+        if not result.n_cases:
+            return {}
+        return {"ielts_coach_pass_rate": result.passed / result.n_cases}
+
+
 # Run order, plan order and the order of the `--suite` choices.
 SUITES: tuple[Suite[Any], ...] = (
     QuantSuite(), QuantJudgeSuite(), AwSuite(), GenerationSuite(),
-    IeltsWritingSuite(), IeltsReportSuite(), IeltsAdversarialSuite(),
+    IeltsWritingSuite(), IeltsReportSuite(), IeltsAdversarialSuite(), IeltsCoachSuite(),
 )
 
 
