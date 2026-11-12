@@ -19,6 +19,7 @@ from services.gateway.src.gateway.ielts_store import (
     AttemptStateError,
     AttemptStore,
 )
+from services.gateway.src.gateway.limits import ielts_limiter
 from services.gateway.src.gateway.main import app
 from shared.src.shared.budget import Ledger
 from shared.src.shared.ielts import llm
@@ -59,7 +60,7 @@ def client(store: AttemptStore, completer: Scripted, ledger: Ledger) -> Iterator
     app.dependency_overrides[ielts_api.get_store] = lambda: store
     app.dependency_overrides[ielts_api.get_completer] = lambda: completer
     app.dependency_overrides[ielts_api.get_ledger] = lambda: ledger
-    ielts_api._limiter.reset()
+    ielts_limiter().reset()
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
@@ -279,7 +280,7 @@ async def test_simultaneous_submits_queue_exactly_one_marking(
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
         for _ in range(25):  # the window is a few milliseconds: many trials, one must lose
-            ielts_api._limiter.reset()
+            ielts_limiter().reset()
             attempt_id = new_attempt(client)
             client.post(f"/ielts/attempts/{attempt_id}/start")
             queued.clear()

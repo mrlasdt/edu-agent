@@ -30,12 +30,13 @@ from evals.turn_report import main as report_main
 from services.gateway.src.gateway import feedback_api
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
 from services.gateway.src.gateway.guardrails.verdict import Verdict
+from services.gateway.src.gateway.limits import feedback_limiter
 from services.gateway.src.gateway.main import app
 from shared.src.shared import observability
 from shared.src.shared.config import FeedbackSettings, get_feedback_settings
 from shared.src.shared.feedback import default_capture_log, default_feedback_log
 from shared.src.shared.turn_meter import TurnLog
-from tests.gateway_fakes import agent_replies, rate_limiter_of
+from tests.gateway_fakes import agent_replies, override, rate_limiter_of
 
 client = TestClient(app)
 
@@ -53,12 +54,12 @@ def offline_gateway():
 
     with (
         patch(
-            "services.gateway.src.gateway.main.check_content_safety",
+            "services.gateway.src.gateway.chat.gates.check_content_safety",
             new_callable=AsyncMock,
             return_value=Verdict.allow(),
         ),
         patch(
-            "services.gateway.src.gateway.main.check_completeness",
+            "services.gateway.src.gateway.chat.gates.check_completeness",
             new_callable=AsyncMock,
             return_value=Verdict.allow(),
         ),
@@ -69,7 +70,7 @@ def offline_gateway():
         ),
         agent_replies(fake_stream),
         rate_limiter_of(RateLimiter()),
-        patch.object(feedback_api, "_rate_limiter", RateLimiter()),
+        override(feedback_limiter, RateLimiter()),
         patch.object(feedback_api, "post_user_feedback") as langfuse,
     ):
         yield langfuse
@@ -148,7 +149,7 @@ def test_malformed_or_oversize_feedback_is_a_422(body):
 def test_feedback_is_rate_limited(turn_log):
     trace_id = chat().headers["x-trace-id"]
     body = {"trace_id": trace_id, "vote": "up"}
-    with patch.object(feedback_api, "_rate_limiter", RateLimiter(max_per_minute=2)):
+    with override(feedback_limiter, RateLimiter(max_per_minute=2)):
         codes = [client.post("/feedback", json=body).status_code for _ in range(3)]
     assert codes == [200, 200, 429]
 

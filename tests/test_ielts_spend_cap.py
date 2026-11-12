@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from services.gateway.src.gateway import ielts_api
 from services.gateway.src.gateway.ielts_store import AttemptStore
+from services.gateway.src.gateway.limits import ielts_limiter
 from services.gateway.src.gateway.main import app
 from shared.src.shared.budget import DEFAULT_CEILING_USD, BudgetExceededError, Ledger
 from shared.src.shared.config import SpendSettings, anchor
@@ -179,7 +180,7 @@ def client(store: AttemptStore, ledger: Ledger, completer: Scripted) -> Iterator
     app.dependency_overrides[ielts_api.get_store] = lambda: store
     app.dependency_overrides[ielts_api.get_completer] = lambda: completer
     app.dependency_overrides[ielts_api.get_ledger] = lambda: ledger
-    ielts_api._limiter.reset()
+    ielts_limiter().reset()
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

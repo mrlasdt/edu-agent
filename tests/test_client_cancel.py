@@ -82,12 +82,12 @@ class _HangingAgentStream(httpx.AsyncByteStream):
 def gateway_model_calls_mocked():
     with (
         patch(
-            "services.gateway.src.gateway.main.check_content_safety",
+            "services.gateway.src.gateway.chat.gates.check_content_safety",
             new_callable=AsyncMock,
             return_value=Verdict.allow(),
         ),
         patch(
-            "services.gateway.src.gateway.main.check_completeness",
+            "services.gateway.src.gateway.chat.gates.check_completeness",
             new_callable=AsyncMock,
             return_value=Verdict.allow(),
         ),

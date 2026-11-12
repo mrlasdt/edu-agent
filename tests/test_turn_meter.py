@@ -375,14 +375,14 @@ def post_chat(tokens: list[str], *, safe: bool = True, body: dict[str, Any] | No
 
     with (
         patch(
-            "services.gateway.src.gateway.main.check_content_safety",
+            "services.gateway.src.gateway.chat.gates.check_content_safety",
             new_callable=AsyncMock,
             return_value=Verdict.allow()
             if safe
             else Verdict.stop(Outcome.content_blocked, "I can't help with that request (x)."),
         ),
         patch(
-            "services.gateway.src.gateway.main.check_completeness",
+            "services.gateway.src.gateway.chat.gates.check_completeness",
             new_callable=AsyncMock,
             return_value=Verdict.allow(),
         ),
