@@ -12,13 +12,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from services.gateway.src.gateway import ielts_api
+from services.gateway.src.gateway.ielts import llm
+from services.gateway.src.gateway.ielts.llm import LiteLLMCompleter
 from services.gateway.src.gateway.ielts_store import AttemptStore
 from services.gateway.src.gateway.limits import ielts_limiter
 from services.gateway.src.gateway.main import app
 from shared.src.shared.budget import DEFAULT_CEILING_USD, BudgetExceededError, Ledger
 from shared.src.shared.config import SpendSettings, anchor
-from shared.src.shared.ielts import llm
-from shared.src.shared.ielts.llm import LiteLLMCompleter
 from tests.llm_fakes import ScriptedRouter
 from tests.test_ielts_marking import ESSAY, Scripted, feedback_reply, grade_reply
 

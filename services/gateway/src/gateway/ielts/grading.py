@@ -12,10 +12,10 @@ import asyncio
 import hashlib
 from dataclasses import dataclass, field
 
-from shared.src.shared.ielts import llm
-from shared.src.shared.ielts.checks import EssayChecks, cap_task_failure, check_essay
-from shared.src.shared.ielts.models import Flag
-from shared.src.shared.ielts.scoring import (
+from services.gateway.src.gateway.ielts import llm
+from services.gateway.src.gateway.ielts.checks import EssayChecks, cap_task_failure, check_essay
+from services.gateway.src.gateway.ielts.models import Flag
+from services.gateway.src.gateway.ielts.scoring import (
     CRITERIA,
     MAX_ESTIMATED_BAND,
     GradeParseError,

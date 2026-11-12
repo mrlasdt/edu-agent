@@ -31,8 +31,8 @@ from evals.exam_set.schema import (
     LabelTier,
     Source,
 )
+from services.gateway.src.gateway.ielts.scoring import round_overall
 from services.gateway.src.gateway.settings import GatewaySettings
-from shared.src.shared.ielts.scoring import round_overall
 from shared.src.shared.jsonl import read_jsonl
 from shared.src.shared.stats import is_half_band
 

@@ -10,14 +10,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from services.gateway.src.gateway.ielts.digest import build_digest
+from services.gateway.src.gateway.ielts.models import Report
 from services.gateway.src.gateway.ielts_store import (
     MODULE_WRITING_T2,
     Attempt,
     AttemptNotFoundError,
     AttemptStore,
 )
-from shared.src.shared.ielts.digest import build_digest
-from shared.src.shared.ielts.models import Report
 
 COACH_PAIR = ("ielts", "writing")
 

@@ -7,7 +7,7 @@ owns the retries, the fallback order and the cooldowns; the eval harness passes 
 the same `get_router()` so the metered transport (budget ledger, cache) sits underneath unchanged.
 
 The production completer meters itself in the same budget ledger through `guarded_acompletion`
-(`shared.guarded_completion`, the call the eval transport makes too): a call that could take
+(`gateway.guarded_completion`, the call the eval transport makes too): a call that could take
 total spend over the cap is refused before it is made (`BudgetExceededError`), and the cost of
 every paid call is recorded after it.
 """
@@ -16,9 +16,13 @@ from __future__ import annotations
 from collections.abc import Awaitable
 from typing import Any, Protocol
 
+from services.gateway.src.gateway.guarded_completion import (
+    InFlight,
+    failure_reason,
+    guarded_acompletion,
+)
 from shared.src.shared.budget import BudgetExceededError, Ledger, spend_ledger
 from shared.src.shared.config import get_llm_settings, load_model_config
-from shared.src.shared.guarded_completion import InFlight, failure_reason, guarded_acompletion
 from shared.src.shared.llm_router import Completions, configured_chain, get_router
 from shared.src.shared.observability import build_llm_metadata
 

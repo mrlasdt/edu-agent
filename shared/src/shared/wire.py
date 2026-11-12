@@ -23,7 +23,7 @@ MAX_HISTORY_ITEM_CHARS = 4_000
 # candidate_id keys the rate limiter, so it must not be an arbitrarily large string either.
 MAX_CANDIDATE_ID_CHARS = 128
 
-# The IELTS Writing coach's report digest (shared/ielts/digest.py builds it under its own, lower
+# The IELTS Writing coach's report digest (gateway/ielts/digest.py builds it under its own, lower
 # budget). The agent service holds the hop to this bound.
 MAX_REPORT_DIGEST_CHARS = 8_000
 

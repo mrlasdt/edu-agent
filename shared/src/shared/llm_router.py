@@ -32,7 +32,7 @@ provider that cuts the connection after 3 tokens: the fallback was never asked):
 and `/chat` ends that reply with a notice (`Outcome.agent_unavailable`).
 
 The spend cap is not the Router's job: callers check it before the call, against the dearest model
-in the chain, so a fallback can never take a call past the cap (`shared.guarded_completion`, used
+in the chain, so a fallback can never take a call past the cap (`gateway.guarded_completion`, used
 by `LiteLLMCompleter` and `evals.agent_eval.transport.MeteredTransport`).
 """
 from __future__ import annotations

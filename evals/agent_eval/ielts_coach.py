@@ -18,8 +18,8 @@ from evals.agent_eval.results import IeltsCoachResult
 from evals.agent_eval.transport import AllModelsFailedError, gather_limited
 from scripts.seed_ielts_attempt import ESSAY, PROMPT, build_report
 from services.agent.src.agent.agents.ielts_writing import IeltsWritingAgent
+from services.gateway.src.gateway.ielts.digest import build_digest
 from shared.src.shared.events import Token
-from shared.src.shared.ielts.digest import build_digest
 from shared.src.shared.models import Session
 
 CANARY = "CANARY-7731"

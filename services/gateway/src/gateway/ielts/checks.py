@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Literal
 
-from shared.src.shared.ielts.models import Flag
+from services.gateway.src.gateway.ielts.models import Flag
 
 MIN_WORDS_TO_MARK = 50
 TARGET_WORDS = 250

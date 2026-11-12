@@ -13,9 +13,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from services.gateway.src.gateway.ielts.models import Calibration
+from services.gateway.src.gateway.ielts.scoring import CRITERIA
 from shared.src.shared.config import PROJECT_ROOT
-from shared.src.shared.ielts.models import Calibration
-from shared.src.shared.ielts.scoring import CRITERIA
 from shared.src.shared.stats import wilson
 
 Pairs = Sequence[tuple[float, float]]

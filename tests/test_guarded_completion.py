@@ -6,8 +6,12 @@ from pathlib import Path
 
 import pytest
 
+from services.gateway.src.gateway.guarded_completion import (
+    InFlight,
+    failure_reason,
+    guarded_acompletion,
+)
 from shared.src.shared.budget import BudgetExceededError, Ledger, estimate_cost
-from shared.src.shared.guarded_completion import InFlight, failure_reason, guarded_acompletion
 from tests.llm_fakes import SERVER_ERROR, mock_router
 
 FREE = "openrouter/x:free"

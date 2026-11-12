@@ -1,12 +1,12 @@
 """
-The IELTS Writing coach's report digest (shared/ielts/digest.py): bounded, delimited, built from
+The IELTS Writing coach's report digest (gateway/ielts/digest.py): bounded, delimited, built from
 verified quotes only, and never the whole essay.
 """
 import re
 
 from scripts.seed_ielts_attempt import ESSAY, PROMPT, build_report
-from shared.src.shared.ielts.digest import MAX_DIGEST_BODY_CHARS, build_digest
-from shared.src.shared.ielts.models import Evidence, Report
+from services.gateway.src.gateway.ielts.digest import MAX_DIGEST_BODY_CHARS, build_digest
+from services.gateway.src.gateway.ielts.models import Evidence, Report
 from shared.src.shared.wire import MAX_REPORT_DIGEST_CHARS
 
 
