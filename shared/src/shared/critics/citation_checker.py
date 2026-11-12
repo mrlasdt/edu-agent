@@ -28,19 +28,29 @@ def check_citations(text: str, num_chunks: int) -> tuple[bool, list[str]]:
     return len(invalid) == 0, invalid
 
 
-def strip_uncited_claims(text: str, invalid_citations: list[str]) -> str:
+# A sentence ends at . ! or ? followed by blanks, and a line ends at a newline. The separator is
+# kept with the text it follows so the reply keeps its paragraphs and lists.
+_SENTENCE_SPLIT = re.compile(r"((?<=[.!?])[ \t]+|\s*\n\s*)")
+
+
+def drop_uncited(text: str, invalid_citations: list[str]) -> tuple[str, int]:
     """
-    Remove sentences containing invalid citation markers.
-    Best-effort: splits on sentence boundaries and drops sentences with bad markers.
+    Remove the sentences or lines that cite an invalid marker, keeping every separator.
+    Returns (the remaining text, how many sentences or lines were dropped). Best-effort: the split
+    is rough, so a sentence that holds an abbreviation may be cut in two.
     """
     if not invalid_citations:
-        return text
-
-    invalid_set = set(invalid_citations)
-    # Split into sentences (rough approximation)
-    sentences = re.split(r"(?<=[.!?])\s+", text)
-    clean = [
-        s for s in sentences
-        if not any(marker in s for marker in invalid_set)
-    ]
-    return " ".join(clean)
+        return text, 0
+    parts = _SENTENCE_SPLIT.split(text)
+    out: list[str] = []
+    dropped = 0
+    for i in range(0, len(parts), 2):
+        sentence = parts[i]
+        sep = parts[i + 1] if i + 1 < len(parts) else ""
+        if any(marker in sentence for marker in invalid_citations):
+            dropped += 1
+            if out and "\n" in sep and "\n" not in out[-1]:
+                out[-1] = sep
+            continue
+        out += [sentence, sep]
+    return "".join(out), dropped

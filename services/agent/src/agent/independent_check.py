@@ -22,17 +22,9 @@ verify-math capability; the model call lives in `QuantAgent._formalize`.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from typing import Final, get_args
 
 from services.agent.src.agent.capabilities.verify_math import VerifyMath
-from shared.src.shared import events
-from shared.src.shared.events import Verdict
-
-AGREES: Final = "agrees"
-DISAGREES: Final = "disagrees"
-NOT_CHECKABLE: Final = "not_checkable"
-VERDICTS: Final = get_args(Verdict)
+from shared.src.shared.events import AGREES, DISAGREES, NOT_CHECKABLE, IndependentCheck
 
 # The model answers `<expr>NONE</expr>` when the problem has no numeric answer to compute.
 _NONE_WORDS = {"none", "n/a", "not checkable", "not_checkable"}
@@ -48,17 +40,6 @@ _NUMBER_CHARS = re.compile(r"^[\d\s.,+\-*/^()!]*$")
 _DECIMAL = re.compile(r"^-?\d+\.(\d+)$")
 _VARIABLE_PREFIX = re.compile(r"^\s*\w+\s*=\s*")
 _THOUSANDS = re.compile(r"(?<![\d.])\d{1,3}(?:,\d{3})+(?!\d)")
-
-
-@dataclass(frozen=True)
-class IndependentCheck:
-    verdict: Verdict
-    solver: str = ""  # what the solver computed; set only for "disagrees"
-    reason: str = ""  # why a check was "not_checkable" (for the log, not the learner)
-
-    def event(self) -> events.IndependentCheck:
-        """What the turn reports: the verdict, and the solver's value when they disagree."""
-        return events.IndependentCheck(verdict=self.verdict, solver=self.solver)
 
 
 def parse_expression(text: str) -> str | None:
@@ -104,24 +85,25 @@ async def compare(
     right answer through the retry ladder.
     """
     if expression is None:
-        return IndependentCheck(NOT_CHECKABLE, reason="no expression for a numeric answer")
+        return IndependentCheck(verdict=NOT_CHECKABLE, reason="no expression for a numeric answer")
     claimed = _THOUSANDS.sub(lambda m: m.group().replace(",", ""), claimed)
     if not is_number_list(claimed):
-        return IndependentCheck(NOT_CHECKABLE, reason="the answer is not a number")
+        return IndependentCheck(verdict=NOT_CHECKABLE, reason="the answer is not a number")
     result = await verify_math.verify(expression=expression, expected=claimed)
     if result.error:
-        return IndependentCheck(NOT_CHECKABLE, reason=f"solver: {result.error}")
+        return IndependentCheck(verdict=NOT_CHECKABLE, reason=f"solver: {result.error}")
     if result.verified:
-        return IndependentCheck(AGREES)
+        return IndependentCheck(verdict=AGREES)
     if not is_number_list(result.computed):
-        return IndependentCheck(NOT_CHECKABLE, reason="the solver did not compute a number")
+        return IndependentCheck(verdict=NOT_CHECKABLE, reason="the solver did not compute a number")
     if await _is_rounding_of(verify_math, expression, claimed):
-        return IndependentCheck(AGREES)
+        return IndependentCheck(verdict=AGREES)
     if "=" in expression and await _is_some_of_the_roots(verify_math, result.computed, claimed):
         return IndependentCheck(
-            NOT_CHECKABLE, reason="the answer is some of the roots; the question may restrict them"
+            verdict=NOT_CHECKABLE,
+            reason="the answer is some of the roots; the question may restrict them",
         )
-    return IndependentCheck(DISAGREES, solver=_display(result.computed))
+    return IndependentCheck(verdict=DISAGREES, solver=_display(result.computed))
 
 
 async def _is_rounding_of(verify_math: VerifyMath, expression: str, claimed: str) -> bool:

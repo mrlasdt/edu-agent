@@ -10,7 +10,7 @@ from services.agent.src.agent.capabilities.match_student_style import MatchStude
 from services.agent.src.agent.capabilities.retrieve_corpus import CorpusChunk, RetrieveCorpus
 from services.agent.src.agent.prompting import build_messages, collect_stream
 from shared.src.shared.config import load_model_config
-from shared.src.shared.critics.citation_checker import check_citations, strip_uncited_claims
+from shared.src.shared.critics.citation_checker import check_citations, drop_uncited
 from shared.src.shared.critics.style_critic import run_style_critic
 from shared.src.shared.events import CitationsStripped, Event, SampleEssay, Sources, Token
 from shared.src.shared.models import Mode, Session
@@ -180,7 +180,7 @@ class AWAgent(BaseAgent):
             yield CitationsStripped(stripped=False)
             return
 
-        yield Token(text=strip_uncited_claims(full_text, invalid))
+        yield Token(text=drop_uncited(full_text, invalid)[0])
         yield CitationsStripped(stripped=True)
 
     # ── solve mode ────────────────────────────────────────────────────────────
@@ -259,7 +259,7 @@ class AWAgent(BaseAgent):
             tokens, full_text = await collect_stream(response)
             valid, invalid = self._check_citations(full_text, len(chunks))
             if not valid:
-                yield Token(text=strip_uncited_claims(full_text, invalid))
+                yield Token(text=drop_uncited(full_text, invalid)[0])
                 yield SampleEssay()
                 yield CitationsStripped(stripped=True)
                 return

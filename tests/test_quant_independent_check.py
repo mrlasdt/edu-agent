@@ -30,7 +30,7 @@ from evals.agent_eval.results import (
 from evals.judges.quant_judge import grade_quant_item
 from evals.loader import load_golden_set
 from services.agent.src.agent.agents.quant import QuantAgent
-from services.agent.src.agent.independent_check import AGREES, IndependentCheck
+from shared.src.shared.events import AGREES, IndependentCheck
 
 SOLVE_ITEMS = [i for i in load_golden_set("quant") if i["kind"] == "solve"]
 QUADRATIC = next(i for i in SOLVE_ITEMS if i["id"] == "q001")
@@ -108,7 +108,7 @@ async def test_the_independent_check_does_not_reject_the_golden_key():
 
 async def test_the_count_rises_if_the_check_agrees_with_a_wrong_answer():
     agent = _agent()
-    agree = IndependentCheck(AGREES)
+    agree = IndependentCheck(verdict=AGREES)
     with patch.object(agent, "check_independently", new=AsyncMock(return_value=agree)):
         result = await quant_suite.wrong_but_verified(SOLVE_ITEMS, agent, [])
 
