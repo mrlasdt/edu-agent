@@ -28,7 +28,7 @@ from evals.agent_eval.suites import (
 from tests.eval_result_fakes import eval_report
 
 ALL_SUITES = ["quant", "quant_judge", "aw", "generation", "ielts_writing", "ielts_report",
-              "ielts_adversarial"]
+              "ielts_adversarial", "ielts_coach"]
 KEYS = ("OPENROUTER_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY")
 
 

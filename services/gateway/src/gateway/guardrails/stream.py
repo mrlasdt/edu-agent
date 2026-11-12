@@ -72,8 +72,11 @@ class ReplyGuard:
     After `stopped` turns true (a leak was blocked) the caller should stop reading upstream.
     """
 
-    def __init__(self, mode: Mode, trace_id: str, num_sources: int | None = None) -> None:
+    def __init__(
+        self, mode: Mode, trace_id: str, num_sources: int | None = None, leak_check: bool = True
+    ) -> None:
         self._mode = mode
+        self._leak_check = leak_check
         self._trace_id = trace_id
         self._num_sources = num_sources
         self._pending = ""
@@ -117,7 +120,7 @@ class ReplyGuard:
         return out
 
     def _leaks(self, text: str) -> bool:
-        return self._mode == Mode.tutor and detect_answer_leak(text)
+        return self._leak_check and self._mode == Mode.tutor and detect_answer_leak(text)
 
     def _block_leak(self) -> str:
         emit_guardrail_event("generation", "tutor_mode_answer_leak", "fail", self._trace_id)

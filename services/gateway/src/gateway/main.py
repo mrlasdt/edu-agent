@@ -38,6 +38,14 @@ from services.gateway.src.gateway.ielts_api import (
     recover_interrupted_attempts,
 )
 from services.gateway.src.gateway.ielts_api import router as ielts_router
+from services.gateway.src.gateway.ielts_coach import (
+    COACH_PAIR,
+    NO_REPORT_NOTICE,
+    SOLVE_MODE_NOTICE,
+    UNKNOWN_ATTEMPT_NOTICE,
+    find_report,
+)
+from services.gateway.src.gateway.ielts_store import AttemptStore
 from services.gateway.src.gateway.orchestrator import (
     ClarificationTurn,
     Orchestrator,
@@ -118,6 +126,8 @@ class ChatRequest(BaseModel):
     mode: Mode = Mode.tutor
     history: list[ClientHistoryItem] = Field(default_factory=list, max_length=MAX_HISTORY_ITEMS)
     personal_style_enabled: bool = False
+    # IELTS Writing coach only: the graded attempt to coach from; absent means the latest one.
+    attempt_id: str | None = Field(default=None, max_length=64)
 
 
 @app.get("/healthz")
@@ -141,6 +151,8 @@ class ChatTurn:
     limiter: RateLimiter
     orchestrator: Orchestrator
     agent: AgentClient
+    attempts: Callable[[], AttemptStore]  # read only by the IELTS coach's turns
+    report_digest: str = ""  # the coach's graded report, set by `_ielts_report`
 
 
 # A gate runs before the agent is called. Not allowed ends the turn with the verdict's message
@@ -168,7 +180,13 @@ async def _input_pii_notice(turn: ChatTurn) -> Verdict:
     return Verdict.allow(INPUT_PII_NOTICE if turn.input_pii else "")
 
 
+def _is_coach(turn: ChatTurn) -> bool:
+    return (turn.req.test_type, turn.req.section) == COACH_PAIR
+
+
 async def _completeness(turn: ChatTurn) -> Verdict:
+    if _is_coach(turn):  # the check is about a GRE question; a coach turn is about the report
+        return Verdict.allow()
     # Fail open: a broken completeness check must not block a turn that the other
     # guardrails already passed, same as the LLM stage of the answer-leak check.
     try:
@@ -187,9 +205,28 @@ async def _route(turn: ChatTurn) -> Verdict:
     return Verdict.allow()
 
 
+async def _ielts_report(turn: ChatTurn) -> Verdict:
+    """The IELTS Writing coach's turn needs a graded report: find it and keep its digest for the
+    agent. Free (a local lookup), so it runs before the gates that call a model. Every other
+    turn passes."""
+    if not _is_coach(turn):
+        return Verdict.allow()
+    if turn.req.mode == Mode.solve:  # "reveal the worked artifact" has no IELTS meaning
+        return Verdict.stop(Outcome.clarification_requested, SOLVE_MODE_NOTICE)
+    found = find_report(turn.attempts(), turn.req.attempt_id)
+    if found is None:
+        notice = UNKNOWN_ATTEMPT_NOTICE if turn.req.attempt_id else NO_REPORT_NOTICE
+        return Verdict.stop(Outcome.clarification_requested, notice)
+    turn.report_digest = found.digest
+    turn.meter.annotate(ielts_attempt=found.attempt_id)
+    return Verdict.allow()
+
+
 # In order: the first gate that does not allow the turn ends it. The free checks come before the
 # two that call a model, so a blank or unsupported request is answered without paying for either.
-_GATES: tuple[Gate, ...] = (_rate_limit, _route, _content_safety, _input_pii_notice, _completeness)
+_GATES: tuple[Gate, ...] = (
+    _rate_limit, _route, _ielts_report, _content_safety, _input_pii_notice, _completeness,
+)
 
 
 async def _agent_chunks(
@@ -217,6 +254,7 @@ async def _answer(turn: ChatTurn) -> AsyncGenerator[bytes, None]:
         mode=req.mode,
         history=[HistoryItem(role=m.role, content=m.content) for m in turn.history],
         personal_style_enabled=req.personal_style_enabled,
+        report_digest=turn.report_digest,
         trace_id=turn.trace_id,
     )
     meta: dict[str, Any] = {}
@@ -226,7 +264,9 @@ async def _answer(turn: ChatTurn) -> AsyncGenerator[bytes, None]:
     failure: list[Exception] = []
     async for chunk in _agent_chunks(turn, payload, meta, failure):
         if guard is None:
-            guard = ReplyGuard(req.mode, turn.trace_id, meta.get("num_sources"))
+            guard = ReplyGuard(
+                req.mode, turn.trace_id, meta.get("num_sources"), leak_check=not _is_coach(turn)
+            )
         text = guard.feed(trailer.feed(decoder.decode(chunk)))
         if text:
             yield text.encode("utf-8")
@@ -258,7 +298,8 @@ async def _answer(turn: ChatTurn) -> AsyncGenerator[bytes, None]:
         return
     if guard is not None:
         if (
-            not guard.stopped
+            not _is_coach(turn)
+            and not guard.stopped
             and guard.text.strip()
             and not (await check_answer_leak(guard.text, req.mode, turn.trace_id, meter)).allowed
         ):
@@ -336,11 +377,11 @@ async def chat(
     agent: Annotated[AgentClient, Depends(get_agent_client)],
 ) -> StreamingResponse:
     """
-    Single turn: rate limit → content-safety guardrail → input PII notice → completeness
-    check → orchestrator route (the gates, in `_GATES`) → stream the agent's answer through the
-    reply guard (answer leak, citation check, PII redaction). Clarifications, refusals and
-    every guardrail decision are streamed as plain text so the response shape is
-    uniform regardless of outcome.
+    Single turn: rate limit → orchestrator route → IELTS report lookup (coach turns only) →
+    content-safety guardrail → input PII notice → completeness check (the gates, in `_GATES`) →
+    stream the agent's answer through the reply guard (answer leak, citation check, PII
+    redaction). Clarifications, refusals and every guardrail decision are streamed as plain text
+    so the response shape is uniform regardless of outcome.
     """
     trace_id = str(uuid.uuid4())
     message, input_pii = redact_input(req.message, trace_id)
@@ -371,6 +412,8 @@ async def chat(
         limiter=limiter,
         orchestrator=orchestrator,
         agent=agent,
+        # like the startup sweep, honour a test's override; opened only if the turn needs it
+        attempts=app.dependency_overrides.get(get_store, get_store),
     )
 
     # Opt-in (TURN_CAPTURE_TEXT=1): keep the question (as the model saw it, PII redacted) and

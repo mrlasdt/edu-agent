@@ -69,6 +69,43 @@ describe("App candidate id", () => {
   });
 });
 
+describe("App IELTS Writing coach", () => {
+  afterEach(() => window.history.replaceState({}, "", "/"));
+
+  it("routes the turn to ielts/writing, with no mode switch and no GRE label", async () => {
+    const fetchMock = stubGateway();
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "IELTS Writing" }));
+    expect(screen.getByRole("heading", { name: "Edu Agent: IELTS Writing coach" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /solve|tutor/i })).not.toBeInTheDocument();
+    await send(user, "why is my Coherence 6.0?");
+    const body = lastRequest(fetchMock);
+    expect(body).toMatchObject({ test_type: "ielts", section: "writing", mode: "tutor" });
+    expect(body).not.toHaveProperty("attempt_id");
+  });
+
+  it("opens the coach on the attempt a report page linked to", async () => {
+    window.history.replaceState({}, "", "/?attempt=abc123");
+    const fetchMock = stubGateway();
+    const user = userEvent.setup();
+    render(<App />);
+    await send(user, "what do I fix first?");
+    expect(lastRequest(fetchMock)).toMatchObject({
+      test_type: "ielts",
+      section: "writing",
+      attempt_id: "abc123",
+    });
+  });
+
+  it("still sends GRE turns as gre/<subject>", async () => {
+    const fetchMock = stubGateway();
+    const user = await openQuant();
+    await send(user, "hello");
+    expect(lastRequest(fetchMock)).toMatchObject({ test_type: "gre", section: "quant" });
+  });
+});
+
 describe("App /chat request limits", () => {
   it("caps the composer at the gateway's message limit", async () => {
     stubGateway();

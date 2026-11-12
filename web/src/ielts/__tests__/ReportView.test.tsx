@@ -4,6 +4,21 @@ import userEvent from "@testing-library/user-event";
 import { ReportView } from "../ReportView";
 import { ESSAY, report } from "./fixtures";
 
+describe("ReportView coach link", () => {
+  it("links a graded report to the chat coach on its attempt", () => {
+    render(<ReportView report={report()} essay={ESSAY} onAnother={vi.fn()} attemptId="a b" />);
+    expect(screen.getByRole("link", { name: "Discuss this report" })).toHaveAttribute(
+      "href",
+      "/?attempt=a%20b"
+    );
+  });
+
+  it("has no link when the attempt is not known", () => {
+    render(<ReportView report={report()} essay={ESSAY} onAnother={vi.fn()} />);
+    expect(screen.queryByRole("link", { name: "Discuss this report" })).not.toBeInTheDocument();
+  });
+});
+
 describe("ReportView", () => {
   it("leads with the mock score, its range, and the fixed disclaimer", () => {
     render(<ReportView report={report()} essay={ESSAY} onAnother={vi.fn()} />);

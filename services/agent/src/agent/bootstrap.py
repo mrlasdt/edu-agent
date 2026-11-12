@@ -9,6 +9,7 @@ routes against. `build_registry` refuses to start if the two disagree.
 from __future__ import annotations
 
 from services.agent.src.agent.agents.aw import AWAgent
+from services.agent.src.agent.agents.ielts_writing import IeltsWritingAgent
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.base import BaseAgent
 from services.agent.src.agent.registry import AgentRegistry
@@ -17,11 +18,12 @@ from shared.src.shared.catalog import SUPPORTED_PAIRS
 _AGENTS: dict[tuple[str, str], type[BaseAgent]] = {
     ("gre", "quant"): QuantAgent,
     ("gre", "aw"): AWAgent,
+    ("ielts", "writing"): IeltsWritingAgent,
 }
 
 
 def build_registry() -> AgentRegistry:
-    """Return an AgentRegistry populated with the v1 GRE agents, one per catalog pair."""
+    """Return an AgentRegistry populated with the chat agents, one per catalog pair."""
     if set(_AGENTS) != set(SUPPORTED_PAIRS):
         raise RuntimeError(
             f"agent registrations {sorted(_AGENTS)} do not match "

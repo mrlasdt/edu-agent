@@ -73,7 +73,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
  * The conversation with the agent: its messages, whether a reply is running, and the actions on it.
  * One reducer owns every change, so a reply's status is the only record of whether it is still running.
  */
-export function useChat(subject: Subject, mode: Mode) {
+export function useChat(subject: Subject, mode: Mode, attemptId?: string) {
   const [state, dispatch] = useReducer(chatReducer, initialChat);
   const [candidateId] = useState(newId); // lazy: runs once, not on every render
   const nextId = useRef(0);
@@ -92,7 +92,7 @@ export function useChat(subject: Subject, mode: Mode) {
     dispatch({ type: "turn_started", shown, replyId });
     try {
       for await (const event of streamChat(
-        { candidateId, subject, mode, message: text, history },
+        { candidateId, subject, mode, message: text, history, attemptId },
         controller.signal
       )) {
         dispatch({ type: "event", replyId, event });

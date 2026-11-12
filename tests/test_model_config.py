@@ -36,7 +36,7 @@ def test_an_explicit_path_wins_over_the_setting():
     assert cfg.role("orchestrator").provider == "openai"
 
 
-IELTS_ROLES = {"ielts_grader", "ielts_feedback"}
+IELTS_ROLES = {"ielts_grader", "ielts_feedback", "ielts_coach"}
 IELTS_MODEL = "gemini/gemma-4-26b-a4b-it"
 TUTOR_BACKUP = "openrouter/google/gemma-4-31b-it:free"
 IELTS_BACKUPS = [
@@ -61,6 +61,7 @@ TEMPERATURES = {
     "question_critic": 0,
     "ielts_grader": 0.3,
     "ielts_feedback": 0.3,
+    "ielts_coach": 0.4,
     "style_extractor": 0,
 }
 MODELS = {
@@ -75,6 +76,7 @@ PROMPT_PINS = {
     "quant_agent_math_tools": {"tutor": "v1", "solve": "v1"},
     "quant_agent_notes_tool": {"tutor": "v1"},
     "aw_agent": {"tutor": "v1", "solve": "v1"},
+    "ielts_coach": {"tutor": "v1"},
     "ielts_grader": {"writing_t2": "v1"},
     "ielts_feedback": {"writing_t2": "v2"},
     "orchestrator": {"completeness": "v1"},

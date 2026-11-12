@@ -8,11 +8,11 @@ What it covers today, by exam:
 |---|---|---|
 | GRE Quant | Tutor (Socratic hints) and Solve (worked solution, answer checked by sympy for well-formedness, and independently for numeric answers: a model-written equation solved by sympy, shown as agrees / disagrees / not checkable), grounded in a seeded corpus | Failure-seeded eval suite, question-generation pipeline, opt-in math tools |
 | GRE Analytical Writing | Tutor and Solve (scored sample essay), needs an ingested corpus | 2 golden items |
-| IELTS Writing (Task 2) | Not in the chat. A separate timed mock at `/ielts-mock` with per-criterion mock scores and feedback | Grader eval suites (`ielts_writing`, `ielts_report`, `ielts_adversarial`) |
+| IELTS Writing (Task 2) | Chat coach (`ielts/writing`, tutor only) that coaches from your graded mock report and never writes the essay; the timed mock itself is at `/ielts-mock` with per-criterion mock scores and feedback | Grader eval suites (`ielts_writing`, `ielts_report`, `ielts_adversarial`) |
 | IELTS Reading | None | 41 golden items |
 | SAT Math | None | 33 golden items from 11 solver-verified templates |
 
-Only `gre/quant` and `gre/aw` are registered agents (`services/agent/src/agent/bootstrap.py`, with the pair list in `shared/src/shared/catalog.py`); any other `test_type` and `section` sent to `/chat` gets a "not set up yet" reply.
+Only `gre/quant`, `gre/aw` and `ielts/writing` are registered agents (`services/agent/src/agent/bootstrap.py`, with the pair list in `shared/src/shared/catalog.py`); any other `test_type` and `section` sent to `/chat` gets a "not set up yet" reply.
 
 ## Quickstart
 
@@ -28,7 +28,7 @@ docker compose -f infra/docker-compose.yml up -d --build
 docker compose -f infra/docker-compose.yml ps    # services healthy; seed exits 0
 ```
 
-Open http://localhost:5173, pick Quant or AW and ask a question. The first start is slow (image builds, a ~2GB embedder model download, emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and Qdrant volume. `down -v` resets to an empty corpus.
+Open http://localhost:5173, pick Quant, AW or IELTS Writing and ask a question (the IELTS Writing coach needs a marked mock first; `uv run python -m scripts.seed_ielts_attempt` seeds one without a model call). The first start is slow (image builds, a ~2GB embedder model download, emulated amd64 embedding on Apple Silicon); later starts reuse the cached model and Qdrant volume. `down -v` resets to an empty corpus.
 
 ### Configure `.env`
 
@@ -47,8 +47,8 @@ Open http://localhost:5173, pick Quant or AW and ask a question. The first start
   With `ENV=dev` and no OpenAI key the gateway skips the OpenAI Moderation call and records `moderation_skipped: true` on the turn; in any other `ENV` a missing key makes the turn answer "safety check unavailable". `MODERATION_ON_ERROR=closed|open` sets the policy for a moderation outage (default closed, open in `ENV=dev`). To try the supportive reply for a self-harm message without a moderation key, set `SAFETY_TEST_TRIGGER` (for example `SAFETY_TEST_TRIGGER=__test_self_harm__`) and send a message containing that text; it works only with `ENV=dev`. Free models are rate limited and slow: use them for development, not for judging quality.
 - **Math tools.** `MATH_TOOLS_ENABLED=true` lets the Quant agent call `math_evaluate`, `math_solve` and `math_compare` (served by `math-verifier`, at most 4 tool rounds per turn). Default `false`: tool turns are not streamed and cost more tokens.
 - **Long sessions.** The Quant agent shows the model the opening message (the problem) and the latest 8 to 11 messages, so a long tutoring session stops growing in cost and the tutor still knows the problem. Older turns are dropped, in steps of 4; `CONTEXT_COMPACTION_ENABLED=false` sends every message. The web app sends up to 20 messages (the whole conversation, or the opening one plus the latest 19). Compare with `--context-budget` in `evals.agent_eval` (item `m005` has 20 turns).
-- **Retrieval mode.** `RETRIEVAL_MODE=just_in_time` makes the Quant tutor look notes up itself with a `notes_search(concept)` tool instead of receiving them on every turn. Default `upfront`: just-in-time turns are not streamed and rest on one more model decision. Solve mode and the IELTS agent always search up front. Compare the two with `--retrieval` in `evals.agent_eval`.
-- **IELTS mock.** Default config: grader and feedback roles on `gemma-4-26b-a4b-it` called on Google AI Studio directly (`GEMINI_API_KEY`; transient Google 500/503 are retried twice), falling back to the same model and then `google/gemma-4-31b-it` on OpenRouter's free tier (`OPENROUTER_API_KEY`) when the key is missing, Google is down, or a call fails, and `OPENAI_API_KEY` only with `config/model_config.dev.yaml` (`gpt-4.1-mini`). Both Gemma models passed the ADR-0014 development gate (within-0.5 at least 0.75 and |bias| at most 0.3) on the 19 `teacher_graded` IELTS Buddy essays, 3 samples each, max 4000 completion tokens, one instructor's labels: OpenRouter free: 26b 0.83 and -0.14, 31b 0.82 and -0.26; Google direct (one run): 26b 0.84 and -0.08, 31b 0.89 and -0.18; against 0.84 and -0.03 for `gpt-4.1-mini`; `recursive/flint-v1.0` (the default for every other role) failed with 0.62 and -0.62. This is the development gate only: the decision gate is still not met, so every mock score stays an uncalibrated estimate. Full table in ADR-0014. `AI_SPEND_CAP_USD` (default 5) caps AI spend of the mock and the evals in one shared ledger (`AI_LEDGER_PATH`); the tutor's `/chat` is not capped. Compose creates `./ielts-local` and `./.eval-ledger`; on Linux run `mkdir -p ielts-local .eval-ledger` first.
+- **Retrieval mode.** `RETRIEVAL_MODE=just_in_time` makes the Quant tutor look notes up itself with a `notes_search(concept)` tool instead of receiving them on every turn. Default `upfront`: just-in-time turns are not streamed and rest on one more model decision. Solve mode always searches up front; the IELTS Writing coach retrieves nothing. Compare the two with `--retrieval` in `evals.agent_eval`.
+- **IELTS mock.** Default config: grader and feedback roles on `gemma-4-26b-a4b-it` called on Google AI Studio directly (`GEMINI_API_KEY`; transient Google 500/503 are retried twice), falling back to the same model and then `google/gemma-4-31b-it` on OpenRouter's free tier (`OPENROUTER_API_KEY`) when the key is missing, Google is down, or a call fails, and `OPENAI_API_KEY` only with `config/model_config.dev.yaml` (`gpt-4.1-mini`). Both Gemma models passed the ADR-0014 development gate (within-0.5 at least 0.75 and |bias| at most 0.3) on the 19 `teacher_graded` IELTS Buddy essays, 3 samples each, max 4000 completion tokens, one instructor's labels: OpenRouter free: 26b 0.83 and -0.14, 31b 0.82 and -0.26; Google direct (one run): 26b 0.84 and -0.08, 31b 0.89 and -0.18; against 0.84 and -0.03 for `gpt-4.1-mini`; `recursive/flint-v1.0` (the default for every other role) failed with 0.62 and -0.62. This is the development gate only: the decision gate is still not met, so every mock score stays an uncalibrated estimate. Full table in ADR-0014. The IELTS Writing coach in `/chat` runs the `ielts_coach` role on the same model as the grader (the other chat gates keep their own models). `AI_SPEND_CAP_USD` (default 5) caps AI spend of the mock and the evals in one shared ledger (`AI_LEDGER_PATH`); `/chat` turns, the coach's included, are not capped and are metered per turn. Compose creates `./ielts-local` and `./.eval-ledger`; on Linux run `mkdir -p ielts-local .eval-ledger` first.
 - **Observability.** Langfuse is opt-in (`--profile observability`); leave the `LANGFUSE_*` keys commented out unless it is running. Retrieval reranking is opt-in (`--profile reranker` plus `TEI_RERANKER_URL=http://tei-reranker:8080`); a down or slow reranker falls back to the RRF order.
 
 ### Add documents
@@ -92,7 +92,7 @@ Candidate / Admin     ┌──────────────────�
                               │ POST /generate
                      ┌────────▼────────────┐   ┌──────────────────┐
                      │ Agent: Quant, AW,   │──►│ Math verifier    │
-                     │ IELTS grader, gen.  │   │ (sympy, MCP)     │
+                     │ IELTS coach, gen.   │   │ (sympy, MCP)     │
                      │ pipeline            │   └──────────────────┘
                      └────────┬────────────┘
                               │ POST /corpus/retrieve
@@ -105,10 +105,10 @@ Candidate / Admin     ┌──────────────────�
 
 | Service | Port | Role |
 |---|---|---|
-| `web` | 5173 | React app behind nginx. `/` is the tutor chat, `/ielts-mock` the IELTS Writing mock |
+| `web` | 5173 | React app behind nginx. `/` is the tutor chat, `/ielts-mock` the IELTS Writing mock; the report page links to the coach |
 | `gateway` | 8000 | `POST /chat`, `POST /feedback`, the `/ielts/*` mock API (grader code in `shared/src/shared/ielts/`), orchestrator, guardrails, rate limit |
 | `corpus` | 8001 | `POST /corpus/retrieve`: Qdrant dense + sparse search fused with RRF, ACL filter, optional rerank |
-| `agent` | 8002 | `POST /generate`: Quant and AW agents, capabilities, tools, critics, question pipeline |
+| `agent` | 8002 | `POST /generate`: Quant, AW and IELTS Writing coach agents, capabilities, tools, critics, question pipeline |
 | `ingestion` | 8003 | `/admin/documents` (admin key): parse, chunk, embed, index |
 | `math-verifier` | 8090 | FastMCP server: sympy checks behind an allow-list parser, one killable child process per check; also `POST /tools/{name}` for the math tools |
 | `tei-embedder` | 8080 | BGE-M3 embeddings (Hugging Face TEI) |
@@ -122,7 +122,7 @@ Every retrieval filters by tier: global (admin uploads, visible to all), school 
 
 ### Guardrails
 
-`/chat` applies, in order: request size caps (message 4,000 chars; history 20 items of 4,000; candidate id 128; over a cap is a 422 before any model call), per-candidate rate limit (60 turns/min, 200/day, in memory), routing (a blank message or an unsupported exam and section is answered here, before any model call), input PII redaction, content safety (OpenAI Moderation), a completeness check on the question, a tutor-mode answer-leak check (regex on the stream, LLM after the reply), a citation check (only when the agent reports sources) and output PII redaction. Output content safety is not applied. Every check logs `guardrail.{layer}.{name}.{pass|fail}` with the trace id. Token caps on the guardrail model calls are `COMPLETENESS_MAX_TOKENS` and `LEAK_CHECK_MAX_TOKENS`.
+`/chat` applies, in order: request size caps (message 4,000 chars; history 20 items of 4,000; candidate id 128; over a cap is a 422 before any model call), per-candidate rate limit (60 turns/min, 200/day, in memory), routing (a blank message or an unsupported exam and section is answered here, before any model call), input PII redaction, for IELTS Writing coach turns, a lookup of your graded mock report (the `attempt_id` in the request, or the latest marked one; none found gets a notice that points to `/ielts-mock`), content safety (OpenAI Moderation), a completeness check on the question, a tutor-mode answer-leak check (regex on the stream, LLM after the reply; both are skipped for the coach, which is told never to write the essay but whose replies may quote one corrected sentence), a citation check (only when the agent reports sources) and output PII redaction. Output content safety is not applied. Every check logs `guardrail.{layer}.{name}.{pass|fail}` with the trace id. Token caps on the guardrail model calls are `COMPLETENESS_MAX_TOKENS` and `LEAK_CHECK_MAX_TOKENS`.
 
 ### Measuring a turn
 
@@ -138,7 +138,7 @@ Each `/chat` turn is metered (model calls, tokens, estimated USD, time to first 
 
 ## IELTS Writing mock
 
-A timed Task 2 mock for the General Training test (40 minutes, server-side clock, 250+ words): pick one of 8 original prompts, write with a live word counter and autosave, submit (or time out), and get a mock score for each of the four criteria with evidence from your essay, next steps and an error table. Marking is three independent passes whose per-criterion median is the score, deterministic checks (length, paragraphs, off-topic or copied text, instructions aimed at the marker) and a written review whose quotes are verified against the essay. Every score is labelled an estimate, not an official IELTS result, and "uncalibrated" until the ADR-0014 gate is met. Attempts are stored in SQLite under `./ielts-local`.
+A timed Task 2 mock for the General Training test (40 minutes, server-side clock, 250+ words): pick one of 8 original prompts, write with a live word counter and autosave, submit (or time out), and get a mock score for each of the four criteria with evidence from your essay, next steps and an error table. Marking is three independent passes whose per-criterion median is the score, deterministic checks (length, paragraphs, off-topic or copied text, instructions aimed at the marker) and a written review whose quotes are verified against the essay. Every score is labelled an estimate, not an official IELTS result, and "uncalibrated" until the ADR-0014 gate is met. Attempts are stored in SQLite under `./ielts-local`. A marked report has a "Discuss this report" link that opens the chat coach on that attempt.
 
 Without Docker: run the gateway (`uv run uvicorn services.gateway.src.gateway.main:app --port 8000`, `OPENROUTER_API_KEY` in the environment, or `OPENAI_API_KEY` with `MODEL_CONFIG_PATH=config/model_config.dev.yaml`) and `cd web && npm run dev`, then open http://localhost:5173/ielts-mock. The mock does not need Qdrant or the embedder.
 
@@ -163,6 +163,7 @@ uv run python -m evals.agent_eval --mode live --provider free+openai    # free c
 | `aw` | LLM-judge calibration on the 2 AW anchor essays |
 | `generation` | question-generation pipeline against a single-call baseline on 12 requests |
 | `ielts_writing` | the IELTS grader against labelled essays; needs local third-party data, so it is opt-in |
+| `ielts_coach` | the chat coach on a seeded report (rules, no judge; offline 0 USD) |
 | `ielts_adversarial`, `ielts_report` | 12 injection and off-topic cases; structural checks on the feedback report |
 
 `uv run python -m evals.tool_use_eval --mode offline|live` is a separate small eval of the candidate MCP server's tools: 10 plain requests (`evals/golden/mcp_tool_use.jsonl`), each scored on whether the first call is to the right tool, carries the right arguments, and how many calls error (errors divided by calls, as in the quant suite). Offline uses a keyword router in place of a model and only proves the wiring; `--mode live` uses the free OpenRouter chain, and `evals/baselines/tool_use.json` holds one such run (10 tasks, so every rate has a wide interval).
@@ -239,7 +240,7 @@ The math verifier (port 8090) is a cluster-internal service, not a client-facing
 
 ## Models
 
-`config/model_config.free.yaml` (the default) maps roles (orchestrator, `quant_agent`, `aw_agent`, math escalation, critics, graders, question-pipeline roles) to models; swapping a role to another provider is one line. `config/model_config.dev.yaml` is the paid OpenAI variant. Prompts are versioned under `prompts/`; the active version per agent and mode is pinned once for every model config in `config/prompt_pins.yaml`. `prompt_version(agent, mode)` raises for a pair that is not pinned (it never guesses `v1`), and `uv run python scripts/lint_references.py` (a CI step and `tests/test_lint_references.py`) fails when a pin has no prompt file, a prompt file has no pin or is newer than it, a call site names an unpinned pair or an undefined model role, or a configured role is never used (three reserved ones are listed with their reasons in the script).
+`config/model_config.free.yaml` (the default) maps roles (orchestrator, `quant_agent`, `aw_agent`, `ielts_coach`, math escalation, critics, graders, question-pipeline roles) to models; swapping a role to another provider is one line. `config/model_config.dev.yaml` is the paid OpenAI variant. Prompts are versioned under `prompts/`; the active version per agent and mode is pinned once for every model config in `config/prompt_pins.yaml`. `prompt_version(agent, mode)` raises for a pair that is not pinned (it never guesses `v1`), and `uv run python scripts/lint_references.py` (a CI step and `tests/test_lint_references.py`) fails when a pin has no prompt file, a prompt file has no pin or is newer than it, a call site names an unpinned pair or an undefined model role, or a configured role is never used (three reserved ones are listed with their reasons in the script).
 
 ## Deployment
 
@@ -247,7 +248,7 @@ Docker Compose (`infra/docker-compose.yml`) is the one supported way to run the 
 
 ## Adding an exam or section
 
-`AgentRegistry` is the seam: subclass `BaseAgent`, add the agent to `bootstrap.py` and its `(test_type, section)` pair to `shared/src/shared/catalog.py` (the gateway routes on the catalog; a test fails if the two differ), add prompts under `prompts/`, tag corpus documents with the `test_type`, and add a golden set under `evals/golden/`. The gateway, corpus, ingestion and math verifier need no change. The web subject picker is a hardcoded Quant / AW pair and needs a new button.
+`AgentRegistry` is the seam: subclass `BaseAgent`, add the agent to `bootstrap.py` and its `(test_type, section)` pair to `shared/src/shared/catalog.py` (the gateway routes on the catalog; a test fails if the two differ), add prompts under `prompts/`, tag corpus documents with the `test_type`, and add a golden set under `evals/golden/`. The gateway, corpus, ingestion and math verifier need no change. The web subject picker is a hardcoded Quant / AW / IELTS Writing set and needs a new button.
 
 ## Not built yet
 

@@ -23,6 +23,10 @@ MAX_HISTORY_ITEM_CHARS = 4_000
 # candidate_id keys the rate limiter, so it must not be an arbitrarily large string either.
 MAX_CANDIDATE_ID_CHARS = 128
 
+# The IELTS Writing coach's report digest (shared/ielts/digest.py builds it under its own, lower
+# budget). The agent service holds the hop to this bound.
+MAX_REPORT_DIGEST_CHARS = 8_000
+
 # What the gateway may forward. It redacts emails and phone numbers first, and "[REDACTED]" (10
 # characters) is longer than the shortest address it replaces ("a@b.co", 6), so redaction can grow
 # a text by up to 10/6. The agent service holds the hop to this bound, not to the client's.
@@ -55,4 +59,7 @@ class GenerateRequest(BaseModel):
     mode: Mode = Mode.tutor
     history: list[HistoryItem] = Field(default_factory=list, max_length=MAX_HISTORY_ITEMS)
     personal_style_enabled: bool = False
+    # IELTS Writing coach only: the gateway's digest of the learner's graded report, which is
+    # delimited untrusted data (it quotes the learner's essay). Empty for every other agent.
+    report_digest: str = Field(default="", max_length=MAX_REPORT_DIGEST_CHARS)
     trace_id: str = ""

@@ -7,6 +7,15 @@ export interface ChatTurn {
   mode: Mode;
   message: string;
   history: Message[];
+  // IELTS Writing only: the graded mock attempt to coach from; absent means the latest one.
+  attemptId?: string;
+}
+
+// The gateway routes on (test_type, section); the picker's subjects map onto them.
+export function chatTarget(subject: Subject): { test_type: string; section: string } {
+  return subject === "ielts_writing"
+    ? { test_type: "ielts", section: "writing" }
+    : { test_type: "gre", section: subject };
 }
 
 // Mirror the gateway's /chat caps (services/gateway/src/gateway/main.py); it rejects bigger requests.
@@ -97,11 +106,11 @@ export async function* streamChat(
     signal,
     json: {
       candidate_id: turn.candidateId,
-      test_type: "gre",
-      section: turn.subject,
+      ...chatTarget(turn.subject),
       message: turn.message,
       mode: turn.mode,
       history: toHistoryPayload(turn.history),
+      ...(turn.attemptId ? { attempt_id: turn.attemptId } : {}),
     },
   });
   if (!res.body) throw new ApiError(res.status, "The server sent no reply");
