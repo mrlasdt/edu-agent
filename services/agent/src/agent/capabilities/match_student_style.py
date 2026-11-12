@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx
-
+from services.agent.src.agent.clients import pool
 from services.agent.src.agent.settings import get_settings
+from shared.src.shared.corpus_client import CorpusClient
 
 _MIN_ESSAYS = 2
 
@@ -19,7 +19,9 @@ _MIN_ESSAYS = 2
 class MatchStudentStyle:
     def __init__(self, corpus_url: str | None = None) -> None:
         settings = get_settings()
-        self._corpus_url = corpus_url or settings.corpus_service_url
+        self._corpus = CorpusClient(
+            corpus_url or settings.corpus_service_url, client=pool.current()
+        )
 
     async def get_exemplars(self, candidate_id: str, test_type: str) -> list[str]:
         """
@@ -35,18 +37,8 @@ class MatchStudentStyle:
         self, candidate_id: str, test_type: str
     ) -> list[dict[str, Any]]:
         """Retrieve Candidate-tier chunks from the Corpus Service."""
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                f"{self._corpus_url}/corpus/retrieve",
-                json={
-                    "query": "essay",
-                    "candidate_id": candidate_id,
-                    "school_id": "",
-                    "test_type": test_type,
-                    "top_k": 5,
-                },
-            )
-            response.raise_for_status()
-            results = response.json()
-            # Filter to candidate-tier only
-            return [r for r in results if r.get("tier") == "candidate"]
+        results = await self._corpus.retrieve(
+            "essay", candidate_id=candidate_id, school_id="", test_type=test_type, top_k=5
+        )
+        # Filter to candidate-tier only
+        return [r for r in results if r.get("tier") == "candidate"]

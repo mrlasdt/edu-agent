@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
-import httpx
-
+from services.agent.src.agent.clients import pool
 from services.agent.src.agent.settings import get_settings
+from shared.src.shared.corpus_client import CorpusClient
 
 
 @dataclass
@@ -27,7 +27,9 @@ class RetrieveCorpus:
         self, corpus_url: str | None = None, *, apply_relevance_floor: bool = False
     ) -> None:
         settings = get_settings()
-        self._corpus_url = corpus_url or settings.corpus_service_url
+        self._corpus = CorpusClient(
+            corpus_url or settings.corpus_service_url, client=pool.current()
+        )
         self._apply_relevance_floor = apply_relevance_floor
 
     async def retrieve(
@@ -64,17 +66,11 @@ class RetrieveCorpus:
         test_type: str,
         top_k: int,
     ) -> list[dict[str, Any]]:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                f"{self._corpus_url}/corpus/retrieve",
-                json={
-                    "query": query,
-                    "candidate_id": candidate_id,
-                    "school_id": school_id,
-                    "test_type": test_type,
-                    "top_k": top_k,
-                    "apply_relevance_floor": self._apply_relevance_floor,
-                },
-            )
-            response.raise_for_status()
-            return cast(list[dict[str, Any]], response.json())
+        return await self._corpus.retrieve(
+            query,
+            candidate_id=candidate_id,
+            school_id=school_id,
+            test_type=test_type,
+            top_k=top_k,
+            apply_relevance_floor=self._apply_relevance_floor,
+        )

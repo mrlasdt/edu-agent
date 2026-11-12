@@ -15,7 +15,9 @@ from typing import Any, cast
 
 import httpx
 
+from services.agent.src.agent.clients import pool
 from services.agent.src.agent.settings import get_settings
+from shared.src.shared.http import post_json
 from shared.src.shared.math_tool_specs import MATH_TOOL_SPECS, TOOL_NAMES
 
 __all__ = ["MATH_TOOL_SPECS", "TOOL_NAMES", "UNAVAILABLE", "MathTools"]
@@ -35,14 +37,15 @@ class MathTools:
     `call` never raises: a service that is down becomes an `{"error": ...}` the model can read
     and work around. Pass `client` to choose the HTTP transport: tests and the evals hand in an
     `httpx.AsyncClient(transport=httpx.ASGITransport(app=...))` so a call reaches the real routes
-    in process; by default each call opens its own client against `server_url`.
+    in process; by default calls share the agent service's pooled client (`agent/clients/pool.py`),
+    or open a client of their own when no pool is open.
     """
 
     def __init__(
         self, server_url: str | None = None, *, client: httpx.AsyncClient | None = None
     ) -> None:
         self._server_url = server_url or get_settings().math_verifier_url
-        self._client = client
+        self._client = client or pool.current()
 
     async def call(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -53,11 +56,7 @@ class MathTools:
         return result if isinstance(result, dict) else {"error": UNAVAILABLE}
 
     async def _post_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        url = f"{self._server_url}/tools/{name}"
-        if self._client is not None:
-            response = await self._client.post(url, json=arguments)
-        else:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                response = await client.post(url, json=arguments)
-        response.raise_for_status()
-        return cast(dict[str, Any], response.json())
+        reply = await post_json(
+            f"{self._server_url}/tools/{name}", arguments, client=self._client, timeout=15.0
+        )
+        return cast(dict[str, Any], reply)
