@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { sendFeedback, streamChat } from "../chat";
+import { MAX_HISTORY_ITEMS, sendFeedback, streamChat, toHistoryPayload } from "../chat";
 import type { ChatEvent } from "../chat";
 
 const turn = { candidateId: "c1", subject: "quant" as const, mode: "solve" as const, message: "x", history: [] };
@@ -122,5 +122,35 @@ describe("sendFeedback", () => {
   it("throws when the gateway refuses", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 404 }));
     await expect(sendFeedback("nope", "up")).rejects.toThrow("404");
+  });
+});
+
+describe("toHistoryPayload", () => {
+  const exchange = (i: number) => [
+    { id: `c${i}`, role: "candidate" as const, content: `question ${i}` },
+    { id: `a${i}`, role: "agent" as const, content: `answer ${i}` },
+  ];
+  const conversation = (turns: number) => Array.from({ length: turns }, (_, i) => exchange(i)).flat();
+
+  it("sends a conversation under the cap whole", () => {
+    const sent = toHistoryPayload(conversation(5));
+    expect(sent).toHaveLength(10);
+    expect(sent[0]).toEqual({ role: "candidate", content: "question 0" });
+  });
+
+  it("keeps the opening message, which states the problem, with the latest ones past the cap", () => {
+    const sent = toHistoryPayload(conversation(MAX_HISTORY_ITEMS / 2 + 5));
+    expect(sent).toHaveLength(MAX_HISTORY_ITEMS);
+    expect(sent[0]).toEqual({ role: "candidate", content: "question 0" });
+    expect(sent[1]).toEqual({ role: "agent", content: "answer 5" });
+    expect(sent[sent.length - 1]).toEqual({ role: "agent", content: `answer ${MAX_HISTORY_ITEMS / 2 + 4}` });
+  });
+
+  it("leaves out empty messages and sends only role and content", () => {
+    const sent = toHistoryPayload([...exchange(0), { id: "x", role: "agent" as const, content: "" }]);
+    expect(sent).toEqual([
+      { role: "candidate", content: "question 0" },
+      { role: "agent", content: "answer 0" },
+    ]);
   });
 });

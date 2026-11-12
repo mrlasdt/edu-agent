@@ -16,6 +16,8 @@ from shared.src.shared.models import MessageRole, Mode
 # an unbounded body is an unbounded bill: the gateway rejects a request over a cap with 422 before
 # any guardrail or model call runs.
 MAX_MESSAGE_CHARS = 4_000
+# The cap bounds the request. The IELTS writing agent still sends the whole history to the model;
+# the Quant agent further bounds it with its ContextBudget (services/agent/src/agent/context.py).
 MAX_HISTORY_ITEMS = 20
 MAX_HISTORY_ITEM_CHARS = 4_000
 # candidate_id keys the rate limiter, so it must not be an arbitrarily large string either.

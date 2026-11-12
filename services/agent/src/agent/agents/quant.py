@@ -10,6 +10,7 @@ from services.agent.src.agent.answers import extract_final_answer, normalize_ans
 from services.agent.src.agent.base import BaseAgent
 from services.agent.src.agent.capabilities.retrieve_corpus import CorpusChunk, RetrieveCorpus
 from services.agent.src.agent.capabilities.verify_math import VerifyMath, VerifyMathResult
+from services.agent.src.agent.context import ContextBudget
 from services.agent.src.agent.independent_check import IndependentCheck
 from services.agent.src.agent.prompting import build_messages, collect_stream
 from services.agent.src.agent.settings import get_settings
@@ -205,8 +206,19 @@ class QuantAgent(BaseAgent):
         retrieve_corpus: RetrieveCorpus | None = None,
         math_tools: MathTools | None = None,
         math_tools_enabled: bool | None = None,
+        context_compaction: bool | None = None,
     ) -> None:
         self._model_config = load_model_config(model_config_path)
+        settings = get_settings()
+        self._context = (
+            ContextBudget(
+                keep=settings.context_keep_messages,
+                step=settings.context_fold_step,
+            )
+            if (settings.context_compaction_enabled if context_compaction is None
+                else context_compaction)
+            else None
+        )
         self._math_tools_enabled = (
             get_settings().math_tools_enabled if math_tools_enabled is None else math_tools_enabled
         )
@@ -240,6 +252,7 @@ class QuantAgent(BaseAgent):
             self._math_tools_enabled
         ) else None
         try:
+            session, context_section = self._compact(session, meter)
             with meter.phase("retrieval"):
                 chunks = await self._retrieve(session, message)
             meter.annotate(notes_retrieved=len(chunks))
@@ -248,12 +261,14 @@ class QuantAgent(BaseAgent):
             chunk_context = _format_chunks_for_context(chunks)
             if session.mode == Mode.tutor:
                 async for token in self._tutor_turn(
-                    session, message, meter, obs_meta, version, chunk_context, tools
+                    session, message, meter, obs_meta, version, chunk_context, tools,
+                    context_section,
                 ):
                     yield token
             else:
                 async for item in self._solve_turn(
-                    session, message, meter, obs_meta, version, chunk_context, tools
+                    session, message, meter, obs_meta, version, chunk_context, tools,
+                    context_section,
                 ):
                     yield item
             if tools is not None and tools.calls:
@@ -279,12 +294,13 @@ class QuantAgent(BaseAgent):
         version: str = "v1",
         chunk_context: str = "",
         tools: _ToolTurn | None = None,
+        context_section: str = "",
     ) -> AsyncGenerator[Token, None]:
         system_prompt = (
             _load_prompt(Mode.tutor, version, _TOOLS_AGENT)
             if tools is not None
             else _load_prompt(Mode.tutor, version)
-        )
+        ) + context_section
         messages = build_messages(session, message, system_prompt, chunk_context)
         model = self._model_config.litellm_model("quant_agent")
         temperature = self._model_config.role("quant_agent").temperature
@@ -320,12 +336,13 @@ class QuantAgent(BaseAgent):
         version: str = "v1",
         chunk_context: str = "",
         tools: _ToolTurn | None = None,
+        context_section: str = "",
     ) -> AsyncGenerator[Event, None]:
         system_prompt = (
             _load_prompt(Mode.solve, version, _TOOLS_AGENT)
             if tools is not None
             else _load_prompt(Mode.solve, version)
-        )
+        ) + context_section
         base_messages = build_messages(session, message, system_prompt, chunk_context)
         checks = _SolveChecks(self, session, message, meter)
 
@@ -436,6 +453,22 @@ class QuantAgent(BaseAgent):
             expression=claimed_answer,
             expected=claimed_answer,
         )
+
+    def _compact(self, session: Session, meter: TurnMeter) -> tuple[Session, str]:
+        """
+        The session as the model will see it, and the prompt section that stands in for the
+        turns that were folded. A conversation under the budget comes back as it was.
+        """
+        if self._context is None:
+            return session, ""
+        plan = self._context.plan(session.history)
+        meter.annotate(
+            context_messages_folded=plan.folded,
+            context_messages_sent=len(plan.recent),
+        )
+        if not plan.folded:
+            return session, ""
+        return session.model_copy(update={"history": plan.recent}), plan.section()
 
     async def _formalize(
         self,

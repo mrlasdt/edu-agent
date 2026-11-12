@@ -186,6 +186,7 @@ def run_meta(args: argparse.Namespace, model: str, chain: list[str]) -> RunMeta:
         product_default_model=product_default,
         is_product_default_model=model == product_default,
         math_tools=args.math_tools,
+        context_budget=args.context_budget,
         prompt_versions={
             mode: config.prompt_version(
                 "quant_agent_math_tools" if args.math_tools == "on" else "quant_agent", mode
@@ -219,6 +220,11 @@ def main(argv: list[str] | None = None) -> int:
                    help="the Quant agent with (on) or without (off, the product default and the "
                         "original single-call path) the math_evaluate/math_solve/math_compare "
                         "tools; run both on one model to measure what the tools change")
+    p.add_argument("--context-budget", choices=["on", "off"], default="on",
+                   help="the Quant agent with (on, the product default) or without (off) dropping "
+                        "the older turns of a long session (the opening message stays pinned); "
+                        "only conversations over 12 messages differ, so run both on the 20-turn "
+                        "item (m005) to compare")
     p.add_argument("--samples", type=int, default=ielts_writing.DEFAULT_SAMPLES,
                    help="attempts per item in the quant suite (pass@k and pass^k are over these); "
                         "grader samples per essay in the IELTS suites (per-criterion median)")

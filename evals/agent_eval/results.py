@@ -126,6 +126,7 @@ class RunMeta(StrictModel):
     product_default_model: str
     is_product_default_model: bool
     math_tools: str | None = None
+    context_budget: str | None = None  # "on" folds old turns of a long session, "off" keeps all
     prompt_versions: dict[str, Any] | None = None
     temperature: float | None = None
     git_commit: str | None

@@ -573,7 +573,7 @@ async def test_quant_judge_suite_never_reaches_the_corpus_service(
         max_items=3, max_items_given=True, samples=1, model=None, max_tokens=800,
         ledger=str(tmp_path / "l.json"), ceiling=20.0, out_dir=str(tmp_path),
         baseline=None, write_baseline=None, min_coverage=0.8,
-        cache_dir=str(tmp_path / "c"), no_cache=True, math_tools="on",
+        cache_dir=str(tmp_path / "c"), no_cache=True, math_tools="on", context_budget="on",
     )
     report, code = await cli.run(args)
     assert code == 0 and report.suite("quant_judge", QuantJudgeResult).n_items == 3
@@ -593,7 +593,7 @@ async def test_failed_run_exits_nonzero_and_emits_no_regression_metrics(
         max_items=5, max_items_given=False, samples=1, model=None, max_tokens=800,
         ledger=str(tmp_path / "l.json"), ceiling=20.0, out_dir=str(tmp_path),
         baseline=None, write_baseline=None, min_coverage=0.8,
-        cache_dir=str(tmp_path / "c"), no_cache=True, math_tools="on",
+        cache_dir=str(tmp_path / "c"), no_cache=True, math_tools="on", context_budget="on",
     )
     report, code = await cli.run(args)
     assert code == 2

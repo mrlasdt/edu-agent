@@ -41,7 +41,7 @@ KINDS = {"solve", "tutor", "tutor_multiturn", "security"}
 def test_every_item_names_the_failure_it_came_from_and_has_what_its_kind_needs():
     ids = [i["id"] for i in ITEMS]
     assert len(ids) == len(set(ids))
-    assert 30 <= len(ITEMS) <= 40
+    assert 30 <= len(ITEMS) <= 45
     needs = {
         "solve": {"question", "question_type", "expression", "ground_truth"},
         "tutor": {"question", "question_type", "ground_truth", "student"},
@@ -53,7 +53,7 @@ def test_every_item_names_the_failure_it_came_from_and_has_what_its_kind_needs()
         assert item["tag"] and len(item["failure_source"]) > 10, item["id"]
         assert needs[item["kind"]] <= set(item), item["id"]
     assert {k: sum(1 for i in ITEMS if i["kind"] == k) for k in KINDS} == {
-        "solve": 16, "tutor": 12, "tutor_multiturn": 4, "security": 8,
+        "solve": 16, "tutor": 12, "tutor_multiturn": 5, "security": 8,
     }
     assert all(len(i["turns"]) >= 4 for i in ITEMS if i["kind"] == "tutor_multiturn")
 
@@ -626,3 +626,27 @@ def test_the_transcript_of_a_tool_turn_shows_the_calls_between_question_and_repl
     roles = [m["role"] for m in attempt["transcript"]]
     assert roles == ["student", "tool_call", "tutor"]
     assert attempt["transcript"][1]["content"].startswith("math_evaluate(")
+
+
+# ── the context-budget switch in the eval ────────────────────────────────────
+
+
+def _offline_context(tmp_path: Path, flag: str) -> dict[str, Any]:
+    out = tmp_path / f"ctx-{flag}"
+    argv = ["--mode", "offline", "--suite", "quant", "--samples", "1", "--context-budget", flag,
+            "--ledger", str(tmp_path / f"ctx-{flag}.json"), "--out-dir", str(out)]
+    assert cli.main(argv) == 0
+    report: dict[str, Any] = json.loads(next(out.glob("*.json")).read_text())
+    return report
+
+
+def test_the_context_budget_shortens_the_long_sessions_prompts_and_the_report_says_so(
+    tmp_path: Path, block_network: None
+):
+    off, on = _offline_context(tmp_path, "off"), _offline_context(tmp_path, "on")
+    assert (off["run_meta"]["context_budget"], on["run_meta"]["context_budget"]) == ("off", "on")
+    cost_off = off["suites"]["quant"]["groups"]["tutor_multiturn"]["cost_latency"]
+    cost_on = on["suites"]["quant"]["groups"]["tutor_multiturn"]["cost_latency"]
+    # the default makes no extra model call (no note), and the late turns' prompts are shorter
+    assert cost_on["llm_calls_per_turn_mean"] == cost_off["llm_calls_per_turn_mean"] == 1.0
+    assert cost_on["input_tokens_per_turn_mean"] < cost_off["input_tokens_per_turn_mean"]

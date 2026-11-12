@@ -159,7 +159,7 @@ async def test_the_backend_that_run_was_given_decides_the_mode_of_the_run(
         mode="offline", suite=["aw"], provider="free", judge="llm", judge_model=None,
         max_items=1, max_items_given=True, samples=1, model=None, max_tokens=800,
         ledger=str(tmp_path / "l.json"), ceiling=20.0, min_coverage=0.8,
-        cache_dir=str(tmp_path / "c"), no_cache=True, math_tools="off",
+        cache_dir=str(tmp_path / "c"), no_cache=True, math_tools="off", context_budget="on",
     )
     report, code = await cli.run(args)
     assert code == 0 and report.model_chain == [OFFLINE_MODEL] and report.mode == "offline"

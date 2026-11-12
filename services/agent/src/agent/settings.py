@@ -13,6 +13,13 @@ class AgentSettings(LlmSettings, TurnLogSettings, LangfuseSettings):
     # computes with sympy instead of in its head. Off by default: a tool turn is not streamed and
     # costs more tokens (README, "Math tools"). true = the tool loop.
     math_tools_enabled: bool = False
+    # Context control for the Quant agent (services/agent/src/agent/context.py): in a long session
+    # the first message (the problem) is always sent, the last `context_keep_messages` messages are
+    # sent verbatim, and older turns are dropped, `context_fold_step` at a time. Shorter
+    # conversations are not touched.
+    context_compaction_enabled: bool = True
+    context_keep_messages: int = 8
+    context_fold_step: int = 4
 
 
 @lru_cache

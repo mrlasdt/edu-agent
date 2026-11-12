@@ -98,6 +98,7 @@ def build_quant_agent(
     model_config_path: str,
     retrieve_corpus: RetrieveCorpus,
     math_tools_enabled: bool = False,
+    context_compaction: bool = True,
     verify_math: VerifyMath | None = None,
 ) -> QuantAgent:
     """
@@ -112,6 +113,7 @@ def build_quant_agent(
         retrieve_corpus=retrieve_corpus,
         math_tools=in_process_math_tools(),
         math_tools_enabled=math_tools_enabled,
+        context_compaction=context_compaction,
     )
 
 
