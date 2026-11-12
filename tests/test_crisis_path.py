@@ -20,7 +20,7 @@ from shared.src.shared.turn_outcome import Outcome
 from tests.gateway_fakes import agent_replies
 
 _INPUT = "services.gateway.src.gateway.guardrails.input"
-_MAIN = "services.gateway.src.gateway.main"
+_MAIN = "services.gateway.src.gateway.chat.gates"
 _TRIGGER = "__test_self_harm__"
 _BODY = {"candidate_id": "c1", "test_type": "gre", "section": "quant", "message": "hello"}
 

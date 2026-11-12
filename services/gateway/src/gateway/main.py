@@ -1,80 +1,49 @@
 from __future__ import annotations
 
-import codecs
 import logging
-import time
 import uuid
-from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 from functools import lru_cache
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field
 
 from services.gateway.src.gateway.agent_client import AgentClient, get_agent_client
+from services.gateway.src.gateway.chat.stream_record import recorded_stream
+from services.gateway.src.gateway.chat.turn import ChatRequest, ChatTurn
 from services.gateway.src.gateway.feedback_api import router as feedback_router
-from services.gateway.src.gateway.guardrails.events import emit_guardrail_event
-from services.gateway.src.gateway.guardrails.input import (
-    ModerationUnavailableError,
-    check_completeness,
-    check_content_safety,
-)
-from services.gateway.src.gateway.guardrails.output import check_answer_leak
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
-from services.gateway.src.gateway.guardrails.stream import (
-    AGENT_UNAVAILABLE_NOTICE,
-    INPUT_PII_NOTICE,
-    LLM_LEAK_NOTICE,
-    ReplyGuard,
-    redact_input,
-)
-from services.gateway.src.gateway.guardrails.verdict import Verdict
+from services.gateway.src.gateway.guardrails.stream import redact_input
 from services.gateway.src.gateway.ielts_api import (
     get_store,
     recover_interrupted_attempts,
 )
 from services.gateway.src.gateway.ielts_api import router as ielts_router
-from services.gateway.src.gateway.ielts_coach import (
-    COACH_PAIR,
-    NO_REPORT_NOTICE,
-    SOLVE_MODE_NOTICE,
-    UNKNOWN_ATTEMPT_NOTICE,
-    find_report,
-)
-from services.gateway.src.gateway.ielts_store import AttemptStore
-from services.gateway.src.gateway.orchestrator import (
-    ClarificationTurn,
-    Orchestrator,
-    RouteResult,
-)
-from shared.src.shared.feedback import capture_turn, default_capture_log
-from shared.src.shared.models import Message, Mode, Session
+from services.gateway.src.gateway.limits import chat_limiter, feedback_limiter, ielts_limiter
+from services.gateway.src.gateway.orchestrator import Orchestrator
+from shared.src.shared.feedback import default_capture_log
+from shared.src.shared.models import Message, Session
 from shared.src.shared.observability import setup_observability
-from shared.src.shared.trailer import MARK, TrailerSplitter, encode, independent_check_trailer
-from shared.src.shared.turn_meter import TurnLog, TurnMeter
+from shared.src.shared.turn_meter import TurnMeter
 from shared.src.shared.turn_outcome import Outcome
-from shared.src.shared.wire import (
-    MAX_CANDIDATE_ID_CHARS,
-    MAX_HISTORY_ITEMS,
-    MAX_MESSAGE_CHARS,
-    ClientHistoryItem,
-    GenerateRequest,
-    HistoryItem,
-)
 
 _log = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # honour a test's dependency override, so the sweep sees the store the requests will use
     get_attempt_store = app.dependency_overrides.get(get_store, get_store)
     recover_interrupted_attempts(get_attempt_store())
-    # build the orchestrator now, so a broken one fails the start, not the first request
+    # build the orchestrator and the limiters now, so a broken one fails the start, not the
+    # first request
     app.dependency_overrides.get(get_orchestrator, get_orchestrator)()
+    app.dependency_overrides.get(get_rate_limiter, get_rate_limiter)()
+    ielts_limiter()
+    feedback_limiter()
     yield
 
 
@@ -104,269 +73,18 @@ def get_orchestrator() -> Orchestrator:
     return Orchestrator()
 
 
-@lru_cache
 def get_rate_limiter() -> RateLimiter:
-    return RateLimiter()
-
+    """The /chat limiter (see `limits`); a name here so tests override it on this module."""
+    return chat_limiter()
 
 
 # Response header carrying the turn's trace id, so the browser can attach feedback to it.
 TRACE_ID_HEADER = "X-Trace-Id"
 
-_MODERATION_UNAVAILABLE = "The safety check is unavailable right now. Please try again in a moment."
-
-
-# A request over a size cap (`shared.wire`) is rejected with 422 before any guardrail or model
-# call runs.
-class ChatRequest(BaseModel):
-    candidate_id: str = Field(max_length=MAX_CANDIDATE_ID_CHARS)
-    test_type: str
-    section: str
-    message: str = Field(max_length=MAX_MESSAGE_CHARS)
-    mode: Mode = Mode.tutor
-    history: list[ClientHistoryItem] = Field(default_factory=list, max_length=MAX_HISTORY_ITEMS)
-    personal_style_enabled: bool = False
-    # IELTS Writing coach only: the graded attempt to coach from; absent means the latest one.
-    attempt_id: str | None = Field(default=None, max_length=64)
-
 
 @app.get("/healthz")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
-
-
-@dataclass
-class ChatTurn:
-    """Everything one /chat turn's stages read: the request as the model will see it, the
-    collaborators FastAPI injected, and the turn's measurement record."""
-
-    req: ChatRequest
-    trace_id: str
-    message: str  # PII-redacted
-    input_pii: bool
-    history: list[Message]
-    session: Session
-    meter: TurnMeter
-    flags: list[str]
-    limiter: RateLimiter
-    orchestrator: Orchestrator
-    agent: AgentClient
-    attempts: Callable[[], AttemptStore]  # read only by the IELTS coach's turns
-    report_digest: str = ""  # the coach's graded report, set by `_ielts_report`
-
-
-# A gate runs before the agent is called. Not allowed ends the turn with the verdict's message
-# and outcome; allowed goes on to the next gate, after sending the verdict's message if it has one.
-Gate = Callable[[ChatTurn], Awaitable[Verdict]]
-
-
-async def _rate_limit(turn: ChatTurn) -> Verdict:
-    allowed, message = turn.limiter.check(turn.req.candidate_id)
-    if allowed:
-        return Verdict.allow()
-    emit_guardrail_event("candidate", "rate_limit", "fail", turn.trace_id)
-    return Verdict.stop(Outcome.rate_limited, f"{message} Please wait a moment and try again.")
-
-
-async def _content_safety(turn: ChatTurn) -> Verdict:
-    try:
-        return await check_content_safety(turn.message, turn.trace_id, turn.meter)
-    except ModerationUnavailableError:
-        return Verdict.stop(Outcome.moderation_unavailable, _MODERATION_UNAVAILABLE)
-
-
-async def _input_pii_notice(turn: ChatTurn) -> Verdict:
-    # After the safety check, so a self-harm reply is only the supportive text.
-    return Verdict.allow(INPUT_PII_NOTICE if turn.input_pii else "")
-
-
-def _is_coach(turn: ChatTurn) -> bool:
-    return (turn.req.test_type, turn.req.section) == COACH_PAIR
-
-
-async def _completeness(turn: ChatTurn) -> Verdict:
-    if _is_coach(turn):  # the check is about a GRE question; a coach turn is about the report
-        return Verdict.allow()
-    # Fail open: a broken completeness check must not block a turn that the other
-    # guardrails already passed, same as the LLM stage of the answer-leak check.
-    try:
-        return await check_completeness(turn.message, turn.session, turn.trace_id, turn.meter)
-    except Exception:
-        _log.warning("completeness check failed; skipping", exc_info=True)
-        turn.flags.append("completeness_check_failed")
-        return Verdict.allow()
-
-
-async def _route(turn: ChatTurn) -> Verdict:
-    result = await turn.orchestrator.process(turn.session, turn.message)
-    if isinstance(result, ClarificationTurn):
-        return Verdict.stop(Outcome.clarification_requested, result.prompt)
-    assert isinstance(result, RouteResult)  # narrows type; route succeeded
-    return Verdict.allow()
-
-
-async def _ielts_report(turn: ChatTurn) -> Verdict:
-    """The IELTS Writing coach's turn needs a graded report: find it and keep its digest for the
-    agent. Free (a local lookup), so it runs before the gates that call a model. Every other
-    turn passes."""
-    if not _is_coach(turn):
-        return Verdict.allow()
-    if turn.req.mode == Mode.solve:  # "reveal the worked artifact" has no IELTS meaning
-        return Verdict.stop(Outcome.clarification_requested, SOLVE_MODE_NOTICE)
-    found = find_report(turn.attempts(), turn.req.attempt_id)
-    if found is None:
-        notice = UNKNOWN_ATTEMPT_NOTICE if turn.req.attempt_id else NO_REPORT_NOTICE
-        return Verdict.stop(Outcome.clarification_requested, notice)
-    turn.report_digest = found.digest
-    turn.meter.annotate(ielts_attempt=found.attempt_id)
-    return Verdict.allow()
-
-
-# In order: the first gate that does not allow the turn ends it. The free checks come before the
-# two that call a model, so a blank or unsupported request is answered without paying for either.
-_GATES: tuple[Gate, ...] = (
-    _rate_limit, _route, _ielts_report, _content_safety, _input_pii_notice, _completeness,
-)
-
-
-async def _agent_chunks(
-    turn: ChatTurn, payload: GenerateRequest, meta: dict[str, Any], failure: list[Exception]
-) -> AsyncGenerator[bytes, None]:
-    """The agent's bytes. A failure of the agent call (a 5xx before the first byte, a connection
-    that breaks mid-reply, a read timeout) ends the stream and is left in `failure` for `_answer`
-    to turn into a notice. Only the agent call is guarded: a bug in the guards still raises."""
-    try:
-        async for chunk in turn.agent.stream(payload, meta):
-            yield chunk
-    except Exception as exc:  # any failure of the call reads the same to the learner
-        failure.append(exc)
-
-
-async def _answer(turn: ChatTurn) -> AsyncGenerator[bytes, None]:
-    """Stream the agent's reply through the reply guard (answer leak, citations, PII), then the
-    answer-leak model check and the verifier trailer."""
-    req, meter, flags = turn.req, turn.meter, turn.flags
-    payload = GenerateRequest(
-        candidate_id=req.candidate_id,
-        test_type=req.test_type,
-        section=req.section,
-        message=turn.message,
-        mode=req.mode,
-        history=[HistoryItem(role=m.role, content=m.content) for m in turn.history],
-        personal_style_enabled=req.personal_style_enabled,
-        report_digest=turn.report_digest,
-        trace_id=turn.trace_id,
-    )
-    meta: dict[str, Any] = {}
-    guard: ReplyGuard | None = None
-    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
-    trailer = TrailerSplitter()  # the agent's metadata is not part of the answer text
-    failure: list[Exception] = []
-    async for chunk in _agent_chunks(turn, payload, meta, failure):
-        if guard is None:
-            guard = ReplyGuard(
-                req.mode, turn.trace_id, meta.get("num_sources"), leak_check=not _is_coach(turn)
-            )
-        text = guard.feed(trailer.feed(decoder.decode(chunk)))
-        if text:
-            yield text.encode("utf-8")
-        if guard.stopped:
-            meter.annotate(outcome=Outcome.answer_leak_blocked)
-            return
-    tail = ""
-    if guard is not None:
-        tail = guard.feed(trailer.feed(decoder.decode(b"", final=True))) + guard.finish()
-        if guard.stopped:
-            meter.annotate(outcome=Outcome.answer_leak_blocked)
-        if guard.citations_removed:
-            flags.append("citations_trimmed")
-        if guard.pii_redacted:
-            flags.append("output_pii_redacted")
-    if failure:
-        # Whatever the guard was still holding passed its checks so far: show it, then say why
-        # the reply stops. The answer-leak model check and the verifier trailer are skipped,
-        # because a partial reply has no verdict to give. A leak the guard caught keeps its outcome.
-        stage = "before_first_byte" if guard is None else "midstream"
-        meter.annotate(error=type(failure[0]).__name__, degraded_stage=stage)
-        if guard is None or not guard.stopped:
-            meter.annotate(outcome=Outcome.agent_unavailable)
-        _log.warning(
-            "agent unavailable (%s): %s", stage, type(failure[0]).__name__, exc_info=failure[0]
-        )
-        notice = AGENT_UNAVAILABLE_NOTICE if tail.strip() else AGENT_UNAVAILABLE_NOTICE.lstrip()
-        yield (tail + notice).encode("utf-8")
-        return
-    if guard is not None:
-        if (
-            not _is_coach(turn)
-            and not guard.stopped
-            and guard.text.strip()
-            and not (await check_answer_leak(guard.text, req.mode, turn.trace_id, meter)).allowed
-        ):
-            tail += LLM_LEAK_NOTICE
-            flags.append("answer_leak_flagged")
-        answer_meta: dict[str, Any] = {}
-        verified = trailer.meta.get("math_verified")
-        if isinstance(verified, bool):
-            answer_meta["math_verified"] = verified
-            check = independent_check_trailer(trailer.meta.get("independent_check"))
-            if check:
-                answer_meta["independent_check"] = check
-        if trailer.meta.get("disclaimer") == "essay":
-            answer_meta["disclaimer"] = "essay"  # the web app words the notice itself
-        if answer_meta:
-            tail += encode(answer_meta)
-        if tail:
-            yield tail.encode("utf-8")
-
-
-async def _guarded_stream(turn: ChatTurn) -> AsyncGenerator[bytes, None]:
-    for gate in _GATES:
-        verdict = await gate(turn)
-        if not verdict.allowed:
-            turn.meter.annotate(outcome=verdict.outcome)
-        if verdict.message:
-            yield verdict.message.encode("utf-8")
-        if not verdict.allowed:
-            return
-    async for piece in _answer(turn):
-        yield piece
-
-
-async def _recorded_stream(
-    turn: ChatTurn, capture_log: TurnLog | None
-) -> AsyncGenerator[bytes, None]:
-    """The turn's bytes, with its first-byte time, flags, final outcome and optional text capture
-    written to the turn record however the stream ends."""
-    meter = turn.meter
-    started = time.perf_counter()
-    first_byte_seen = False
-    error: str | None = None
-    completed = False
-    sent: list[bytes] = []
-    try:
-        async for piece in _guarded_stream(turn):
-            if not first_byte_seen:
-                first_byte_seen = True
-                meter.annotate(first_byte_ms=(time.perf_counter() - started) * 1000)
-            if capture_log is not None:
-                sent.append(piece)
-            yield piece
-        completed = True
-    except Exception as exc:
-        error = type(exc).__name__
-        meter.annotate(outcome=Outcome.error)
-        raise
-    finally:
-        # The server abandons this generator when the client disconnects (Stop, a closed
-        # tab): by cancellation, which also closes the agent request, or by closing it.
-        if not completed and error is None:
-            meter.annotate(outcome=Outcome.client_cancelled)
-        meter.annotate(flags=turn.flags)
-        meter.finish(error=error)
-        if capture_log is not None:
-            reply = b"".join(sent).decode("utf-8", errors="replace").partition(MARK)[0]
-            capture_turn(capture_log, turn.trace_id, turn.message, reply)
 
 
 @app.post("/chat")
@@ -378,10 +96,10 @@ async def chat(
 ) -> StreamingResponse:
     """
     Single turn: rate limit → orchestrator route → IELTS report lookup (coach turns only) →
-    content-safety guardrail → input PII notice → completeness check (the gates, in `_GATES`) →
-    stream the agent's answer through the reply guard (answer leak, citation check, PII
-    redaction). Clarifications, refusals and every guardrail decision are streamed as plain text
-    so the response shape is uniform regardless of outcome.
+    content-safety guardrail → input PII notice → completeness check (the gates, in
+    `chat.gates.GATES`) → stream the agent's answer through the reply guard (answer leak,
+    citation check, PII redaction). Clarifications, refusals and every guardrail decision are
+    streamed as plain text so the response shape is uniform regardless of outcome.
     """
     trace_id = str(uuid.uuid4())
     message, input_pii = redact_input(req.message, trace_id)
@@ -421,7 +139,7 @@ async def chat(
     capture_log = default_capture_log()
 
     return StreamingResponse(
-        _recorded_stream(turn, capture_log),
+        recorded_stream(turn, capture_log),
         media_type="text/plain; charset=utf-8",
         headers={TRACE_ID_HEADER: trace_id},
     )

@@ -47,7 +47,7 @@ def leak_llm():
 def completeness():
     """The completeness check; mocked so no test makes a model call. Defaults to complete."""
     with patch(
-        "services.gateway.src.gateway.main.check_completeness", new_callable=AsyncMock
+        "services.gateway.src.gateway.chat.gates.check_completeness", new_callable=AsyncMock
     ) as mock:
         mock.return_value = Verdict.allow()
         yield mock
@@ -55,7 +55,7 @@ def completeness():
 
 def test_chat_refuses_unsafe_content():
     with patch(
-        "services.gateway.src.gateway.main.check_content_safety",
+        "services.gateway.src.gateway.chat.gates.check_content_safety",
         new_callable=AsyncMock,
     ) as mock_safety:
         mock_safety.return_value = _BLOCKED
@@ -69,7 +69,7 @@ def test_chat_refuses_unsafe_content():
 
 def test_chat_clarifies_unregistered_section():
     with patch(
-        "services.gateway.src.gateway.main.check_content_safety",
+        "services.gateway.src.gateway.chat.gates.check_content_safety",
         new_callable=AsyncMock,
     ) as mock_safety:
         mock_safety.return_value = _SAFE
@@ -88,7 +88,7 @@ def test_rejected_request_makes_no_model_call(completeness, section, message):
     """Blank and unsupported requests are answered by the free routing check: no moderation
     call and no completeness call are paid for first."""
     with patch(
-        "services.gateway.src.gateway.main.check_content_safety", new_callable=AsyncMock
+        "services.gateway.src.gateway.chat.gates.check_content_safety", new_callable=AsyncMock
     ) as mock_safety:
         mock_safety.return_value = _SAFE
         resp = client.post(
@@ -112,7 +112,7 @@ def test_chat_proxies_agent_stream_on_route():
             yield token
 
     with patch(
-        "services.gateway.src.gateway.main.check_content_safety",
+        "services.gateway.src.gateway.chat.gates.check_content_safety",
         new_callable=AsyncMock,
     ) as mock_safety, agent_replies(fake_stream):
         mock_safety.return_value = _SAFE
@@ -166,7 +166,7 @@ def test_completeness_runs_on_the_redacted_message_after_the_safety_check(comple
 
 def test_unsafe_request_never_reaches_the_completeness_check(completeness):
     with patch(
-        "services.gateway.src.gateway.main.check_content_safety", new_callable=AsyncMock
+        "services.gateway.src.gateway.chat.gates.check_content_safety", new_callable=AsyncMock
     ) as mock_safety:
         mock_safety.return_value = _BLOCKED
         client.post("/chat", json=_BODY)
@@ -188,7 +188,7 @@ def _chat(tokens, body=None, num_sources=None, sent=None):
             yield token.encode()
 
     with patch(
-        "services.gateway.src.gateway.main.check_content_safety", new_callable=AsyncMock
+        "services.gateway.src.gateway.chat.gates.check_content_safety", new_callable=AsyncMock
     ) as mock_safety, agent_replies(fake_stream):
         mock_safety.return_value = _SAFE
         return client.post("/chat", json={**_BODY, **(body or {})})
@@ -282,7 +282,7 @@ def test_multibyte_characters_split_across_chunks_survive():
             yield chunk
 
     with patch(
-        "services.gateway.src.gateway.main.check_content_safety", new_callable=AsyncMock
+        "services.gateway.src.gateway.chat.gates.check_content_safety", new_callable=AsyncMock
     ) as mock_safety, agent_replies(fake_stream):
         mock_safety.return_value = _SAFE
         resp = client.post("/chat", json=_BODY)

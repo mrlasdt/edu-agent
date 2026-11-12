@@ -235,7 +235,7 @@ def test_a_midstream_failure_whose_flushed_reply_trips_the_leak_check_keeps_the_
 def test_a_bug_in_the_guards_is_still_an_error_not_a_notice(client, turn_log):
     # only the agent call is guarded: a failure elsewhere in the turn must stay loud
     with patch(
-        "services.gateway.src.gateway.main.ReplyGuard", side_effect=RuntimeError("guard bug")
+        "services.gateway.src.gateway.chat.answer.ReplyGuard", side_effect=RuntimeError("guard bug")
     ):
         resp = _run(client)
     assert "Tutor unavailable" not in resp.text
