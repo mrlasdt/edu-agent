@@ -33,8 +33,14 @@ roles:
     temperature: 0
 
   # Main agents
+  # The tutor is the product's main path, so it is the one default-model role with a backup: if
+  # the free model fails (after the Router's retries) the turn is answered by the next model and
+  # the turn record says `fallback: true`. The Router keys a fallback chain on the model, and every
+  # role here shares that model, so the other roles get the same backup. A backup is only used on
+  # failure, so a healthy turn is unchanged.
   quant_agent:
     <<: *default
+    fallbacks: [openrouter/google/gemma-4-31b-it:free]
     temperature: 0.2
 
   aw_agent:

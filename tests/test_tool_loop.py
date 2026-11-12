@@ -17,6 +17,7 @@ from services.agent.src.agent.tool_loop import (
     MAX_CALLS_PER_ROUND,
     MAX_TOOL_ROUNDS,
     OUT_OF_BUDGET_NOTE,
+    REPEATED_CALL_NOTE,
     run_tool_loop,
 )
 from shared.src.shared.turn_meter import TurnMeter
@@ -156,13 +157,16 @@ async def test_a_tool_that_raises_does_not_kill_the_turn() -> None:
 
 
 async def test_a_model_that_keeps_asking_is_stopped_after_four_rounds_and_must_answer() -> None:
-    model = ScriptedModel(*[reply(calls=[call(f"c{i}")]) for i in range(10)])
+    # a different expression each round, so the model is exploring, not repeating itself
+    model = ScriptedModel(*[
+        reply(calls=[call(f"c{i}", arguments={"expression": f"{i}+1"})]) for i in range(10)
+    ])
     # the 5th request is the forced answer: scripted to return text
     model.replies[MAX_TOOL_ROUNDS] = reply("Best I have: about 2 (unchecked).")
     outcome, meter = await run(model, echo)
 
     assert outcome.rounds == MAX_TOOL_ROUNDS == 4
-    assert outcome.out_of_budget is True
+    assert outcome.out_of_budget is True and outcome.stop_reason == "max_rounds"
     assert outcome.text == "Best I have: about 2 (unchecked)."
     assert len(model.requests) == MAX_TOOL_ROUNDS + 1
     final = model.requests[-1]
@@ -177,7 +181,91 @@ async def test_a_spent_time_budget_goes_straight_to_the_forced_answer() -> None:
     outcome, _ = await run(model, echo, deadline_s=0.0)
 
     assert outcome.out_of_budget and outcome.rounds == 0
+    assert outcome.stop_reason == "deadline"
     assert model.requests[0]["tool_choice"] == "none"
+
+
+async def test_a_model_that_answers_stops_for_the_reason_answered() -> None:
+    outcome, _ = await run(ScriptedModel(reply("Divide by two.")), echo)
+    assert outcome.stop_reason == "answered" and not outcome.out_of_budget
+
+
+async def test_a_call_the_model_already_made_is_not_run_again_and_ends_the_loop() -> None:
+    ran: list[dict[str, Any]] = []
+
+    async def counting(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        ran.append(arguments)
+        return {"value": "2"}
+
+    # round 1 asks for 1+1, round 2 asks for the same 1+1 with its keys in another order
+    model = ScriptedModel(
+        reply(calls=[call("c1", arguments={"expression": "1+1"})]),
+        reply(calls=[call("c2", arguments={"expression": "1+1"})]),
+        reply("It is 2."),
+    )
+    outcome, _ = await run(model, counting)
+
+    assert ran == [{"expression": "1+1"}]  # the repeat was not executed
+    assert outcome.stop_reason == "repeated_call" and outcome.rounds == 1
+    assert outcome.text == "It is 2."
+    final = model.requests[-1]
+    assert final["tool_choice"] == "none" and len(model.requests) == 3
+    assert final["messages"][-1] == {"role": "user", "content": REPEATED_CALL_NOTE}
+    # the repeated request was never replayed, so every tool call in the history has a result
+    asked = {c["id"] for m in final["messages"] if m.get("tool_calls") for c in m["tool_calls"]}
+    answered = {m["tool_call_id"] for m in final["messages"] if m["role"] == "tool"}
+    assert asked == answered == {"c1"}
+
+
+async def test_a_call_skipped_for_the_per_round_limit_runs_when_the_model_asks_again() -> None:
+    ran: list[str] = []
+
+    async def execute(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        ran.append(arguments["expression"])
+        return {"value": "1"}
+
+    expressions = [f"{i}+1" for i in range(MAX_CALLS_PER_ROUND + 2)]
+    first = [call(f"c{i}", arguments={"expression": e}) for i, e in enumerate(expressions)]
+    again = [
+        call(f"r{i}", arguments={"expression": e})
+        for i, e in enumerate(expressions[MAX_CALLS_PER_ROUND:])
+    ]
+    model = ScriptedModel(reply(calls=first), reply(calls=again), reply("done"))
+    outcome, _ = await run(model, execute, max_rounds=3)
+
+    assert ran == expressions  # the two skipped calls ran in round 2
+    assert outcome.stop_reason == "answered" and outcome.rounds == 2
+
+
+async def test_a_failed_call_may_be_retried_as_the_model_was_told() -> None:
+    attempts: list[dict[str, Any]] = []
+
+    async def flaky(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        attempts.append(arguments)
+        if len(attempts) == 1:
+            raise TimeoutError("transient")
+        return {"value": "2"}
+
+    model = ScriptedModel(
+        reply(calls=[call("c1", arguments={"expression": "1+1"})]),
+        reply(calls=[call("c2", arguments={"expression": "1+1"})]),
+        reply("It is 2."),
+    )
+    outcome, _ = await run(model, flaky, max_rounds=3)
+
+    assert len(attempts) == 2
+    assert [c.ok for c in outcome.calls] == [False, True]
+    assert outcome.stop_reason == "answered" and outcome.rounds == 2
+
+
+async def test_the_same_call_with_other_arguments_is_a_new_call() -> None:
+    model = ScriptedModel(
+        reply(calls=[call("c1", arguments={"expression": "1+1"})]),
+        reply(calls=[call("c2", arguments={"expression": "2+2"})]),
+        reply("done"),
+    )
+    outcome, _ = await run(model, echo)
+    assert outcome.stop_reason == "answered" and outcome.rounds == 2
 
 
 async def test_a_blank_final_answer_is_returned_as_blank_for_the_caller_to_handle() -> None:

@@ -205,6 +205,26 @@ async def test_the_turn_record_names_the_calls_and_the_prompt(turn_log) -> None:
     assert record["prompt_version"] == f"math_tools-{version}"
 
 
+async def test_the_turn_record_says_why_the_tool_loop_stopped(turn_log) -> None:
+    # the model asks for the same calculation twice: the second is not run, the turn still ends
+    model = Model(tool_reply("c1"), tool_reply("c2"), text_reply("Start with the 15% rise."))
+    with patch("litellm.acompletion", new=model):
+        items = await collect(agent(FakeMath(PERCENT_RESULT)), Mode.tutor, "Solve it")
+
+    assert reply_of(items) == "Start with the 15% rise."
+    (record,) = turn_log.read()
+    assert record["tool_loop_stop"] == "repeated_call" and record["tool_budget_exhausted"] is True
+    assert record["tool_rounds"] == 1 and record["llm_calls"] == 3
+
+
+async def test_a_turn_that_needed_no_forced_answer_records_answered(turn_log) -> None:
+    model = Model(tool_reply("c1"), text_reply("Next, what is the second root?"))
+    with patch("litellm.acompletion", new=model):
+        await collect(agent(FakeMath(PERCENT_RESULT)), Mode.tutor, "Solve it")
+    (record,) = turn_log.read()
+    assert record["tool_loop_stop"] == "answered" and record["tool_budget_exhausted"] is False
+
+
 # ── 4. the math service is down ──────────────────────────────────────────────
 
 

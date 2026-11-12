@@ -26,6 +26,7 @@ from services.gateway.src.gateway.guardrails.input import (
 from services.gateway.src.gateway.guardrails.output import check_answer_leak
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
 from services.gateway.src.gateway.guardrails.stream import (
+    AGENT_UNAVAILABLE_NOTICE,
     INPUT_PII_NOTICE,
     LLM_LEAK_NOTICE,
     ReplyGuard,
@@ -191,6 +192,19 @@ async def _route(turn: ChatTurn) -> Verdict:
 _GATES: tuple[Gate, ...] = (_rate_limit, _route, _content_safety, _input_pii_notice, _completeness)
 
 
+async def _agent_chunks(
+    turn: ChatTurn, payload: GenerateRequest, meta: dict[str, Any], failure: list[Exception]
+) -> AsyncGenerator[bytes, None]:
+    """The agent's bytes. A failure of the agent call (a 5xx before the first byte, a connection
+    that breaks mid-reply, a read timeout) ends the stream and is left in `failure` for `_answer`
+    to turn into a notice. Only the agent call is guarded: a bug in the guards still raises."""
+    try:
+        async for chunk in turn.agent.stream(payload, meta):
+            yield chunk
+    except Exception as exc:  # any failure of the call reads the same to the learner
+        failure.append(exc)
+
+
 async def _answer(turn: ChatTurn) -> AsyncGenerator[bytes, None]:
     """Stream the agent's reply through the reply guard (answer leak, citations, PII), then the
     answer-leak model check and the verifier trailer."""
@@ -209,7 +223,8 @@ async def _answer(turn: ChatTurn) -> AsyncGenerator[bytes, None]:
     guard: ReplyGuard | None = None
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
     trailer = TrailerSplitter()  # the agent's metadata is not part of the answer text
-    async for chunk in turn.agent.stream(payload, meta):
+    failure: list[Exception] = []
+    async for chunk in _agent_chunks(turn, payload, meta, failure):
         if guard is None:
             guard = ReplyGuard(req.mode, turn.trace_id, meta.get("num_sources"))
         text = guard.feed(trailer.feed(decoder.decode(chunk)))
@@ -218,6 +233,7 @@ async def _answer(turn: ChatTurn) -> AsyncGenerator[bytes, None]:
         if guard.stopped:
             meter.annotate(outcome=Outcome.answer_leak_blocked)
             return
+    tail = ""
     if guard is not None:
         tail = guard.feed(trailer.feed(decoder.decode(b"", final=True))) + guard.finish()
         if guard.stopped:
@@ -226,6 +242,21 @@ async def _answer(turn: ChatTurn) -> AsyncGenerator[bytes, None]:
             flags.append("citations_trimmed")
         if guard.pii_redacted:
             flags.append("output_pii_redacted")
+    if failure:
+        # Whatever the guard was still holding passed its checks so far: show it, then say why
+        # the reply stops. The answer-leak model check and the verifier trailer are skipped,
+        # because a partial reply has no verdict to give. A leak the guard caught keeps its outcome.
+        stage = "before_first_byte" if guard is None else "midstream"
+        meter.annotate(error=type(failure[0]).__name__, degraded_stage=stage)
+        if guard is None or not guard.stopped:
+            meter.annotate(outcome=Outcome.agent_unavailable)
+        _log.warning(
+            "agent unavailable (%s): %s", stage, type(failure[0]).__name__, exc_info=failure[0]
+        )
+        notice = AGENT_UNAVAILABLE_NOTICE if tail.strip() else AGENT_UNAVAILABLE_NOTICE.lstrip()
+        yield (tail + notice).encode("utf-8")
+        return
+    if guard is not None:
         if (
             not guard.stopped
             and guard.text.strip()

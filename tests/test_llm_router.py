@@ -48,14 +48,14 @@ async def ask(router, model: str = A, **kw) -> str:
 # ── the model config becomes Router settings ─────────────────────────────────
 
 
-def test_the_shipped_free_config_becomes_one_fallback_chain_per_ielts_model():
+def test_the_shipped_free_config_gives_the_ielts_model_and_the_tutor_model_a_chain_each():
     config = load_model_config("config/model_config.free.yaml")
-    assert fallback_chains(config) == {GOOGLE: [OR_26B, OR_31B]}
+    flint = "openrouter/recursive/flint-v1.0:free"
+    assert fallback_chains(config) == {GOOGLE: [OR_26B, OR_31B], flint: [OR_31B]}
     router = build_router(config)
     assert configured_chain(router, GOOGLE) == [GOOGLE, OR_26B, OR_31B]
-    assert configured_chain(router, "openrouter/recursive/flint-v1.0:free") == [
-        "openrouter/recursive/flint-v1.0:free"
-    ]  # a role without fallbacks has none
+    # the tutor's model: the Router keys the chain on the model, so every role on it shares it
+    assert configured_chain(router, flint) == [flint, OR_31B]
 
 
 def test_two_roles_on_one_model_share_a_merged_chain_without_repeats():
@@ -228,6 +228,8 @@ async def test_a_stream_that_fails_before_its_first_token_falls_back_to_the_next
     (call,) = meter.snapshot()["calls"]
     assert call["model"] == B  # the record names the model that answered, not the one asked for
     assert call["output_tokens"] > 0 and not call["estimated"]
+    # the turn record says a fallback answered, so a quality dip can be read against the model
+    assert call["fallback"] is True and meter.snapshot()["fallback"] is True
 
 
 async def test_a_complete_call_falls_back_the_same_way():
@@ -237,6 +239,19 @@ async def test_a_complete_call_falls_back_the_same_way():
         response = await meter.complete(model=A, messages=MESSAGES)
     assert response.choices[0].message.content == "from b"
     assert meter.snapshot()["calls"][0]["model"] == B
+    assert meter.snapshot()["fallback"] is True
+
+
+async def test_a_call_the_asked_model_answers_is_not_marked_as_a_fallback():
+    router = mock_router({A: "from a", B: "from b"}, {A: [B]})
+    meter = TurnMeter.detached()
+    with use_router(router):
+        await meter.complete(model=A, messages=MESSAGES)
+        chunks = [chunk async for chunk in meter.stream(model=A, messages=MESSAGES)]
+    assert chunks
+    snapshot = meter.snapshot()
+    assert snapshot["fallback"] is False
+    assert [c["fallback"] for c in snapshot["calls"]] == [False, False]
 
 
 # ── the spend cap stays outside the Router ───────────────────────────────────

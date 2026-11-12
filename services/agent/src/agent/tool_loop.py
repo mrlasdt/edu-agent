@@ -7,10 +7,15 @@ The shape every tool-using agent shares, written small enough to read in one sit
       -> it answers in text            -> done
       -> it asks for tool calls        -> run them, append the results, ask again
 
-Three exits keep it from running away. (1) At most `MAX_TOOL_ROUNDS` rounds of tool calls.
-(2) A wall-clock budget, checked before each new round. (3) When either runs out, one last
-call with `tool_choice="none"` and a note saying so: the model must answer with what it
-already knows, and say what it could not check, instead of the turn failing.
+Four exits keep it from running away, and the loop says which one it took (`stop_reason`).
+  answered        the model answered in text (the normal exit)
+  max_rounds      `MAX_TOOL_ROUNDS` rounds of tool calls were used
+  deadline        the wall-clock budget ran out, checked before each new round
+  repeated_call   the model asked for a call it already made this turn with the same arguments:
+                  the answer cannot change, so running it again only spends a round
+When the loop stops for any reason but `answered`, one last call with `tool_choice="none"` and a
+note saying so makes the model answer with what it already knows, and say what it could not
+check, instead of the turn failing.
 
 What the loop guarantees about the *tools*, whatever the model sends:
   - every tool call gets a result message, or the provider rejects the next request;
@@ -45,6 +50,16 @@ OUT_OF_BUDGET_NOTE = (
     "Tool budget used up. Answer now with what you have worked out. Mark any value you "
     "could not check with a tool as unchecked."
 )
+REPEATED_CALL_NOTE = (
+    "You already ran this exact tool call and have its result. Do not repeat it. Answer now "
+    "with what you have worked out. Mark any value you could not check with a tool as unchecked."
+)
+
+# Why the loop stopped; the values are what the turn record holds.
+ANSWERED = "answered"
+MAX_ROUNDS = "max_rounds"
+DEADLINE = "deadline"
+REPEATED_CALL = "repeated_call"
 
 
 @dataclass
@@ -67,7 +82,12 @@ class ToolLoopResult:
     text: str
     calls: list[ToolCallRecord] = field(default_factory=list)
     rounds: int = 0  # rounds in which the model asked for tools
-    out_of_budget: bool = False  # the loop ended by forcing an answer, not by the model's choice
+    stop_reason: str = ANSWERED
+
+    @property
+    def out_of_budget(self) -> bool:
+        """The loop ended by forcing an answer, not by the model's choice."""
+        return self.stop_reason != ANSWERED
 
 
 def _shorten(text: str, limit: int) -> str:
@@ -88,6 +108,14 @@ def _read_arguments(raw: Any) -> tuple[dict[str, Any] | None, str | None]:
         'the arguments were not a JSON object; send one like {"expression": "2 + 3"} '
         "with the argument names from the tool description."
     )
+
+
+def _signature(call: Any) -> tuple[str, str]:
+    """A call's identity for repeat detection: its name and its arguments, canonicalised."""
+    raw = call.function.arguments
+    arguments, _ = _read_arguments(raw)
+    canonical = json.dumps(arguments, sort_keys=True) if arguments is not None else str(raw)
+    return str(call.function.name), canonical
 
 
 def _assistant_message(message: Any, calls: list[Any]) -> dict[str, Any]:
@@ -165,7 +193,15 @@ async def run_tool_loop(
     convo = list(messages)
     result = ToolLoopResult(text="")
     started = time.monotonic()
-    while result.rounds < max_rounds and time.monotonic() - started < deadline_s:
+    seen: set[tuple[str, str]] = set()
+    note = OUT_OF_BUDGET_NOTE
+    while True:
+        if result.rounds >= max_rounds:
+            result.stop_reason = MAX_ROUNDS
+            break
+        if time.monotonic() - started >= deadline_s:
+            result.stop_reason = DEADLINE
+            break
         response = await meter.complete(
             model=model, messages=list(convo), tools=tools, **model_kwargs
         )
@@ -174,6 +210,11 @@ async def run_tool_loop(
         if not requested:
             result.text = _text_of(message)
             return result
+        signatures = [_signature(c) for c in requested]
+        if all(sig in seen for sig in signatures):
+            # Nothing new was asked: do not run it, and do not leave the request unanswered.
+            result.stop_reason, note = REPEATED_CALL, REPEATED_CALL_NOTE
+            break
         result.rounds += 1
         convo.append(_assistant_message(message, requested))
         with meter.phase("tools"):
@@ -183,11 +224,12 @@ async def run_tool_loop(
                     for i, call in enumerate(requested)
                 )
             )
-        for tool_message, record in outcomes:
+        for sig, (tool_message, record) in zip(signatures, outcomes):
             convo.append(tool_message)
             result.calls.append(record)
-    result.out_of_budget = True
-    convo.append({"role": "user", "content": OUT_OF_BUDGET_NOTE})
+            if record.ok:
+                seen.add(sig)
+    convo.append({"role": "user", "content": note})
     response = await meter.complete(
         model=model, messages=list(convo), tools=tools, tool_choice="none", **model_kwargs
     )

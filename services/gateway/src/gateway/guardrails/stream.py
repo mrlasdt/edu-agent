@@ -24,6 +24,13 @@ LLM_LEAK_NOTICE = (
     "\n\n[Answer check: this reply may state the final answer. "
     "Ask for a hint if you want to work it out yourself.]"
 )
+# The agent failed or broke off mid-reply (a provider outage after the Router's retries and
+# fallbacks, a crashed agent service). The reply ends with this, so the learner reads a sentence
+# instead of a connection error; `Outcome.agent_unavailable` records it.
+AGENT_UNAVAILABLE_NOTICE = (
+    "\n\n[Tutor unavailable: I could not finish this reply because the tutoring service did "
+    "not respond. Your message was not lost: send it again in a moment.]"
+)
 CITATION_NOTICE = (
     "\n\n[Citation check: removed {n} sentence(s) that cited sources I did not retrieve.]"
 )

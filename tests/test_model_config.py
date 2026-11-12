@@ -38,6 +38,7 @@ def test_an_explicit_path_wins_over_the_setting():
 
 IELTS_ROLES = {"ielts_grader", "ielts_feedback"}
 IELTS_MODEL = "gemini/gemma-4-26b-a4b-it"
+TUTOR_BACKUP = "openrouter/google/gemma-4-31b-it:free"
 IELTS_BACKUPS = [
     "openrouter/google/gemma-4-26b-a4b-it:free",
     "openrouter/google/gemma-4-31b-it:free",
@@ -94,7 +95,10 @@ def test_each_config_resolves_to_the_same_roles_models_and_temperatures_as_befor
     assert cfg.roles.keys() == TEMPERATURES.keys()
     for name, role in cfg.roles.items():
         group = "ielts" if name in IELTS_ROLES else "default"
-        assert (role.provider, role.model, role.fallbacks) == MODELS[path][group], name
+        provider, model, fallbacks = MODELS[path][group]
+        if path == FREE and name == "quant_agent":
+            fallbacks = [TUTOR_BACKUP]
+        assert (role.provider, role.model, role.fallbacks) == (provider, model, fallbacks), name
         assert role.temperature == TEMPERATURES[name], name
 
 
@@ -122,6 +126,18 @@ def test_free_config_runs_every_role_but_the_ielts_ones_on_one_free_model():
     provider, model = next(iter(models))
     assert provider == "openrouter"
     assert model.endswith(":free")
+
+
+def test_free_config_gives_the_tutor_a_different_model_to_fall_back_on():
+    cfg = load_model_config(FREE)
+    assert cfg.litellm_fallbacks("quant_agent") == [TUTOR_BACKUP]
+    assert cfg.litellm_model("quant_agent") != TUTOR_BACKUP
+    # the Router keys a chain on the model: the roles that share the tutor's model share its backup
+    from shared.src.shared.llm_router import fallback_chains
+
+    assert fallback_chains(cfg)[cfg.litellm_model("quant_agent")] == [TUTOR_BACKUP]
+    assert cfg.litellm_fallbacks("orchestrator") == []  # the role's own list stays empty
+    assert load_model_config(DEV).litellm_fallbacks("quant_agent") == []  # dev has one model
 
 
 def test_free_config_grades_ielts_on_the_gated_gemma_with_the_other_gemma_as_backup():

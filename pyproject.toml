@@ -22,7 +22,7 @@ app = [
 # The gateway and the agent both use the model stack through shared/ (llm_router, ielts, critics).
 gateway = [
     {include-group = "app"},
-    "litellm>=1.103.10",  # Router retry_policy / cooldown / mid-stream fallback, as verified
+    "litellm>=1.103.10",  # Router retry_policy / cooldown / pre-first-token fallback, as verified
     "langfuse>=2.30.0,<3",
 ]
 agent = [

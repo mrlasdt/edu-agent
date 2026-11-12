@@ -9,6 +9,8 @@ shared log when its part of the turn ends; both lines carry the gateway's `trace
 
 What a `TurnMeter` records (see `TurnMeter.snapshot`):
   - model calls, input and output tokens, and the USD estimate (`shared.budget.estimate_cost`)
+  - `fallback`: true when the Router answered a call with another model than the one asked for
+    (a configured fallback took over), so a turn's quality can be read against the model that ran
   - time to first token and total time, plus named phases such as retrieval
   - free-form fields the service adds with `annotate` (notes retrieved, guardrail outcome, ...)
 
@@ -103,6 +105,7 @@ class CallRecord:
     ms: float  # request sent to response complete
     ttft_ms: float | None  # request sent to first streamed token; None for a non-streamed call
     error: str | None = None
+    fallback: bool = False  # the Router answered with another model than the one asked for
 
 
 def _count(value: Any) -> int | None:
@@ -224,7 +227,8 @@ class TurnMeter:
         finally:
             ttft = None if first_token is None else (first_token - start) * 1000
             self._add_call(
-                answered_model(response, model), messages, "".join(out), usage, start, ttft, error
+                answered_model(response, model), messages, "".join(out), usage, start, ttft, error,
+                requested=model,
             )
 
     async def complete(
@@ -252,7 +256,7 @@ class TurnMeter:
                     text = ""
             self._add_call(
                 answered_model(response, model), messages, text, _read_usage(response),
-                start, None, error,
+                start, None, error, requested=model,
             )
 
     def _add_call(
@@ -264,6 +268,7 @@ class TurnMeter:
         start: float,
         ttft_ms: float | None,
         error: str | None,
+        requested: str | None = None,
     ) -> None:
         no_response = usage is None and error is not None and not output_text
         estimated = usage is None and not no_response
@@ -284,6 +289,7 @@ class TurnMeter:
                 ms=(self._clock() - start) * 1000,
                 ttft_ms=ttft_ms,
                 error=error,
+                fallback=requested is not None and model != requested,
             )
         )
 
@@ -308,6 +314,7 @@ class TurnMeter:
             "input_tokens": sum(c.input_tokens for c in calls),
             "output_tokens": sum(c.output_tokens for c in calls),
             "usage": usage,
+            "fallback": any(c.fallback for c in calls),
             "cost_usd": sum(c.cost_usd for c in calls),
             "ttft_ms": first_ttft,
             "llm_ms": sum(c.ms for c in calls),

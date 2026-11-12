@@ -18,6 +18,8 @@ class Outcome(StrEnum):
     content_blocked = "content_blocked"
     clarification_requested = "clarification_requested"  # incomplete or unroutable question
     answer_leak_blocked = "answer_leak_blocked"  # a tutor reply was cut off at a stated answer
+    # The agent failed or broke off; the learner got a notice instead of a dead stream.
+    agent_unavailable = "agent_unavailable"
     error = "error"  # the stream raised
     client_cancelled = "client_cancelled"  # the client left before the turn finished
     # Never written by the gateway: the report's label for a turn with no gateway record.
