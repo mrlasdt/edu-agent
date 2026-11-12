@@ -45,12 +45,9 @@ MODEL_CONFIG_GLOB = "config/model_config*.yaml"
 PROMPT_DIR = "prompts"
 
 # Roles that are configured but not called by any code yet, and why. A role listed here that is
-# used (or not configured) fails the lint, so this list cannot go stale.
-RESERVED_ROLES: dict[str, str] = {
-    "math_retry": "the math verifier's retry tier; the verifier service retries without a model",
-    "aw_judge_pr": "the PR-tier AW judge; only the nightly judge (aw_judge_nightly) is wired",
-    "style_extractor": "the background style-extraction job, not built yet",
-}
+# used (or not configured) fails the lint, so this list cannot go stale. Empty today: every
+# configured role is named by code; add an entry only for a role that is about to be wired.
+RESERVED_ROLES: dict[str, str] = {}
 
 _PROMPT_CALL = "prompt_version"
 _ROLE_CALLS = frozenset({"litellm_model", "litellm_fallbacks", "role"})

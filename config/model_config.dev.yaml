@@ -40,15 +40,10 @@ roles:
     <<: *default
     temperature: 0.5
 
-  # Math verifier retry — same model as quant_agent
-  math_retry:
-    <<: *default
-    temperature: 0.2
-
   # Math verifier escalation — ~1% of Quant turns; point at a reasoning-tier model when cost allows
   math_escalation:
     <<: *default
-    temperature: 1  # above math_retry so the last attempt is not a repeat of the failed ones
+    temperature: 1  # above the 0.2 of the earlier attempts, so the last one is not a repeat of the failed ones
 
   # Post-generation critics
   style_critic:
@@ -57,10 +52,6 @@ roles:
 
   # AW eval judges
   aw_judge_nightly:
-    <<: *default
-    temperature: 0
-
-  aw_judge_pr:
     <<: *default
     temperature: 0
 
@@ -96,8 +87,3 @@ roles:
   ielts_coach:
     <<: *ielts
     temperature: 0.4
-
-  # Background jobs
-  style_extractor:
-    <<: *default
-    temperature: 0

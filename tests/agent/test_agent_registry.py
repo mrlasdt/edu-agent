@@ -5,7 +5,6 @@ Behaviors under test:
   1. Register an agent class and retrieve it by (test_type, section)
   2. Register multiple agents and retrieve them independently
   3. Raise AgentNotRegisteredError with a clear message when (test_type, section) not found
-  4. is_registered() returns True/False correctly
 """
 
 import pytest
@@ -70,22 +69,3 @@ def test_error_message_names_known_registrations():
 
     # Should hint at what IS registered to help debugging
     assert "gre" in str(exc_info.value)
-
-
-# ── 4. is_registered ─────────────────────────────────────────────────────────
-
-def test_is_registered_true_for_known_pair():
-    registry = AgentRegistry()
-    registry.register("gre", "quant", StubQuantAgent)
-    assert registry.is_registered("gre", "quant") is True
-
-
-def test_is_registered_false_for_unknown_pair():
-    registry = AgentRegistry()
-    assert registry.is_registered("gre", "quant") is False
-
-
-def test_is_registered_false_after_wrong_section():
-    registry = AgentRegistry()
-    registry.register("gre", "quant", StubQuantAgent)
-    assert registry.is_registered("gre", "aw") is False

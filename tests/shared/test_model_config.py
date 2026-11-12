@@ -52,18 +52,15 @@ TEMPERATURES = {
     "guard": 0,
     "quant_agent": 0.2,
     "aw_agent": 0.5,
-    "math_retry": 0.2,
     "math_escalation": 1,
     "style_critic": 0,
     "aw_judge_nightly": 0,
-    "aw_judge_pr": 0,
     "question_planner": 0,
     "question_generator": 0.4,
     "question_critic": 0,
     "ielts_grader": 0.3,
     "ielts_feedback": 0.3,
     "ielts_coach": 0.4,
-    "style_extractor": 0,
 }
 MODELS = {
     DEV: {"default": ("openai", "gpt-4o-mini", []), "ielts": ("openai", "gpt-4.1-mini", [])},
