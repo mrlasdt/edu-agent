@@ -15,7 +15,6 @@ from evals.agent_eval.agreement import (
     quadratic_weighted_kappa,
     within_tolerance,
 )
-from evals.agent_eval.budget import Ledger
 from evals.agent_eval.cache import ResponseCache
 from evals.agent_eval.judges import JudgeError
 from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport
@@ -30,6 +29,7 @@ from evals.exam_set.schema import (
     Source,
 )
 from evals.loader import load_exam_items
+from shared.src.shared.budget import Ledger
 from shared.src.shared.ielts.grading import grade_request
 from shared.src.shared.ielts.scoring import GradeParseError
 from tests.llm_fakes import ScriptedRouter

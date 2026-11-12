@@ -9,9 +9,9 @@ from typing import Any
 import pytest
 
 from evals import tool_use_eval as tue
-from evals.agent_eval.budget import Ledger
 from evals.agent_eval.transport import MeteredTransport
 from mcp_servers.candidate_server import mcp
+from shared.src.shared.budget import Ledger
 
 
 def test_every_task_names_a_real_tool_and_only_arguments_that_tool_takes():

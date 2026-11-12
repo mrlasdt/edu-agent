@@ -43,11 +43,11 @@ from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import TextContent
 
 from evals.agent_eval.backend import Backend
-from evals.agent_eval.budget import spend_ledger
 from evals.agent_eval.cache import DEFAULT_CACHE_DIR
 from evals.agent_eval.results import Rate
 from evals.agent_eval.stats import rate
 from evals.agent_eval.transport import FakeToolCalls, MeteredTransport, tagged
+from shared.src.shared.budget import spend_ledger
 from shared.src.shared.config import anchor
 from shared.src.shared.turn_meter import TurnMeter
 

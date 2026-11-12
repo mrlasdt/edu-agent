@@ -37,6 +37,8 @@ from evals.exam_set.schema import (
     LabelTier,
     Source,
 )
+from shared.src.shared.ielts.scoring import round_overall
+from shared.src.shared.stats import to_half_band
 
 SOURCE_ID = "ieltsbuddy_essays"
 FILE_NAME = "ielts_ieltsbuddy.jsonl"
@@ -116,12 +118,6 @@ def page_lines(page_html: str) -> list[str]:
     return [re.sub(r"[ \t]+", " ", ln).strip() for ln in text.split("\n") if ln.strip()]
 
 
-def round_overall(criteria: dict[str, float]) -> float:
-    """Mean of the four criteria rounded to the nearest half band (a quarter rounds up)."""
-    mean = sum(criteria[c] for c in CRITERIA) / len(CRITERIA)
-    return float(int(mean * 2 + 0.5)) / 2
-
-
 @dataclass
 class ParsedEssay:
     title: str
@@ -142,11 +138,6 @@ def _split_prompt(body: list[str]) -> tuple[list[str], list[str]]:
     return body[:end], body[end:]
 
 
-def _half_band(text: str) -> float | None:
-    value = float(text)
-    return value if 0.0 <= value <= 9.0 and (value * 2) % 1 == 0 else None
-
-
 def parse_page(page_html: str) -> list[ParsedEssay]:
     """Every complete essay (prompt, essay, four criterion bands) on one page."""
     lines = page_lines(page_html)
@@ -156,10 +147,10 @@ def parse_page(page_html: str) -> list[ParsedEssay]:
         block = lines[a:b]
         head = _TOPIC.match(block[0])
         assert head is not None
-        stated = _half_band(head.group("band")) if head.group("band") else None
+        stated = to_half_band(head.group("band")) if head.group("band") else None
         body = block[1:]
         if body and (m := _BAND_ONLY.match(body[0])):
-            stated, body = _half_band(m.group("band")), body[1:]
+            stated, body = to_half_band(m.group("band")), body[1:]
         if "Comments" not in body:
             continue
         cut = body.index("Comments")
@@ -173,7 +164,7 @@ def parse_page(page_html: str) -> list[ParsedEssay]:
         for ln in tail:
             if (m := _CRITERION.match(ln)) is not None:
                 key = _CRITERION_KEY[m.group("name").split()[0].lower()]
-                band = _half_band(m.group("band"))
+                band = to_half_band(m.group("band"))
                 if band is not None:
                     criteria[key] = band
                 current = key

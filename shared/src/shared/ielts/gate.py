@@ -8,7 +8,6 @@ shows "uncalibrated estimate" unless that file says the decision gate passed.
 from __future__ import annotations
 
 import json
-import math
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -17,6 +16,7 @@ from typing import Any
 from shared.src.shared.config import PROJECT_ROOT
 from shared.src.shared.ielts.models import Calibration
 from shared.src.shared.ielts.scoring import CRITERIA
+from shared.src.shared.stats import wilson
 
 Pairs = Sequence[tuple[float, float]]
 
@@ -44,16 +44,6 @@ INTRA_RATER_MIN = 0.8  # 8 of 10 re-scored essays within 0.5
 BUCKETS: tuple[tuple[str, float, float], ...] = (
     ("4-5", 0.0, 5.0), ("5.5-6", 5.5, 6.0), ("6.5-7", 6.5, 7.0), ("7.5+", 7.5, 9.0),
 )
-
-
-def wilson_interval(successes: int, n: int, z: float = 1.96) -> tuple[float, float] | None:
-    if n == 0:
-        return None
-    p = successes / n
-    denom = 1 + z * z / n
-    centre = (p + z * z / (2 * n)) / denom
-    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
-    return max(0.0, centre - half), min(1.0, centre + half)
 
 
 def calibration_slope(pairs: Pairs) -> float | None:
@@ -107,7 +97,7 @@ def gate_report(
     n = len(overall)
     ok, _ = _within(overall)
     within = ok / n if n else None
-    interval = wilson_interval(ok, n)
+    interval = wilson(ok, n)
     bias = sum(p - g for p, g in overall) / n if n else None
 
     development = [

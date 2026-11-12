@@ -19,7 +19,6 @@ from shared.src.shared.ielts.gate import (
     calibration_slope,
     gate_report,
     load_calibration,
-    wilson_interval,
 )
 from shared.src.shared.ielts.grading import GradingError, grade_essay
 from shared.src.shared.ielts.marking import mark_essay, top_priorities
@@ -323,12 +322,6 @@ def test_top_priorities_need_an_action_or_a_next_step():
 
 
 # ── calibration gate ─────────────────────────────────────────────────────────
-
-
-def test_wilson_interval_matches_the_published_example():
-    lo, hi = wilson_interval(4, 6) or (0, 0)
-    assert (round(lo, 2), round(hi, 2)) == (0.30, 0.90)
-    assert wilson_interval(0, 0) is None
 
 
 def test_slope_detects_compression():

@@ -57,7 +57,6 @@ from evals.agent_eval.results import (
 )
 from evals.agent_eval.transport import AllModelsFailedError, cache_slot, gather_limited, tagged
 from evals.judges.quant_judge import grade_quant_item
-from evals.turn_report import percentile
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.answers import extract_final_answer, normalize_answer
 from services.agent.src.agent.capabilities.retrieve_corpus import CorpusChunk, RetrieveCorpus
@@ -65,6 +64,7 @@ from services.agent.src.agent.capabilities.verify_math import VerifyMath
 from shared.src.shared.budget import estimate_cost
 from shared.src.shared.events import IndependentCheck, Token, ToolTrace, Verified
 from shared.src.shared.models import MessageRole, Mode, Session
+from shared.src.shared.stats import percentile
 from shared.src.shared.turn_meter import TurnLog
 
 PRICED_AS = "openai/gpt-4o-mini"

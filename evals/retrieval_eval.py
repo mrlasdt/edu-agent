@@ -42,6 +42,7 @@ from services.corpus.src.corpus.settings import CorpusSettings
 from services.ingestion.src.ingestion import main as ingestion
 from services.ingestion.src.ingestion.settings import get_settings as get_ingestion_settings
 from shared.src.shared.config import anchor
+from shared.src.shared.stats import percentile
 
 GOLDEN_PATH = Path(__file__).parent / "golden" / "gre_retrieval.jsonl"
 SEED_DIR = "seed/gre-quant"
@@ -150,11 +151,6 @@ def quality(
             "mrr_at_3": sum(1 / k for k in ranks if k is not None) / len(ranks),
         }
     return out
-
-
-def percentile(values: Sequence[float], q: float) -> float:
-    ordered = sorted(values)
-    return ordered[min(len(ordered) - 1, round(q * (len(ordered) - 1)))]
 
 
 def sweep(

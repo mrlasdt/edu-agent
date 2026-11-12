@@ -38,6 +38,7 @@ from qdrant_client import AsyncQdrantClient, QdrantClient, models
 
 from services.corpus.src.corpus.retriever import build_search_filter
 from shared.src.shared.embedder import EMBED_DIM
+from shared.src.shared.stats import percentile
 from shared.src.shared.vectorstore import (
     COLLECTION,
     DENSE_VECTOR,
@@ -198,11 +199,6 @@ class Measurement:
     p95_ms: float
     build_s: float
     note: str = ""
-
-
-def percentile(values: list[float], q: float) -> float:
-    ordered = sorted(values)
-    return ordered[min(len(ordered) - 1, round(q * (len(ordered) - 1)))]
 
 
 def measure(

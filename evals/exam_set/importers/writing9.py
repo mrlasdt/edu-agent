@@ -39,6 +39,7 @@ from evals.exam_set.schema import (
     LabelTier,
     Source,
 )
+from shared.src.shared.stats import to_half_band
 
 DATASET = "ndtran0101/writing9-ielts-essays"
 ROWS_URL = "https://datasets-server.huggingface.co/rows"
@@ -79,23 +80,15 @@ def page_offsets(total: int, limit: int, page_size: int) -> list[int]:
     return [min(i * stride, max(0, total - page_size)) for i in range(pages)]
 
 
-def _half_band(value: Any) -> float | None:
-    try:
-        band = float(value)
-    except (TypeError, ValueError):
-        return None
-    return band if 0.0 <= band <= 9.0 and (band * 2) % 1 == 0 else None
-
-
 def row_to_item(row: dict[str, Any], split: str) -> ExamItem | None:
     """Map one writing9 row to an ExamItem, or None when it is unusable as an IELTS item."""
     essay = str(row.get("essay") or "").strip()
     prompt = str(row.get("question") or "").strip()
-    overall = _half_band(row.get("band_overall"))
+    overall = to_half_band(row.get("band_overall"))
     criteria = {
         crit: band
         for col, crit in _COLUMN_TO_CRITERION.items()
-        if (band := _half_band(row.get(col))) is not None
+        if (band := to_half_band(row.get(col))) is not None
     }
     if not essay or not prompt or overall is None or len(criteria) != len(_COLUMN_TO_CRITERION):
         return None

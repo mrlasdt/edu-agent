@@ -17,11 +17,11 @@ from typing import Any
 import litellm
 
 from evals.agent_eval import ielts_writing, offline_generation, quant_suite
-from evals.agent_eval.budget import Ledger
 from evals.agent_eval.cache import ResponseCache
 from evals.agent_eval.judges import HeuristicJudge, Judge, JudgeQuestion, LLMJudge
 from evals.agent_eval.transport import FakeToolCalls, MeteredTransport
 from evals.loader import load_golden_set
+from shared.src.shared.budget import Ledger
 from shared.src.shared.ielts import llm
 
 OFFLINE_MODEL = "offline/fake"

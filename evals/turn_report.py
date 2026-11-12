@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import sys
 from collections import Counter, defaultdict
 from collections.abc import Sequence
@@ -35,6 +34,7 @@ from shared.src.shared.config import (
     get_feedback_settings,
 )
 from shared.src.shared.feedback import latest_votes
+from shared.src.shared.stats import percentile
 from shared.src.shared.turn_meter import TurnLog
 from shared.src.shared.turn_outcome import Outcome
 
@@ -93,14 +93,6 @@ def reprice(turn: dict[str, Any], model: str) -> dict[str, Any]:
     guard = estimate_cost(model, turn["guardrail_input_tokens"], turn["guardrail_output_tokens"])
     total = estimate_cost(model, turn["input_tokens"], turn["output_tokens"])
     return {**turn, "cost_usd": total, "guardrail_cost_usd": guard}
-
-
-def percentile(values: Sequence[float], q: float) -> float | None:
-    """Nearest-rank percentile (q in 0..1); None for no data."""
-    if not values:
-        return None
-    ordered = sorted(values)
-    return ordered[max(0, math.ceil(q * len(ordered)) - 1)]
 
 
 def _vals(turns: Sequence[dict[str, Any]], key: str) -> list[float]:

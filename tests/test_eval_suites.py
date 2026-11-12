@@ -16,7 +16,6 @@ from evals.agent_eval.backend import (
     OfflineBackend,
     missing_keys,
 )
-from evals.agent_eval.budget import Ledger
 from evals.agent_eval.results import SUITE_MODELS, AwResult
 from evals.agent_eval.suites import (
     SUITES,
@@ -25,6 +24,7 @@ from evals.agent_eval.suites import (
     selected_suites,
     suite_names,
 )
+from shared.src.shared.budget import Ledger
 from tests.eval_result_fakes import eval_report
 
 ALL_SUITES = ["quant", "quant_judge", "aw", "generation", "ielts_writing", "ielts_report",
