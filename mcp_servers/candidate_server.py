@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import random
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -31,6 +31,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 
 from mcp_servers.launch import bind_host, run
 from mcp_servers.settings import get_settings
+from shared.src.shared.corpus_client import CorpusClient
 
 mcp = FastMCP(
     "gre-tutor-candidate",
@@ -151,19 +152,13 @@ def _shorten(text: str, limit: int) -> str:
 async def _search_corpus(query: str, test_type: str) -> list[dict[str, Any]]:
     settings = get_settings()
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.post(
-                f"{settings.corpus_service_url}/corpus/retrieve",
-                json={
-                    "query": query,
-                    "test_type": test_type,
-                    "candidate_id": settings.mcp_candidate_id,
-                    "school_id": settings.mcp_school_id,
-                    "top_k": _TOP_K,
-                },
-            )
-            r.raise_for_status()
-            return cast(list[dict[str, Any]], r.json())
+        return await CorpusClient(settings.corpus_service_url).retrieve(
+            query,
+            candidate_id=settings.mcp_candidate_id,
+            school_id=settings.mcp_school_id,
+            test_type=test_type,
+            top_k=_TOP_K,
+        )
     except httpx.HTTPError as exc:
         raise ToolError(
             f"the notes service is not available right now ({type(exc).__name__}). Try again "
