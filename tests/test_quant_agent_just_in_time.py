@@ -255,7 +255,7 @@ async def test_solve_mode_keeps_the_up_front_search_and_has_no_notes_tool() -> N
         return one_chunk("1. Factor.\n**Answer: 2, 3**")
 
     with patch("shared.src.shared.turn_meter.TurnMeter.stream", side_effect=stream), patch.object(
-        a, "_formalize", new_callable=AsyncMock, return_value=None
+        a, "formalize", new_callable=AsyncMock, return_value=None
     ), patch.object(a, "verify_well_formed", new_callable=AsyncMock) as verified:
         verified.return_value = SimpleNamespace(verified=True, computed="[2, 3]", error=None)
         items = await run(a, "Solve x^2 - 5x + 6 = 0", Mode.solve)

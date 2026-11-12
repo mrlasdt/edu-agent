@@ -140,7 +140,7 @@ async def test_solve_mode_gets_the_same_budget() -> None:
     model = Model(reply="Step 1. Factor.\n**Answer: 2, 3**")
     a = agent()
     with patch("litellm.acompletion", new=model), patch.object(
-        a, "_formalize", new_callable=AsyncMock, return_value=None
+        a, "formalize", new_callable=AsyncMock, return_value=None
     ), patch.object(a, "verify_well_formed", new_callable=AsyncMock) as verified:
         verified.return_value = SimpleNamespace(verified=True, computed="[2, 3]", error=None)
         await run(a, session(15, Mode.solve), "Now solve it")

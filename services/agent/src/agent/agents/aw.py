@@ -1,24 +1,19 @@
 from __future__ import annotations
 
-import logging
 import re
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterator
 from typing import Any
 
-from services.agent.src.agent.base import BaseAgent
+from services.agent.src.agent.base import BaseAgent, Turn, with_note
 from services.agent.src.agent.capabilities.match_student_style import MatchStudentStyle
 from services.agent.src.agent.capabilities.retrieve_corpus import CorpusChunk, RetrieveCorpus
-from services.agent.src.agent.prompting import build_messages, collect_stream
-from shared.src.shared.config import load_model_config
+from services.agent.src.agent.prompting import build_messages
 from shared.src.shared.critics.citation_checker import check_citations, strip_uncited_claims
 from shared.src.shared.critics.style_critic import run_style_critic
-from shared.src.shared.events import CitationsStripped, Event, SampleEssay, Sources, Token
+from shared.src.shared.events import CitationsStripped, Event, SampleEssay, Token
 from shared.src.shared.models import Mode, Session
-from shared.src.shared.observability import build_llm_metadata
 from shared.src.shared.prompts import read_prompt
 from shared.src.shared.turn_meter import TurnMeter
-
-_log = logging.getLogger(__name__)
 
 _ARGUMENT_KEYWORDS = re.compile(
     r"\b(the following|the argument|critique|examine the|stated and/or unstated|"
@@ -28,17 +23,19 @@ _ARGUMENT_KEYWORDS = re.compile(
 
 _MIN_PERSONAL_ESSAYS = 2
 
+_TIER_LABELS = {
+    "global": "Official ETS material",
+    "school": "Course notes",
+    "candidate": "Your notes",
+}
+
 
 def _format_chunks_for_context(chunks: list[CorpusChunk]) -> str:
     if not chunks:
         return ""
     lines = ["\n\n## Reference Material\n"]
     for i, chunk in enumerate(chunks, start=1):
-        tier_label = {
-            "global": "Official ETS material",
-            "school": "Course notes",
-            "candidate": "Your notes",
-        }.get(chunk.tier, "Reference")
+        tier_label = _TIER_LABELS.get(chunk.tier, "Reference")
         lines.append(f"[{i}] ({tier_label} — {chunk.page_or_section})\n{chunk.text}")
     return "\n\n".join(lines)
 
@@ -64,7 +61,7 @@ def _build_messages(
     return build_messages(session, user_message, system_prompt, *blocks)
 
 
-class AWAgent(BaseAgent):
+class AWAgent(BaseAgent[Turn]):
     """
     GRE Analytical Writing agent.
 
@@ -75,7 +72,11 @@ class AWAgent(BaseAgent):
       - style critic (Haiku-tier) → one rewrite pass on structural violation
       - citation checker → strip invalid citations on persistent failure
       - flags the essay as a sample (`SampleEssay`); the web app shows the notice
+    Both modes check the reply's [N] citations, retry once, then strip what still fails.
     """
+
+    ROLE = "aw_agent"
+    TOP_K = 5
 
     def __init__(
         self,
@@ -83,140 +84,38 @@ class AWAgent(BaseAgent):
         retrieve_corpus: RetrieveCorpus | None = None,
         match_student_style: MatchStudentStyle | None = None,
     ) -> None:
-        self._model_config = load_model_config(model_config_path)
-        self._retrieve_corpus = retrieve_corpus or RetrieveCorpus()
+        super().__init__(model_config_path, retrieve_corpus or RetrieveCorpus())
         self._match_student_style = match_student_style or MatchStudentStyle()
-        self._model_config_path = model_config_path
 
-    async def run(
-        self, session: Session, message: str, trace_id: str = ""
-    ) -> AsyncGenerator[Event, None]:
-        version = self._model_config.prompt_version("aw_agent", session.mode.value)
-        meter = TurnMeter(trace_id, "agent", "aw_agent", session.mode.value, version)
-        try:
-            with meter.phase("retrieval"):
-                chunks = await self._retrieve(session, message)
-            meter.annotate(notes_retrieved=len(chunks))
-            if chunks:
-                yield Sources(count=len(chunks))
-            chunk_context = _format_chunks_for_context(chunks)
-            obs_meta = build_llm_metadata(trace_id=trace_id, prompt_version=version)
+    format_chunks = staticmethod(_format_chunks_for_context)
 
-            if session.mode == Mode.tutor:
-                async for item in self._tutor_turn(
-                    session, message, chunk_context, chunks, meter, version, obs_meta
-                ):
-                    yield item
-            else:
-                async for item in self._solve_turn(
-                    session, message, chunk_context, chunks, meter, version, obs_meta, trace_id
-                ):
-                    yield item
-        except Exception as exc:
-            meter.finish(error=type(exc).__name__)
-            raise
-        finally:
-            meter.finish()
+    async def tutor_turn(self, turn: Turn) -> AsyncGenerator[Event, None]:
+        system_prompt = read_prompt("aw_agent", Mode.tutor.value, turn.version)
+        messages = _build_messages(turn.session, turn.message, system_prompt, turn.chunk_context)
+        tokens, full_text = await self.collect(turn, messages)
+        tokens, full_text, valid, invalid = await self._cited(turn, messages, tokens, full_text)
+        for event in _reply(tokens, full_text, valid, invalid, sample=False):
+            yield event
 
-    # ── tutor mode ────────────────────────────────────────────────────────────
-
-    async def _tutor_turn(
-        self,
-        session: Session,
-        message: str,
-        chunk_context: str,
-        chunks: list[CorpusChunk],
-        meter: TurnMeter,
-        version: str = "v1",
-        obs_meta: dict[str, Any] | None = None,
-    ) -> AsyncGenerator[Event, None]:
-        system_prompt = read_prompt("aw_agent", Mode.tutor.value, version)
-        messages = _build_messages(session, message, system_prompt, chunk_context)
-        model = self._model_config.litellm_model("aw_agent")
-        temperature = self._model_config.role("aw_agent").temperature
-
-        # Attempt 1
-        response = meter.stream(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            **(obs_meta or {}),
-        )
-        tokens, full_text = await collect_stream(response)
-        valid, invalid = self._check_citations(full_text, len(chunks))
-
-        if valid:
-            for token in tokens:
-                yield Token(text=token)
-            yield CitationsStripped(stripped=False)
-            return
-
-        # Retry on citation failure
-        retry_messages = messages + [
-            {
-                "role": "assistant",
-                "content": (
-                    f"[Invalid citations: {', '.join(invalid)}. "
-                    f"Must only cite [1]–[{len(chunks)}].]"
-                ),
-            }
-        ]
-        response = meter.stream(
-            model=model,
-            messages=retry_messages,
-            temperature=temperature,
-            **(obs_meta or {}),
-        )
-        tokens, full_text = await collect_stream(response)
-        valid, invalid = self._check_citations(full_text, len(chunks))
-
-        if valid:
-            for token in tokens:
-                yield Token(text=token)
-            yield CitationsStripped(stripped=False)
-            return
-
-        yield Token(text=strip_uncited_claims(full_text, invalid))
-        yield CitationsStripped(stripped=True)
-
-    # ── solve mode ────────────────────────────────────────────────────────────
-
-    async def _solve_turn(
-        self,
-        session: Session,
-        message: str,
-        chunk_context: str,
-        chunks: list[CorpusChunk],
-        meter: TurnMeter,
-        version: str = "v1",
-        obs_meta: dict[str, Any] | None = None,
-        trace_id: str = "",
-    ) -> AsyncGenerator[Event, None]:
-        system_prompt = read_prompt("aw_agent", Mode.solve.value, version)
-        model = self._model_config.litellm_model("aw_agent")
-        temperature = self._model_config.role("aw_agent").temperature
+    async def solve_turn(self, turn: Turn) -> AsyncGenerator[Event, None]:
+        system_prompt = read_prompt("aw_agent", Mode.solve.value, turn.version)
 
         # Personal style exemplars (if opted-in + >= 2 essays)
-        exemplars = await self._get_personal_style_exemplars(session)
+        exemplars = await self._get_personal_style_exemplars(turn.session)
         exemplar_context = (
             _format_exemplars(exemplars) if len(exemplars) >= _MIN_PERSONAL_ESSAYS else ""
         )
-
-        messages = _build_messages(session, message, system_prompt, chunk_context, exemplar_context)
-
-        # Generate essay
-        response = meter.stream(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            **(obs_meta or {}),
+        messages = _build_messages(
+            turn.session, turn.message, system_prompt, turn.chunk_context, exemplar_context
         )
-        tokens, full_text = await collect_stream(response)
+        tokens, full_text = await self.collect(turn, messages)
 
-        # Style critic — one rewrite pass on structural violation
-        style_ok, style_feedback = await self._run_style_critic(full_text, trace_id, meter)
+        # Style critic: one rewrite pass on structural violation
+        style_ok, style_feedback = await self._run_style_critic(
+            full_text, turn.trace_id, turn.meter
+        )
         if not style_ok:
-            rewrite_messages = messages + [
+            rewrite = messages + [
                 {"role": "assistant", "content": full_text},
                 {
                     "role": "user",
@@ -226,64 +125,30 @@ class AWAgent(BaseAgent):
                     ),
                 },
             ]
-            response = meter.stream(
-                model=model,
-                messages=rewrite_messages,
-                temperature=temperature,
-                **(obs_meta or {}),
-            )
-            tokens, full_text = await collect_stream(response)
+            tokens, full_text = await self.collect(turn, rewrite)
 
-        # Citation check
-        valid, invalid = self._check_citations(full_text, len(chunks))
-        if not valid:
-            retry_messages = messages + [
-                {
-                    "role": "assistant",
-                    "content": (
-                        f"[Invalid citations: {', '.join(invalid)}. "
-                        f"Must only cite [1]–[{len(chunks)}].]"
-                    ),
-                }
-            ]
-            response = meter.stream(
-                model=model,
-                messages=retry_messages,
-                temperature=temperature,
-                **(obs_meta or {}),
-            )
-            tokens, full_text = await collect_stream(response)
-            valid, invalid = self._check_citations(full_text, len(chunks))
-            if not valid:
-                yield Token(text=strip_uncited_claims(full_text, invalid))
-                yield SampleEssay()
-                yield CitationsStripped(stripped=True)
-                return
+        tokens, full_text, valid, invalid = await self._cited(turn, messages, tokens, full_text)
+        for event in _reply(tokens, full_text, valid, invalid, sample=True):
+            yield event
 
-        # Emit essay, then flag it as a sample for the web app's notice
-        for token in tokens:
-            yield Token(text=token)
-        yield SampleEssay()
-        yield CitationsStripped(stripped=False)
+    async def _cited(
+        self, turn: Turn, messages: list[dict[str, Any]], tokens: list[str], full_text: str
+    ) -> tuple[list[str], str, bool, list[str]]:
+        """
+        The reply, checked for [N] citations to notes that were not shown. A failing reply is
+        generated once more with a note naming the bad markers. Returns the reply, whether it is
+        clean, and the markers it still cites wrongly.
+        """
+        count = len(turn.chunks)
+        valid, invalid = self._check_citations(full_text, count)
+        if valid:
+            return tokens, full_text, True, []
+        note = f"[Invalid citations: {', '.join(invalid)}. Must only cite [1]–[{count}].]"
+        tokens, full_text = await self.collect(turn, with_note(messages, note))
+        valid, invalid = self._check_citations(full_text, count)
+        return tokens, full_text, valid, invalid
 
     # ── seams ─────────────────────────────────────────────────────────────────
-
-    async def _retrieve(self, session: Session, message: str) -> list[CorpusChunk]:
-        """
-        Fetch grounding notes from the Corpus Service. Fails open, like the Quant agent: an
-        unreachable corpus costs the turn its grounding, not the answer.
-        """
-        try:
-            return await self._retrieve_corpus.retrieve(
-                query=message,
-                candidate_id=session.candidate_id,
-                school_id="",
-                test_type=session.test_type,
-                top_k=5,
-            )
-        except Exception:
-            _log.warning("corpus retrieval failed; answering without notes", exc_info=True)
-            return []
 
     def _check_citations(self, text: str, num_chunks: int) -> tuple[bool, list[str]]:
         return check_citations(text, num_chunks)
@@ -305,3 +170,21 @@ class AWAgent(BaseAgent):
         if _ARGUMENT_KEYWORDS.search(message):
             return "argument"
         return "issue"
+
+
+def _reply(
+    tokens: list[str], full_text: str, valid: bool, invalid: list[str], *, sample: bool
+) -> Iterator[Event]:
+    """
+    The events of a checked reply. A clean reply goes out token by token; one that still cites
+    unknown notes goes out as one text with those sentences removed, and says so. A solved essay
+    is also flagged as a sample, for the web app's notice.
+    """
+    if valid:
+        for token in tokens:
+            yield Token(text=token)
+    else:
+        yield Token(text=strip_uncited_claims(full_text, invalid))
+    if sample:
+        yield SampleEssay()
+    yield CitationsStripped(stripped=not valid)
