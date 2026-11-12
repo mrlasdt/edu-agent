@@ -55,7 +55,6 @@ def _format_chunks_for_context(chunks: list[CorpusChunk]) -> str:
     )
 
 
-
 class _ToolTurn:
     """
     The math tools for one turn: runs the bounded tool loop for each model attempt and keeps
