@@ -1,6 +1,6 @@
 # Edu Agent
 
-An LLM-powered exam-prep tutor. The tutoring chat helps Candidates improve their score on the GRE General Test (Quant and AW). v1 is English-only and section-scoped (see below); the system is architected for multilingual extension and additional test types in v2. IELTS Writing (a separate timed mock) and SAT Math and IELTS Reading (golden sets only) exist outside the chat. Deployed as a web chat.
+An LLM-powered exam-prep tutor. The tutoring chat helps Candidates improve their score on the GRE General Test (Quant and AW). v1 is English-only and section-scoped (see below); the system is architected for multilingual extension and additional test types in v2. An IELTS Writing coach in the chat coaches from the graded IELTS Writing mock (a separate timed mock); SAT Math and IELTS Reading (golden sets only) exist outside the chat. Deployed as a web chat.
 
 ## Language
 
@@ -109,7 +109,7 @@ A plugin registry inside the Agent service. Agents register by `(test_type, sect
 _Avoid_: Agent factory, agent map, agent pool
 
 **Test type**:
-The standardised test a Candidate is preparing for. A first-class field on session state and corpus document metadata from v1. The chat serves `gre` only; `ielts` exists for the Writing mock and corpus metadata, and `sat` for the eval set. Determines which agents, prompts, corpus documents, and golden set items apply to a session.
+The standardised test a Candidate is preparing for. A first-class field on session state and corpus document metadata from v1. The chat serves `gre` and, for the Writing coach only, `ielts`; `ielts` also exists for the Writing mock and corpus metadata, and `sat` for the eval set. Determines which agents, prompts, corpus documents, and golden set items apply to a session.
 _Avoid_: Exam type, test, product type
 
 **Clarification turn**:
