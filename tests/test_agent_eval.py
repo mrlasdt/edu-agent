@@ -12,7 +12,6 @@ import pytest
 from evals.agent_eval import cli, runner
 from evals.agent_eval.backend import offline_judge, offline_model
 from evals.agent_eval.cache import ResponseCache
-from evals.agent_eval.judges import JudgeError, JudgeQuestion, LLMJudge
 from evals.agent_eval.probes import (
     leaks_by_rule,
     normalize_for_type,
@@ -32,6 +31,7 @@ from evals.agent_eval.results import (
 )
 from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport
 from evals.judges.quant_judge import grade_quant_item
+from evals.judges.typed import JudgeError, JudgeQuestion, LLMJudge
 from evals.loader import load_golden_set
 from services.agent.src.agent.answers import normalize_answer
 from shared.src.shared.budget import BudgetExceededError, Ledger, estimate_cost, is_free

@@ -8,7 +8,7 @@ Every key cites its supporting sentence, and tests check mechanically that the e
 in the passage and that each completion answer occurs in its evidence within the word limit;
 multiple-choice and matching-heading keys must be one of the listed choices.
 
-Regenerate the committed file with `python -m evals.exam_set generate-reading`.
+Regenerate the committed file with `python -m evals exam-set generate-reading`.
 """
 from __future__ import annotations
 

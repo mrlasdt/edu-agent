@@ -16,7 +16,6 @@ from typing import Any, Protocol
 
 from evals.agent_eval import generation, ielts_coach, ielts_writing, quant_suite, runner
 from evals.agent_eval.backend import Backend
-from evals.agent_eval.judges import Judge
 from evals.agent_eval.results import (
     AwResult,
     EvalReport,
@@ -31,6 +30,7 @@ from evals.agent_eval.results import (
 )
 from evals.agent_eval.transport import MeteredTransport
 from evals.exam_set.schema import ExamItem
+from evals.judges.typed import Judge
 from evals.loader import load_exam_items, load_golden_set, sample_golden_set
 from question_pipeline.factory import build_baseline, build_pipeline
 from question_pipeline.schema import GenerationRequest

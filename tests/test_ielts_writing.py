@@ -16,7 +16,6 @@ from evals.agent_eval.agreement import (
     within_tolerance,
 )
 from evals.agent_eval.cache import ResponseCache
-from evals.agent_eval.judges import JudgeError
 from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport
 from evals.exam_set import ielts_writing_adversarial as adversarial
 from evals.exam_set.local_store import register_source
@@ -28,6 +27,7 @@ from evals.exam_set.schema import (
     LabelTier,
     Source,
 )
+from evals.judges.typed import JudgeError
 from evals.loader import load_exam_items
 from shared.src.shared.budget import Ledger
 from shared.src.shared.ielts.grading import grade_request

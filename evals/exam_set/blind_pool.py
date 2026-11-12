@@ -33,6 +33,7 @@ from evals.exam_set.schema import (
 )
 from services.gateway.src.gateway.settings import GatewaySettings
 from shared.src.shared.ielts.scoring import round_overall
+from shared.src.shared.jsonl import read_jsonl
 from shared.src.shared.stats import is_half_band
 
 ESSAYS_MD = "essays.md"
@@ -236,10 +237,7 @@ def _split(essay_id: str) -> str:
 
 def import_scores(blind_dir: Path, today: str) -> tuple[list[ExamItem], int]:
     """Items for every fully scored row of the sheet, and how many rows are still empty."""
-    essays = {
-        r["id"]: r for r in (json.loads(x) for x in
-                             (blind_dir / ESSAYS_JSONL).read_text().splitlines() if x.strip())
-    }
+    essays = {r["id"]: r for r in read_jsonl(blind_dir / ESSAYS_JSONL)}
     items: list[ExamItem] = []
     empty = 0
     with (blind_dir / SCORE_SHEET).open(newline="") as f:

@@ -7,7 +7,7 @@ from enum import StrEnum
 class Outcome(StrEnum):
     """
     The values are the strings the gateway has always written to the turn log, so
-    `evals.turn_report` groups old and new records together. Never rename one: that splits
+    `evals.reports.turn_report` groups old and new records together. Never rename one: that splits
     history. A new way for a turn to end is a new member.
     """
 

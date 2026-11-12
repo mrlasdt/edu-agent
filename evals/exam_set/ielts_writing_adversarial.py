@@ -4,7 +4,7 @@ junk. Each case lists the flags the pipeline must raise and the highest overall 
 report, so a compromised or over-generous grader cannot turn them into a good score.
 
 All text is written for this repository. Regenerate the committed file with
-`python -m evals.exam_set generate-adversarial`.
+`python -m evals exam-set generate-adversarial`.
 """
 from __future__ import annotations
 

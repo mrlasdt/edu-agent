@@ -14,7 +14,6 @@ from typing import Any
 
 import pytest
 
-from evals import read_transcripts
 from evals.agent_eval import cli, graders, quant_suite, runner, stats
 from evals.agent_eval.results import (
     QuantAttempt,
@@ -26,6 +25,7 @@ from evals.agent_eval.results import (
 from evals.agent_eval.transport import AllModelsFailedError, MeteredTransport, cache_slot
 from evals.judges.quant_judge import grade_quant_item
 from evals.loader import load_golden_set
+from evals.reports import read_transcripts
 from services.agent.src.agent.agents.quant import QuantAgent
 from shared.src.shared.budget import Ledger
 from tests.eval_result_fakes import aw_result, eval_report, run_meta
@@ -571,7 +571,7 @@ def test_transcript_cli_reads_the_newest_report(
 
 
 def test_checked_in_baseline_names_its_model_and_renders_as_a_report(capsys):
-    from evals import quant_report
+    from evals.reports import quant_report
 
     meta = QuantBaseline.model_validate_json(Path("evals/baselines/quant.json").read_text()).meta
     # measured on the product default (the free config); a baseline on any other model must say so
@@ -583,7 +583,7 @@ def test_checked_in_baseline_names_its_model_and_renders_as_a_report(capsys):
 
 
 def test_comparing_a_baseline_with_itself_moves_nothing(capsys):
-    from evals import quant_report
+    from evals.reports import quant_report
 
     path = "evals/baselines/quant.json"
     assert quant_report.main([path, "--against", path]) == 0

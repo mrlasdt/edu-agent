@@ -25,8 +25,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from evals.feedback_to_item import main as to_item_main
-from evals.turn_report import main as report_main
+from evals.reports.feedback_to_item import main as to_item_main
+from evals.reports.turn_report import main as report_main
 from services.gateway.src.gateway import feedback_api
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
 from services.gateway.src.gateway.guardrails.verdict import Verdict

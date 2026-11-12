@@ -473,7 +473,7 @@ class CoverageGate(StrictModel):
 
 
 class EvalReport(StrictModel):
-    """One run of `python -m evals.agent_eval` (non dry-run): its suites and its provenance."""
+    """One run of `python -m evals agent` (non dry-run): its suites and its provenance."""
 
     # `SerializeAsAny` writes each suite under its own subclass's fields, not the base's two.
     suites: dict[str, SerializeAsAny[SuiteResult]] = Field(default_factory=dict)

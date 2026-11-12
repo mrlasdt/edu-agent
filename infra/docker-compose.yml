@@ -210,7 +210,7 @@ services:
       - ../config:/app/config:ro
       - ../prompts:/app/prompts:ro
       - ../seed:/app/seed:ro
-      # Per-turn measurement log shared with the gateway (python -m evals.turn_report)
+      # Per-turn measurement log shared with the gateway (python -m evals turn-report)
       - ../.turn-log:/app/.turn-log
     ports:
       - "8002:8002"

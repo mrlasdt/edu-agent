@@ -1,17 +1,17 @@
 """
 Golden-set extension CLI.
 
-  python -m evals.exam_set generate-sat                     # rewrite sat_math.jsonl
-  python -m evals.exam_set generate-reading                 # rewrite ielts_reading.jsonl
-  python -m evals.exam_set generate-writing                 # rewrite the product's writing prompts
-  python -m evals.exam_set generate-adversarial             # rewrite the adversarial writing set
-  python -m evals.exam_set import-writing9 --limit 1200     # into evals/golden/local/
-  python -m evals.exam_set import-cambridge --dir <folder>  # own book files, local OCR
-  python -m evals.exam_set import-ieltsbuddy                # instructor-commented essays (polite)
-  python -m evals.exam_set build-blind-pool                 # needs a key; into ielts-local/blind/
-  python -m evals.exam_set import-blind-scores              # owner's scores.csv -> captain_blind
-  python -m evals.exam_set manifest                         # print the local manifest
-  python -m evals.exam_set summary                          # counts by exam, skill and tier
+  python -m evals exam-set generate-sat                     # rewrite sat_math.jsonl
+  python -m evals exam-set generate-reading                 # rewrite ielts_reading.jsonl
+  python -m evals exam-set generate-writing                 # rewrite the product's writing prompts
+  python -m evals exam-set generate-adversarial             # rewrite the adversarial writing set
+  python -m evals exam-set import-writing9 --limit 1200     # into evals/golden/local/
+  python -m evals exam-set import-cambridge --dir <folder>  # own book files, local OCR
+  python -m evals exam-set import-ieltsbuddy                # instructor-commented essays (polite)
+  python -m evals exam-set build-blind-pool                 # needs a key; into ielts-local/blind/
+  python -m evals exam-set import-blind-scores              # owner's scores.csv -> captain_blind
+  python -m evals exam-set manifest                         # print the local manifest
+  python -m evals exam-set summary                          # counts by exam, skill and tier
 
 Third-party data only ever lands in the gitignored local directory (override with
 --local-dir or $EDU_GOLDEN_LOCAL_DIR).

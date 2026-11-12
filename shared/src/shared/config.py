@@ -150,7 +150,7 @@ class LlmSettings(ServiceSettings):
 
 class TurnLogSettings(ServiceSettings):
     # Per-turn measurement of the live chat path (shared.turn_meter): one JSON line per service
-    # per turn, read by `python -m evals.turn_report`. Recorded, never capped. Empty = off.
+    # per turn, read by `python -m evals turn-report`. Recorded, never capped. Empty = off.
     turn_log_path: AnchoredPath = DEFAULT_TURN_LOG_PATH
 
 
@@ -159,8 +159,9 @@ class FeedbackSettings(TurnLogSettings):
     # No message text. Empty = /feedback is switched off.
     feedback_log_path: AnchoredPath = DEFAULT_FEEDBACK_LOG_PATH
     # Opt-in local capture of the learner's question and the reply, keyed by trace id, so a
-    # thumbs-down can become a complete draft eval item (evals.feedback_to_item). Off by default:
-    # the turn log never holds message text. The file is local and gitignored, never sent anywhere.
+    # thumbs-down can become a complete draft eval item (`python -m evals feedback-to-item`). Off by
+    # default: the turn log never holds message text. The file is local and gitignored, never sent
+    # anywhere.
     turn_capture_text: bool = False
     turn_capture_path: AnchoredPath = DEFAULT_TURN_CAPTURE_PATH
 

@@ -23,7 +23,6 @@ from typing import Any
 import httpx
 import yaml
 
-from evals.agent_eval.judges import Judge, JudgeError, JudgeQuestion, YesNo
 from evals.agent_eval.probes import (
     TUTOR_PROBES,
     correct_question,
@@ -51,6 +50,7 @@ from evals.agent_eval.transport import (
     tagged,
 )
 from evals.judges.quant_judge import grade_quant_item
+from evals.judges.typed import Judge, JudgeError, JudgeQuestion, YesNo
 from evals.loader import load_golden_set, sample_golden_set
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.capabilities.retrieve_corpus import RetrieveCorpus

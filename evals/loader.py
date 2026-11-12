@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import random
 from pathlib import Path
 from typing import Any
@@ -8,6 +7,7 @@ from typing import Any
 from evals.exam_set import ielts_writing_prompts
 from evals.exam_set.local_store import local_dir, read_items
 from evals.exam_set.schema import ExamItem
+from shared.src.shared.jsonl import read_jsonl
 
 _GOLDEN_DIR = Path(__file__).parent / "golden"
 
@@ -15,13 +15,7 @@ _GOLDEN_DIR = Path(__file__).parent / "golden"
 def load_golden_set(suite: str) -> list[dict[str, Any]]:
     """Load all items from the golden set JSONL for the given suite ('quant' or 'aw')."""
     path = _GOLDEN_DIR / f"gre_{suite}.jsonl"
-    items = []
-    with open(path) as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                items.append(json.loads(line))
-    return items
+    return read_jsonl(path)
 
 
 def sample_golden_set(

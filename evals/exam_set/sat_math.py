@@ -16,7 +16,7 @@ Per item:
     (`services/math_verifier`) checks every item too (see tests);
   - the template id and seed are stored, and `regenerate` rebuilds an item bit for bit.
 
-Regenerate the committed file with `python -m evals.exam_set generate-sat`.
+Regenerate the committed file with `python -m evals exam-set generate-sat`.
 """
 from __future__ import annotations
 
