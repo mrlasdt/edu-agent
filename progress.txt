@@ -93,7 +93,7 @@ Moderation API). See README "Not built yet" for what is still missing.
   calibration or review-queue store). The only live run (free models, 3 requests) was inconclusive:
   5 of 6 units dropped as the free tier was unavailable. Offline before/after uses a fake model with
   seeded flaws and proves wiring, not model quality. No measured real-model comparison yet.
-- Reference lint (scripts/lint_references.py, CI and tests/test_lint_references.py): pins, prompt files, prompt_version
+- Reference lint (scripts/lint_references.py, CI and tests/repo/test_lint_references.py): pins, prompt files, prompt_version
   call sites and model roles must name each other; prompt_version raises for an unpinned pair. It reads call sites
   statically, so two calls with variable arguments (evals/agent_eval/cli.py, QuantAgent) are listed but not judged,
   and a call that names a valid pin that belongs to another agent is invisible to it (the style critic's old
