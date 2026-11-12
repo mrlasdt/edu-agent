@@ -180,7 +180,13 @@ async def _input_pii_notice(turn: ChatTurn) -> Verdict:
     return Verdict.allow(INPUT_PII_NOTICE if turn.input_pii else "")
 
 
+def _is_coach(turn: ChatTurn) -> bool:
+    return (turn.req.test_type, turn.req.section) == COACH_PAIR
+
+
 async def _completeness(turn: ChatTurn) -> Verdict:
+    if _is_coach(turn):  # the check is about a GRE question; a coach turn is about the report
+        return Verdict.allow()
     # Fail open: a broken completeness check must not block a turn that the other
     # guardrails already passed, same as the LLM stage of the answer-leak check.
     try:
@@ -203,7 +209,7 @@ async def _ielts_report(turn: ChatTurn) -> Verdict:
     """The IELTS Writing coach's turn needs a graded report: find it and keep its digest for the
     agent. Free (a local lookup), so it runs before the gates that call a model. Every other
     turn passes."""
-    if (turn.req.test_type, turn.req.section) != COACH_PAIR:
+    if not _is_coach(turn):
         return Verdict.allow()
     if turn.req.mode == Mode.solve:  # "reveal the worked artifact" has no IELTS meaning
         return Verdict.stop(Outcome.clarification_requested, SOLVE_MODE_NOTICE)
@@ -258,7 +264,9 @@ async def _answer(turn: ChatTurn) -> AsyncGenerator[bytes, None]:
     failure: list[Exception] = []
     async for chunk in _agent_chunks(turn, payload, meta, failure):
         if guard is None:
-            guard = ReplyGuard(req.mode, turn.trace_id, meta.get("num_sources"))
+            guard = ReplyGuard(
+                req.mode, turn.trace_id, meta.get("num_sources"), leak_check=not _is_coach(turn)
+            )
         text = guard.feed(trailer.feed(decoder.decode(chunk)))
         if text:
             yield text.encode("utf-8")
@@ -290,7 +298,8 @@ async def _answer(turn: ChatTurn) -> AsyncGenerator[bytes, None]:
         return
     if guard is not None:
         if (
-            not guard.stopped
+            not _is_coach(turn)
+            and not guard.stopped
             and guard.text.strip()
             and not (await check_answer_leak(guard.text, req.mode, turn.trace_id, meter)).allowed
         ):

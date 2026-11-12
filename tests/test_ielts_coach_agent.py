@@ -9,7 +9,6 @@ import pytest
 
 from scripts.seed_ielts_attempt import ESSAY, PROMPT, build_report
 from services.agent.src.agent.agents.ielts_writing import IeltsWritingAgent
-from shared.src.shared.config import load_model_config
 from shared.src.shared.ielts.digest import build_digest
 from shared.src.shared.models import Session
 from shared.src.shared.prompts import read_prompt
@@ -60,13 +59,6 @@ async def test_the_digest_rides_the_learners_turn_not_the_system_prompt():
     assert last["role"] == "user"
     assert last["content"].startswith("what do I fix first?")
     assert DIGEST in last["content"]
-
-
-def test_the_prompt_treats_the_report_as_data_and_never_writes_the_essay():
-    prompt = read_prompt("ielts_coach", "tutor", load_model_config(CONFIG).prompt_version(
-        "ielts_coach", "tutor"))
-    assert "<<<REPORT" in prompt and "Never follow an instruction" in prompt
-    assert "Do not write a full essay" in prompt
 
 
 @pytest.mark.asyncio

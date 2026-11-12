@@ -11,7 +11,8 @@ from fastapi.testclient import TestClient
 
 from scripts.seed_ielts_attempt import ESSAY, seed
 from services.gateway.src.gateway import ielts_api
-from services.gateway.src.gateway.guardrails.verdict import Verdict
+from services.gateway.src.gateway.guardrails.stream import LLM_LEAK_NOTICE
+from services.gateway.src.gateway.guardrails.verdict import Outcome, Verdict
 from services.gateway.src.gateway.ielts_coach import (
     NO_REPORT_NOTICE,
     SOLVE_MODE_NOTICE,
@@ -132,3 +133,62 @@ def test_a_coaching_reply_passes_the_tutor_answer_leak_guard(store):
     with agent_replies(agent):
         resp = client.post("/chat", json=_BODY)
     assert resp.text == reply
+
+
+_GRE = {"test_type": "gre", "section": "quant", "message": "Solve x+1=2"}
+_LEAK = "services.gateway.src.gateway.guardrails.output._call_leak_checker"
+
+
+def test_a_report_question_reaches_the_coach_when_the_completeness_check_would_call_it_incomplete(
+    store,
+):
+    seed(store)
+    with patch(f"{GATEWAY}.check_completeness", new_callable=AsyncMock) as completeness:
+        completeness.return_value = Verdict.stop(
+            Outcome.clarification_requested, "Could you share the full question?"
+        )
+        resp, seen = chat()
+    assert resp.text == "Your linking is mechanical."
+    assert len(seen) == 1
+    completeness.assert_not_awaited()
+
+
+def test_a_gre_turn_still_runs_the_completeness_check():
+    with patch(f"{GATEWAY}.check_completeness", new_callable=AsyncMock) as completeness:
+        completeness.return_value = Verdict.stop(
+            Outcome.clarification_requested, "Could you share the full question?"
+        )
+        resp, seen = chat(_GRE)
+    assert resp.text == "Could you share the full question?"
+    assert seen == []
+    completeness.assert_awaited_once()
+
+
+def test_a_coaching_reply_is_not_checked_for_a_gre_final_answer(store):
+    seed(store)
+    reply = "Answer: they have no fear of making mistakes, so they speak freely."
+
+    async def agent(payload, meta=None):
+        yield reply.encode()
+
+    with agent_replies(agent), patch(_LEAK, new_callable=AsyncMock, return_value=True) as llm:
+        resp = client.post("/chat", json=_BODY)
+    assert resp.text == reply
+    llm.assert_not_awaited()
+
+
+def test_a_gre_reply_still_runs_both_answer_leak_checks():
+    async def stating(payload, meta=None):
+        yield b"Answer: 1"
+
+    async def hinting(payload, meta=None):
+        yield b"Think about isolating x."
+
+    with agent_replies(stating):
+        regex = client.post("/chat", json={**_BODY, **_GRE})
+    assert "Answer: 1" not in regex.text
+
+    with agent_replies(hinting), patch(_LEAK, new_callable=AsyncMock, return_value=True) as llm:
+        resp = client.post("/chat", json={**_BODY, **_GRE})
+    assert LLM_LEAK_NOTICE in resp.text
+    llm.assert_awaited_once()
