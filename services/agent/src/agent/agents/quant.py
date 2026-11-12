@@ -271,13 +271,15 @@ class QuantAgent(BaseAgent):
     ) -> AsyncGenerator[Event, None]:
         """
         Yield the reply as `Token`s as it is generated, with these events around it:
-          Sources            — first, only when corpus notes were retrieved
+          Sources            — before the first Token. Up-front retrieval: only when corpus
+                               notes were retrieved. Just-in-time tutor turn: after the tool
+                               loop, always, with the count of notes shown (0 included)
           IndependentCheck   — Solve mode, just before Verified; `solver` (what the solver
                                computed) is set only when the verdict is "disagrees"
           Verified           — only emitted in Solve mode, after the answer text
-          ToolTrace          — last, only when the model called a math tool: each call with its
-                               arguments and result (for evals and debugging; never part of the
-                               reply the learner sees)
+          ToolTrace          — last, only when the model called any tool (math or
+                               notes_search): each call with its arguments and result (for
+                               evals and debugging; never part of the reply the learner sees)
         """
         mode = session.mode.value
         # Just-in-time notes are the tutor's: solve mode keeps the up-front search.
