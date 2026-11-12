@@ -7,7 +7,7 @@ config/prompt_pins.yaml, which names prompts/quant_agent/tutor/v3.md;
 resolve quietly (an unpinned prompt reported "v1" to Langfuse and the turn record), so a typo or
 a half-finished rename looked like a working system. This script turns each of those into a
 failing line, `path:line: message`, and exits 1 when there is any. It runs in CI (the lint job)
-and as tests/test_lint_references.py.
+and as tests/repo/test_lint_references.py.
 
 Checks:
   1. Every `x.prompt_version(agent, mode)` call site whose arguments can be read statically (a

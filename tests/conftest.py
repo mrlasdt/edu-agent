@@ -98,7 +98,7 @@ def fresh_gateway_rate_limiter():
     many requests". Each test gets its own.
     """
     from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
-    from tests.gateway_fakes import rate_limiter_of
+    from tests.gateway.gateway_fakes import rate_limiter_of
 
     with rate_limiter_of(RateLimiter()):
         yield

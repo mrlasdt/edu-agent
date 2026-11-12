@@ -1,0 +1,458 @@
+"""
+Tests for the Gateway /chat endpoint.
+
+Behaviors under test:
+  1. Unsafe content is refused (agent never called)
+  2. Unregistered (test_type, section) yields the orchestrator's clarification
+  3. A safe, routable turn proxies the agent's streamed tokens back verbatim
+  4. Incomplete requests get a clarifying reply without calling the agent; a failing
+     completeness check does not break the turn
+  5. Guardrails on the stream (answer leak, PII, rate limit, citations) are applied and
+     announced to the Candidate in the stream; all offline with the agent stream mocked
+"""
+
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
+from services.gateway.src.gateway.guardrails.stream import ReplyGuard
+from services.gateway.src.gateway.guardrails.verdict import Verdict
+from services.gateway.src.gateway.main import app
+from shared.src.shared.models import Mode
+from shared.src.shared.turn_outcome import Outcome
+from tests.gateway.gateway_fakes import agent_replies, rate_limiter_of
+
+client = TestClient(app)
+
+_SAFE = Verdict.allow()
+_BLOCKED = Verdict.stop(
+    Outcome.content_blocked, "I can't help with that request (content flagged: violence)."
+)
+
+
+@pytest.fixture(autouse=True)
+def leak_llm():
+    """The LLM stage of the answer-leak check; mocked so no test makes a model call."""
+    with patch(
+        "services.gateway.src.gateway.guardrails.output._call_leak_checker",
+        new_callable=AsyncMock,
+    ) as mock:
+        mock.return_value = False
+        yield mock
+
+
+@pytest.fixture(autouse=True)
+def completeness():
+    """The completeness check; mocked so no test makes a model call. Defaults to complete."""
+    with patch(
+        "services.gateway.src.gateway.chat.gates.check_completeness", new_callable=AsyncMock
+    ) as mock:
+        mock.return_value = Verdict.allow()
+        yield mock
+
+
+def test_chat_refuses_unsafe_content():
+    with patch(
+        "services.gateway.src.gateway.chat.gates.check_content_safety",
+        new_callable=AsyncMock,
+    ) as mock_safety:
+        mock_safety.return_value = _BLOCKED
+        resp = client.post(
+            "/chat",
+            json={"candidate_id": "c1", "test_type": "gre", "section": "quant", "message": "x"},
+        )
+    assert resp.status_code == 200
+    assert "can't help" in resp.text.lower()
+
+
+def test_chat_clarifies_unregistered_section():
+    with patch(
+        "services.gateway.src.gateway.chat.gates.check_content_safety",
+        new_callable=AsyncMock,
+    ) as mock_safety:
+        mock_safety.return_value = _SAFE
+        resp = client.post(
+            "/chat",
+            json={"candidate_id": "c1", "test_type": "gre", "section": "verbal", "message": "hi"},
+        )
+    assert resp.status_code == 200
+    assert "not set up" in resp.text.lower()
+
+
+@pytest.mark.parametrize(
+    ("section", "message"), [("quant", "   "), ("verbal", "hi")], ids=["blank", "unsupported"]
+)
+def test_rejected_request_makes_no_model_call(completeness, section, message):
+    """Blank and unsupported requests are answered by the free routing check: no moderation
+    call and no completeness call are paid for first."""
+    with patch(
+        "services.gateway.src.gateway.chat.gates.check_content_safety", new_callable=AsyncMock
+    ) as mock_safety:
+        mock_safety.return_value = _SAFE
+        resp = client.post(
+            "/chat",
+            json={
+                "candidate_id": "c1",
+                "test_type": "gre",
+                "section": section,
+                "message": message,
+            },
+        )
+    assert resp.status_code == 200
+    assert resp.text  # the clarification
+    mock_safety.assert_not_called()
+    completeness.assert_not_called()
+
+
+def test_chat_proxies_agent_stream_on_route():
+    async def fake_stream(payload, meta=None):
+        for token in (b"Hello", b", ", b"world"):
+            yield token
+
+    with patch(
+        "services.gateway.src.gateway.chat.gates.check_content_safety",
+        new_callable=AsyncMock,
+    ) as mock_safety, agent_replies(fake_stream):
+        mock_safety.return_value = _SAFE
+        resp = client.post(
+            "/chat",
+            json={
+                "candidate_id": "c1",
+                "test_type": "gre",
+                "section": "quant",
+                "message": "Solve x^2 - 5x + 6 = 0",
+            },
+        )
+    assert resp.status_code == 200
+    assert resp.text == "Hello, world"
+
+
+# ── Completeness check wired into /chat ───────────────────────────────────────
+
+
+def test_complete_request_reaches_the_agent(completeness):
+    sent: list = []
+    resp = _chat(["Step one."], sent=sent)
+    assert resp.text == "Step one."
+    assert len(sent) == 1
+    completeness.assert_awaited_once()
+
+
+def test_incomplete_request_is_asked_to_clarify_without_calling_the_agent(completeness):
+    completeness.return_value = Verdict.stop(
+        Outcome.clarification_requested, "Which equation do you want to solve?"
+    )
+    sent: list = []
+    resp = _chat(["never streamed"], body={"message": "solve this"}, sent=sent)
+    assert resp.text == "Which equation do you want to solve?"
+    assert sent == []
+
+
+def test_completeness_check_failure_does_not_break_chat(completeness):
+    completeness.side_effect = RuntimeError("model down")
+    resp = _chat(["Step one."])
+    assert resp.status_code == 200
+    assert resp.text == "Step one."
+
+
+def test_completeness_runs_on_the_redacted_message_after_the_safety_check(completeness):
+    resp = _chat(["ok"], body={"message": "Solve 2x+3=11, email me at a@b.com"})
+    assert resp.status_code == 200
+    sent_text = completeness.await_args.args[0]
+    assert "a@b.com" not in sent_text
+
+
+def test_unsafe_request_never_reaches_the_completeness_check(completeness):
+    with patch(
+        "services.gateway.src.gateway.chat.gates.check_content_safety", new_callable=AsyncMock
+    ) as mock_safety:
+        mock_safety.return_value = _BLOCKED
+        client.post("/chat", json=_BODY)
+    completeness.assert_not_called()
+
+
+# ── Guardrails wired into /chat ───────────────────────────────────────────────
+
+_BODY = {"candidate_id": "c1", "test_type": "gre", "section": "quant", "message": "Solve 2x+3=11"}
+
+
+def _chat(tokens, body=None, num_sources=None, sent=None):
+    async def fake_stream(payload, meta=None):
+        if sent is not None:
+            sent.append(payload)
+        if num_sources is not None and meta is not None:
+            meta["num_sources"] = num_sources
+        for token in tokens:
+            yield token.encode()
+
+    with patch(
+        "services.gateway.src.gateway.chat.gates.check_content_safety", new_callable=AsyncMock
+    ) as mock_safety, agent_replies(fake_stream):
+        mock_safety.return_value = _SAFE
+        return client.post("/chat", json={**_BODY, **(body or {})})
+
+
+def test_tutor_reply_that_leaks_the_answer_is_blocked_with_a_notice():
+    # The answer line is split across chunks to prove buffering catches it.
+    resp = _chat(
+        ["Isolate x first.\n", "Subtract 3, then divide.\nThe ans", "wer is 4.\nMore text"]
+    )
+    assert "Isolate x first." in resp.text
+    assert "answer is 4" not in resp.text
+    assert "More text" not in resp.text
+    assert "[Answer withheld" in resp.text
+
+
+@pytest.mark.parametrize(
+    "leak",
+    [
+        "**Answer: 4**",
+        "Final Answer: x = 4",
+        "So the answer is (C).",
+        "So the answer is x = 4.",
+        "The answer is\nx = 4.",
+        "Answer:\n4",
+        "Let's solve it. Answer: 4",
+        "Therefore x equals four.",
+        "x = 4",
+        "So x = 4.",
+    ],
+)
+def test_tutor_leak_variants_are_blocked(leak):
+    resp = _chat(["Think about inverse operations.\n", leak])
+    assert "[Answer withheld" in resp.text
+    assert leak not in resp.text
+
+
+def test_solve_mode_may_state_the_answer():
+    resp = _chat(["Steps...\n", "**Answer: 4**"], body={"mode": "solve"})
+    assert "**Answer: 4**" in resp.text
+    assert "withheld" not in resp.text
+
+
+def test_tutor_hint_mentioning_answer_without_value_passes():
+    resp = _chat(["The answer is found by isolating x.\n", "Try that."])
+    assert resp.text == "The answer is found by isolating x.\nTry that."
+
+
+@pytest.mark.parametrize(
+    "hint",
+    [
+        "The answer is found by isolating x in step 2.",
+        "The answer is a positive integer less than 10.",
+        "Try x = 0 and see what happens.",
+        "Start from 2x + 3 = 11 and subtract 3.",
+        "So x is isolated after subtracting.",
+    ],
+)
+def test_tutor_hints_that_state_no_answer_pass(hint):
+    resp = _chat(["Think about it.\n", hint, "\nKeep going."])
+    assert resp.text == f"Think about it.\n{hint}\nKeep going."
+
+
+def test_llm_stage_flags_a_leak_the_regex_stage_missed(leak_llm):
+    leak_llm.return_value = True
+    resp = _chat(["Divide both sides by two and you land on the value of x."])
+    assert resp.text.startswith("Divide both sides by two and you land on the value of x.")
+    assert "[Answer check:" in resp.text
+    leak_llm.assert_awaited_once()
+
+
+def test_llm_stage_is_not_run_in_solve_mode(leak_llm):
+    leak_llm.return_value = True
+    resp = _chat(["x is 4."], body={"mode": "solve"})
+    assert resp.text == "x is 4."
+    leak_llm.assert_not_called()
+
+
+def test_llm_stage_is_not_run_after_the_regex_stage_blocked_the_reply(leak_llm):
+    resp = _chat(["So the answer is 4."])
+    assert "[Answer withheld" in resp.text
+    leak_llm.assert_not_called()
+
+
+def test_multibyte_characters_split_across_chunks_survive():
+    raw = "Use \u221a2 \u2264 x \u2014 caf\u00e9 \u4f60\u597d.".encode()
+    chunks = [raw[i : i + 1] for i in range(len(raw))]
+
+    async def fake_stream(payload, meta=None):
+        for chunk in chunks:
+            yield chunk
+
+    with patch(
+        "services.gateway.src.gateway.chat.gates.check_content_safety", new_callable=AsyncMock
+    ) as mock_safety, agent_replies(fake_stream):
+        mock_safety.return_value = _SAFE
+        resp = client.post("/chat", json=_BODY)
+    assert resp.content == raw
+
+
+def test_reply_guard_streams_a_single_paragraph_sentence_by_sentence():
+    guard = ReplyGuard(Mode.tutor, "t")
+    assert guard.feed("Start with the left side. Then") == "Start with the left side. "
+    assert guard.feed(" subtract three. And") == "Then subtract three. "
+    assert guard.feed(" divide.") == ""
+    assert guard.finish() == "And divide."
+
+
+def test_reply_guard_catches_markers_split_across_chunks():
+    pii = ReplyGuard(Mode.solve, "t")
+    out = pii.feed("Mail jo@exam") + pii.feed("ple.com now. Done.") + pii.finish()
+    assert "jo@example.com" not in out
+    assert "[REDACTED]" in out
+
+    cited = ReplyGuard(Mode.solve, "t", num_sources=2)
+    out = cited.feed("Good point [1]. Bad point [") + cited.feed("7]. Fine.") + cited.finish()
+    assert "[7]" not in out
+    assert "Good point [1]." in out
+    assert "Fine." in out
+
+
+def test_output_pii_is_redacted_with_a_notice():
+    resp = _chat(["Email me at jo@example.com or call 555-123-4567.\n", "Good luck."])
+    assert "jo@example.com" not in resp.text
+    assert "555-123-4567" not in resp.text
+    assert "[REDACTED]" in resp.text
+    assert "[Privacy: removed" in resp.text
+
+
+def test_input_pii_is_redacted_before_the_agent_and_announced():
+    sent: list[dict] = []
+    resp = _chat(
+        ["Hint."],
+        body={
+            "message": "I'm jo@example.com, solve 2x+3=11",
+            "history": [{"role": "candidate", "content": "call 555-123-4567"}],
+        },
+        sent=sent,
+    )
+    assert resp.text.startswith("[Privacy: removed")
+    assert "jo@example.com" not in str(sent[0])
+    assert "555-123-4567" not in str(sent[0])
+    assert resp.text.endswith("Hint.")
+
+
+def test_rate_limited_candidate_gets_a_clear_message_and_agent_is_not_called():
+    sent: list[dict] = []
+    limiter = RateLimiter(max_per_minute=2)
+    with rate_limiter_of(limiter):
+        _chat(["a"], body={"candidate_id": "rl"}, sent=sent)
+        _chat(["a"], body={"candidate_id": "rl"}, sent=sent)
+        resp = _chat(["a"], body={"candidate_id": "rl"}, sent=sent)
+        other = _chat(["a"], body={"candidate_id": "someone-else"}, sent=sent)
+    assert len(sent) == 3
+    assert "rate limit exceeded" in resp.text
+    assert other.text == "a"
+
+
+def test_reply_citing_unretrieved_sources_has_those_sentences_removed_and_announced():
+    resp = _chat(
+        ["Planning matters [1]. Planning also wins [7]. Plan well.\n", "Next line [2].\n"],
+        body={"section": "aw"},
+        num_sources=2,
+    )
+    assert "[7]" not in resp.text
+    assert "Planning matters [1]." in resp.text
+    assert "Plan well." in resp.text
+    assert "Next line [2]." in resp.text
+    assert "[Citation check: removed 1 sentence(s)" in resp.text
+
+
+def test_only_the_offending_line_is_dropped_and_newlines_are_kept():
+    resp = _chat(["- a [1]\n- b [9] bad.\n- c [2]\n"], body={"section": "aw"}, num_sources=2)
+    assert resp.text.startswith("- a [1]\n- c [2]\n")
+    assert "[9]" not in resp.text
+    assert "[Citation check: removed 1 sentence(s)" in resp.text
+
+
+def test_only_the_offending_sentence_is_dropped_within_a_line():
+    resp = _chat(
+        ["Good [1]. Bad [9]. Fine [2].\nNext line.\n"], body={"section": "aw"}, num_sources=2
+    )
+    assert resp.text.startswith("Good [1]. Fine [2].\nNext line.\n")
+    assert "[9]" not in resp.text
+
+
+def test_dropping_a_trailing_sentence_keeps_the_line_break():
+    resp = _chat(["Good [1]. Bad [9].\nNext line.\n"], body={"section": "aw"}, num_sources=2)
+    assert resp.text.startswith("Good [1].\nNext line.\n")
+
+
+def test_math_reply_with_long_numbers_is_not_redacted():
+    resp = _chat(["2^33 = 8589934592 and 3141592653.\n"], body={"mode": "solve"})
+    assert resp.text == "2^33 = 8589934592 and 3141592653.\n"
+
+
+def test_citations_are_not_checked_when_agent_reports_no_source_count():
+    resp = _chat(["Try isolating x first [1]."])
+    assert resp.text == "Try isolating x first [1]."
+
+
+# ── Math verifier verdict: a trailer after the answer ─────────────────────────
+
+
+def test_the_verifier_verdict_follows_the_answer_and_never_reaches_the_guardrails():
+    guarded: list[str] = []
+    original_feed = ReplyGuard.feed
+
+    def spy(self, text):
+        guarded.append(text)
+        return original_feed(self, text)
+
+    with patch.object(ReplyGuard, "feed", spy):
+        resp = _chat(["Step 1. x = 2.", "\n\n**Answer: 2**", '\x1e{"math_ver', 'ified":true}'],
+                     body={"mode": "solve"})
+    assert resp.text == 'Step 1. x = 2.\n\n**Answer: 2**\x1e{"math_verified":true}'
+    assert not any("\x1e" in part or "math_verified" in part for part in guarded)
+
+
+def test_a_failed_verification_is_reported_and_junk_trailers_are_dropped():
+    failed = _chat(["Best effort.", '\x1e{"math_verified":false}'], body={"mode": "solve"})
+    assert failed.text.endswith('\x1e{"math_verified":false}')
+    for junk in ('\x1e{"math_verified":"yes"}', "\x1enot json", "\x1e[1]"):
+        assert _chat(["Fine.", junk], body={"mode": "solve"}).text == "Fine."
+
+
+def test_the_independent_check_is_passed_on_to_the_web_app():
+    trailer = '\x1e{"math_verified":true,"independent_check":{"verdict":"agrees"}}'
+    resp = _chat(["Step 1.\n**Answer: 2**", trailer], body={"mode": "solve"})
+    assert resp.text.endswith(trailer)
+
+    disagree = (
+        '\x1e{"math_verified":false,"independent_check":{"verdict":"disagrees","solver":"2, 3"}}'
+    )
+    assert _chat(["Best effort.", disagree], body={"mode": "solve"}).text.endswith(disagree)
+
+
+def test_an_invalid_independent_check_is_dropped_and_a_long_solver_value_is_clipped():
+    junk = (
+        '\x1e{"math_verified":true,"independent_check":{"verdict":"definitely","solver":"2"}}',
+        '\x1e{"math_verified":true,"independent_check":"agrees"}',
+        '\x1e{"math_verified":true,"independent_check":{"verdict":"agrees","solver":"2, 3"}}',
+    )
+    for trailer in junk:
+        text = _chat(["Fine.", trailer], body={"mode": "solve"}).text
+        # an unknown verdict or a malformed entry vanishes; "agrees" carries no solver value
+        assert text in (
+            'Fine.\x1e{"math_verified":true}',
+            'Fine.\x1e{"math_verified":true,"independent_check":{"verdict":"agrees"}}',
+        )
+
+    long = '\x1e{"math_verified":true,"independent_check":{"verdict":"disagrees","solver":"' \
+           + "9" * 500 + '"}}'
+    text = _chat(["Fine.", long], body={"mode": "solve"}).text
+    assert text.endswith('"}}') and len(text) < 200
+
+
+def test_the_essay_disclaimer_flag_is_passed_on_to_the_web_app():
+    resp = _chat(["A sample essay.", '\x1e{"disclaimer":"essay"}'],
+                 body={"section": "aw", "mode": "solve"})
+    assert resp.text == 'A sample essay.\x1e{"disclaimer":"essay"}'
+
+
+def test_an_unknown_disclaimer_value_is_dropped():
+    for junk in ('\x1e{"disclaimer":"<b>x</b>"}', '\x1e{"disclaimer":true}'):
+        resp = _chat(["A sample essay.", junk], body={"section": "aw", "mode": "solve"})
+        assert resp.text == "A sample essay."

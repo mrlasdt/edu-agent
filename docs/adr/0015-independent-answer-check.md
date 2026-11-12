@@ -21,7 +21,7 @@ After the model's solve attempt passes the well-formed check, one extra short mo
 - **ADR-0012's limit applies: numeric, recomputable answers only.** Quantitative comparisons (a letter), "which statement is true" and anything else without a number come out `not_checkable`, and the UI says "covers only questions with a numeric answer". A `not_checkable` answer is never counted as verified.
 - **"Agrees" means two routes reached the same number, not that the problem was read correctly.** The expression comes from the same model. A misreading repeated in the working and in the equation agrees with itself. What the check removes is the arithmetic and algebra slip that the old check could not see.
 - **A wrong equation can produce a false `disagrees`** (the model writes an equation for the unknown when the question asks for the sum of the solutions, for example). The prompt tells it to write `NONE` for that case; the cost of a miss is a retry, and the learner is shown both numbers. A claimed answer that is only some of an equation's roots is not counted as a disagreement (see `not_checkable` above), so a restricted root does not cost a retry.
-- The model's expression is untrusted text: it only ever reaches the sandbox's allow-list parser (ADR-0011's math verifier, `tests/test_math_verifier_untrusted_input.py`).
+- The model's expression is untrusted text: it only ever reaches the sandbox's allow-list parser (ADR-0011's math verifier, `tests/math_verifier/test_math_verifier_untrusted_input.py`).
 
 ## Cost
 
