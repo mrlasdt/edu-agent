@@ -421,7 +421,7 @@ def test_chat_records_non_blocking_events_as_flags(turn_log):
 
 
 async def test_guardrail_model_calls_are_counted_on_the_gateway_record(turn_log):
-    from services.gateway.src.gateway.guardrails.input import check_completeness
+    from services.gateway.src.gateway.orchestrator.enrich import check_completeness
 
     response = SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content='{"complete": true}'))],

@@ -49,6 +49,7 @@ IELTS_BACKUPS = [
 # the (provider, model, fallbacks) each group of roles resolved to.
 TEMPERATURES = {
     "orchestrator": 0,
+    "guard": 0,
     "quant_agent": 0.2,
     "aw_agent": 0.5,
     "math_retry": 0.2,

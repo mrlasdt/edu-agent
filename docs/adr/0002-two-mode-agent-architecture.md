@@ -8,7 +8,7 @@ Accepted.
 
 ## Implementation status
 
-Not everything below was built. Built: Basic mode, with validate and route in the `Orchestrator` class, enrichment as a gateway guardrail (`check_completeness`), and the side-car critics. **Not built:** complexity classification, the complexity-escalation suggestion, Advanced mode (planner, sub-agents, assembler), and the `BasicRouter` and `AdvancedRouter` classes and the "coming soon" message. The "interfaces and stubs in code" this record promises were never written (no code mentions complexity); Advanced mode is a v2 design, not a v1 stub. The Orchestrator makes no LLM call, and no model call picks Basic or Advanced.
+Not everything below was built. Built: Basic mode, with validate and route in the `Orchestrator` class, enrichment in `gateway/orchestrator/enrich.py` (`check_completeness`), and the side-car critics. **Not built:** complexity classification, the complexity-escalation suggestion, Advanced mode (planner, sub-agents, assembler), and the `BasicRouter` and `AdvancedRouter` classes and the "coming soon" message. The "interfaces and stubs in code" this record promises were never written (no code mentions complexity); Advanced mode is a v2 design, not a v1 stub. The Orchestrator makes no LLM call, and no model call picks Basic or Advanced.
 
 ## Considered options
 
