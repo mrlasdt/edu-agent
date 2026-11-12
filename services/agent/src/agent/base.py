@@ -69,16 +69,16 @@ class BaseAgent[T: Turn](ABC):
         Session carries mode (tutor/solve) and history.
         """
         turn = self.open_turn(session, message, trace_id)
+        error: str | None = None
         try:
             async for event in self.play(turn):
                 yield event
         except Exception as exc:
-            self.close_turn(turn)
-            turn.meter.finish(error=type(exc).__name__)
+            error = type(exc).__name__
             raise
         finally:
             self.close_turn(turn)
-            turn.meter.finish()
+            turn.meter.finish(error=error)
 
     # ── the turn ──────────────────────────────────────────────────────────────
 
