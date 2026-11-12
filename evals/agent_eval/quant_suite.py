@@ -1,5 +1,5 @@
 """
-The failure-seeded Quant suite: `python -m evals.agent_eval --suite quant`.
+The failure-seeded Quant suite: `python -m evals agent --suite quant`.
 
 Every item in `evals/golden/gre_quant.jsonl` comes from a failure EduAgent really had (its
 `failure_source` names the commit, test or prompt line) or, where none is recorded yet, says

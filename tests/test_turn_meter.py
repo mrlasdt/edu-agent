@@ -1,5 +1,5 @@
 """
-Per-turn measurement of the live chat path (shared.turn_meter and evals.turn_report).
+Per-turn measurement of the live chat path (shared.turn_meter and evals.reports.turn_report).
 
 The proof that matters: a fake model with KNOWN usage goes through the real agents and the real
 /chat endpoint, and the recorded counts, tokens and cost equal what the fake reported.
@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from evals.turn_report import main as report_main
-from evals.turn_report import merge_turns, percentile, summarise
+from evals.reports.turn_report import main as report_main
+from evals.reports.turn_report import merge_turns, percentile, summarise
 from services.agent.src.agent.agents.aw import AWAgent
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.capabilities.retrieve_corpus import CorpusChunk
@@ -517,7 +517,7 @@ def test_report_can_price_recorded_tokens_as_another_model(turn_log, capsys):
 
 
 def test_the_turn_report_counts_the_tool_calls_of_a_turn(tmp_path):
-    from evals.turn_report import render
+    from evals.reports.turn_report import render
 
     calls = [{"name": "math_evaluate", "ok": True}, {"name": "math_solve", "ok": False}]
     records = [

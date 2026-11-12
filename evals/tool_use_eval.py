@@ -21,8 +21,8 @@ Modes:
   live     a real model chain through the Router, metered against the spend ledger. Use free
            OpenRouter models: `--mode live` takes the same free chain the quant eval does.
 
-    uv run python -m evals.tool_use_eval --mode offline
-    uv run python -m evals.tool_use_eval --mode live --write-baseline evals/baselines/tool_use.json
+    uv run python -m evals tool-use --mode offline
+    uv run python -m evals tool-use --mode live --write-baseline evals/baselines/tool_use.json
 """
 from __future__ import annotations
 
@@ -49,6 +49,7 @@ from evals.agent_eval.stats import rate
 from evals.agent_eval.transport import FakeToolCalls, MeteredTransport, tagged
 from shared.src.shared.budget import spend_ledger
 from shared.src.shared.config import anchor
+from shared.src.shared.jsonl import read_jsonl
 from shared.src.shared.turn_meter import TurnMeter
 
 GOLDEN = Path(__file__).parent / "golden" / "mcp_tool_use.jsonl"
@@ -86,7 +87,7 @@ class Task:
 
 
 def load_tasks(path: Path = GOLDEN) -> list[Task]:
-    rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    rows = read_jsonl(path)
     return [
         Task(r["id"], r["ask"], r["tool"], r["args"], tuple(r.get("query_has", ()))) for r in rows
     ]

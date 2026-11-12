@@ -15,11 +15,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from evals.human_review_queue import HumanReviewQueue
 from evals.judges.aw_judge import AWResult, grade_aw_item, summarize_aw
 from evals.judges.quant_judge import grade_quant_item
 from evals.loader import load_golden_set, sample_golden_set
 from evals.regression import check_regression
+from evals.reports.human_review_queue import HumanReviewQueue
 
 # ── 1. Quant judge ────────────────────────────────────────────────────────────
 

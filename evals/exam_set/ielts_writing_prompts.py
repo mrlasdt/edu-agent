@@ -6,7 +6,7 @@ labels, so they carry no score: the Writing grader selects only items with a res
 band, and ignores these. They exist to give the product and future essay collection a
 committed, licence-clean set of prompts across the four common Task 2 essay types.
 
-Regenerate the committed file with `python -m evals.exam_set generate-writing`.
+Regenerate the committed file with `python -m evals exam-set generate-writing`.
 """
 from __future__ import annotations
 

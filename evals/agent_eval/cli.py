@@ -1,15 +1,15 @@
 """
 Agent-in-the-loop eval CLI.
 
-  python -m evals.agent_eval                       # dry-run: print the plan, no calls
-  python -m evals.agent_eval --mode offline        # full pipeline on a fake model, no network
-  python -m evals.agent_eval --mode live --suite generation   # LangGraph pipeline vs baseline
-  python -m evals.agent_eval --mode live --provider free
-  python -m evals.agent_eval --mode offline --suite quant --samples 3   # failure-seeded suite
-  python -m evals.agent_eval --mode live --suite quant --samples 3 --model openrouter/<id>:free \
+  python -m evals agent                       # dry-run: print the plan, no calls
+  python -m evals agent --mode offline        # full pipeline on a fake model, no network
+  python -m evals agent --mode live --suite generation   # LangGraph pipeline vs baseline
+  python -m evals agent --mode live --provider free
+  python -m evals agent --mode offline --suite quant --samples 3   # failure-seeded suite
+  python -m evals agent --mode live --suite quant --samples 3 --model openrouter/<id>:free \
       --write-baseline evals/baselines/quant.json    # one named model; checked-in baseline
-  python -m evals.agent_eval --mode live --suite ielts_writing --max-items 6   # needs local data
-  python -m evals.agent_eval --mode live --suite ielts_report --suite ielts_adversarial
+  python -m evals agent --mode live --suite ielts_writing --max-items 6   # needs local data
+  python -m evals agent --mode live --suite ielts_report --suite ielts_adversarial
 
 Live runs need the keys litellm names for each model in the chain and the judge (for example
 OPENROUTER_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY); the CLI only checks that they are set
@@ -55,8 +55,8 @@ from evals.agent_eval.suites import (
     suite_names,
 )
 from evals.agent_eval.transport import AllModelsFailedError
-from evals.read_transcripts import DEFAULT_RUNS_DIR
 from evals.regression import check_regression
+from evals.reports.read_transcripts import DEFAULT_RUNS_DIR
 from shared.src.shared.budget import (
     BudgetExceededError,
     Ledger,

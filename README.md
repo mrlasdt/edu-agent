@@ -67,7 +67,7 @@ A missing or wrong key returns 401. There is no `tier` field: the server files e
 uv run pytest tests/ -q                                  # Python tests (mocked LLM and Qdrant)
 (cd web && npm test)                                     # frontend unit tests
 (cd web && npm run test:e2e)                             # browser smoke tests (Playwright; /chat and /ielts mocked)
-uv run python -m evals.agent_eval --mode offline         # eval pipeline on a fake model: no network, no keys
+uv run python -m evals agent --mode offline         # eval pipeline on a fake model: no network, no keys
 ```
 
 Live evals call real models and spend against the ledger; see "Evals" below. CI (`.github/workflows/ci.yml`) runs ruff, mypy, the reference lint, pytest, the web tests, build (which typechecks) and e2e, and the offline evals on every change (no path filter). It also builds every image and starts the services from them (`infra/docker-compose.smoke.yml`). It also runs a dependency audit (`pip-audit` on `uv.lock`, `npm audit` at high severity for `web/`) and a gitleaks secret scan over the full history. It never scores a real model.
@@ -118,7 +118,7 @@ Candidate / Admin     ┌──────────────────�
 
 ### Three-tier corpus
 
-Every retrieval filters by tier: global (admin uploads, visible to all), school (teacher uploads, not yet writable) and candidate (private to its owner). An empty `school_id` or `candidate_id` grants no access to that tier. The filter is `build_acl_filter` in `services/corpus/src/corpus/retriever.py` and the filter fields carry keyword payload indexes; `tests/test_tenant_isolation.py` checks tenant isolation. Re-ingest a collection created before the indexes existed into a fresh one. `uv run python -m evals.qdrant_filter_check` measures filter recall and latency against a throwaway Qdrant container (needs Docker, no model calls; `--points 20000` for a quick run).
+Every retrieval filters by tier: global (admin uploads, visible to all), school (teacher uploads, not yet writable) and candidate (private to its owner). An empty `school_id` or `candidate_id` grants no access to that tier. The filter is `build_acl_filter` in `services/corpus/src/corpus/retriever.py` and the filter fields carry keyword payload indexes; `tests/test_tenant_isolation.py` checks tenant isolation. Re-ingest a collection created before the indexes existed into a fresh one. `uv run python -m evals qdrant-filter` measures filter recall and latency against a throwaway Qdrant container (needs Docker, no model calls; `--points 20000` for a quick run).
 
 ### Guardrails
 
@@ -126,14 +126,14 @@ Every retrieval filters by tier: global (admin uploads, visible to all), school 
 
 ### Measuring a turn
 
-Each `/chat` turn is metered (model calls, tokens, estimated USD, time to first token, notes retrieved, prompt version, guardrail outcome) to `.turn-log/turns.jsonl` (`TURN_LOG_PATH`; empty switches it off). `uv run python -m evals.turn_report --turns` summarizes it. Cost is recorded, never capped. Stop in the chat closes the request; the gateway and the agent service then stop their model calls, and the turn is recorded with `outcome=client_cancelled`. If the tutoring service fails before or during a reply, the reply ends with a plain "Tutor unavailable" notice and the turn is recorded with `outcome=agent_unavailable` (see ADR-0007). Regenerate resends the last question with the history before it.
+Each `/chat` turn is metered (model calls, tokens, estimated USD, time to first token, notes retrieved, prompt version, guardrail outcome) to `.turn-log/turns.jsonl` (`TURN_LOG_PATH`; empty switches it off). `uv run python -m evals turn-report --turns` summarizes it. Cost is recorded, never capped. Stop in the chat closes the request; the gateway and the agent service then stop their model calls, and the turn is recorded with `outcome=client_cancelled`. If the tutoring service fails before or during a reply, the reply ends with a plain "Tutor unavailable" notice and the turn is recorded with `outcome=agent_unavailable` (see ADR-0007). Regenerate resends the last question with the history before it.
 
 ### Feedback
 
 `/chat` returns the turn's trace id in the `X-Trace-Id` header, and the chat page shows thumbs up/down under each finished reply. A thumbs click is `POST /feedback {trace_id, vote: "up"|"down", comment?}` (comment up to 1,000 chars; the gateway rejects an unknown trace id, rate limits per client address and appends the vote to `.turn-log/feedback.jsonl`, `FEEDBACK_LOG_PATH`, empty switches it off). A line holds the trace id, the vote, the optional comment and a timestamp: no message text. With Langfuse on, the vote is also posted as a `user-feedback` score on that trace.
 
-- `uv run python -m evals.turn_report --feedback` adds the thumbs-down rate per agent and prompt version (the latest vote per turn counts) and lists each thumbs-down with its trace id. With one learner a rate is an anecdote, not a statistic.
-- `uv run python -m evals.feedback_to_item <trace_id>` writes a draft eval item to `.turn-log/draft-items.jsonl` for the owner to complete (question type, ground truth, tag) before it moves into a golden file.
+- `uv run python -m evals turn-report --feedback` adds the thumbs-down rate per agent and prompt version (the latest vote per turn counts) and lists each thumbs-down with its trace id. With one learner a rate is an anecdote, not a statistic.
+- `uv run python -m evals feedback-to-item <trace_id>` writes a draft eval item to `.turn-log/draft-items.jsonl` for the owner to complete (question type, ground truth, tag) before it moves into a golden file.
 - The question and the reply are not stored by default, so a draft is a stub (trace id, agent, prompt version, vote) and the question is re-entered by hand. `TURN_CAPTURE_TEXT=1` (default off) makes the gateway also write the question (after PII redaction) and the reply to `.turn-log/capture.jsonl` (`TURN_CAPTURE_PATH`), keyed by trace id; `feedback_to_item` then fills the draft in. The file is local, gitignored and never sent anywhere.
 
 ## IELTS Writing mock
@@ -142,18 +142,20 @@ A timed Task 2 mock for the General Training test (40 minutes, server-side clock
 
 Without Docker: run the gateway (`uv run uvicorn services.gateway.src.gateway.main:app --port 8000`, `OPENROUTER_API_KEY` in the environment, or `OPENAI_API_KEY` with `MODEL_CONFIG_PATH=config/model_config.dev.yaml`) and `cd web && npm run dev`, then open http://localhost:5173/ielts-mock. The mock does not need Qdrant or the embedder.
 
-To calibrate against your own scores: `uv run python -m evals.exam_set build-blind-pool`, fill `ielts-local/blind/scores.csv`, then `import-blind-scores` and the `ielts_writing` eval below (ADR-0014).
+To calibrate against your own scores: `uv run python -m evals exam-set build-blind-pool`, fill `ielts-local/blind/scores.csv`, then `import-blind-scores` and the `ielts_writing` eval below (ADR-0014).
 
 ## Evals
+
+Every eval and report tool is one command of `uv run python -m evals <command>` (run it with no command to list them; add `--help` after a command for its flags). The older `python -m evals.<module>` spellings of the moved report tools still work for one more release.
 
 `evals/agent_eval/` runs the real agent and grades what it produced.
 
 ```bash
-uv run python -m evals.agent_eval                          # dry run (default): prints the plan, no calls
-uv run python -m evals.agent_eval --mode offline           # deterministic fake model, no network
-uv run python -m evals.agent_eval --mode offline --suite quant --samples 3
-uv run python -m evals.agent_eval --mode live --suite quant --samples 3 --provider free --max-tokens 3000
-uv run python -m evals.agent_eval --mode live --provider free+openai    # free chain, OpenAI fallback
+uv run python -m evals agent                          # dry run (default): prints the plan, no calls
+uv run python -m evals agent --mode offline           # deterministic fake model, no network
+uv run python -m evals agent --mode offline --suite quant --samples 3
+uv run python -m evals agent --mode live --suite quant --samples 3 --provider free --max-tokens 3000
+uv run python -m evals agent --mode live --provider free+openai    # free chain, OpenAI fallback
 ```
 
 | Suite (`--suite`) | What it checks |
@@ -166,24 +168,24 @@ uv run python -m evals.agent_eval --mode live --provider free+openai    # free c
 | `ielts_coach` | the chat coach on a seeded report (rules, no judge; offline 0 USD) |
 | `ielts_adversarial`, `ielts_report` | 12 injection and off-topic cases; structural checks on the feedback report |
 
-`uv run python -m evals.tool_use_eval --mode offline|live` is a separate small eval of the candidate MCP server's tools: 10 plain requests (`evals/golden/mcp_tool_use.jsonl`), each scored on whether the first call is to the right tool, carries the right arguments, and how many calls error (errors divided by calls, as in the quant suite). Offline uses a keyword router in place of a model and only proves the wiring; `--mode live` uses the free OpenRouter chain, and `evals/baselines/tool_use.json` holds one such run (10 tasks, so every rate has a wide interval).
+`uv run python -m evals tool-use --mode offline|live` is a separate small eval of the candidate MCP server's tools: 10 plain requests (`evals/golden/mcp_tool_use.jsonl`), each scored on whether the first call is to the right tool, carries the right arguments, and how many calls error (errors divided by calls, as in the quant suite). Offline uses a keyword router in place of a model and only proves the wiring; `--mode live` uses the free OpenRouter chain, and `evals/baselines/tool_use.json` holds one such run (10 tasks, so every rate has a wide interval).
 
 `--math-tools on|off` runs the Quant agent with or without the math tools, so both sides can be compared on one model. Live runs use free OpenRouter models first (`--provider free`), keys only from the environment; successful responses are cached in `.eval-cache/` and reports go to `.eval-runs/` (both gitignored). Spend is capped by the shared ledger. A run completing under `--min-coverage` (default 0.8) of its units exits 2. A manual `eval-live` workflow runs live suites; CI runs offline only.
 
-Useful tools: `uv run python -m evals.read_transcripts --worst 5`, `uv run python -m evals.quant_report`.
+Useful tools: `uv run python -m evals transcripts --worst 5`, `uv run python -m evals quant-report`.
 
-Retrieval has its own eval, `uv run python -m evals.retrieval_eval --embedder-url http://localhost:8080` (needs Docker for a throwaway Qdrant and a running `tei-embedder`; no language model is called). It indexes `seed/gre-quant/`, replays 46 labelled queries (`evals/golden/gre_retrieval.jsonl`: exact terms, paraphrases, off-topic) through dense-only, hybrid and, with `--reranker-url`, hybrid plus rerank, and prints recall@3, MRR@3, how often an off-topic query still gets a note, and a sweep of the relevance floor. The rerank column is reported as not measurable locally when the reranker misses its 2 s timeout, as the emulated amd64 TEI image does on Apple Silicon (46 of 46 queries in the checked-in run). The Quant agent's note lookups apply the relevance floor (AW's do not: it has no corpus or labelled queries, so a floor there is unmeasured): every hit must clear the dense cosine floor, and a reranked hit must also clear a rerank-score floor, which stays unset until the reranker is measured, so with the reranker on the cosine floor alone keeps an off-topic question note-free. The checked-in numbers are `evals/baselines/retrieval.json` (BGE-M3, small query set: it detects large differences, not small ones).
+Retrieval has its own eval, `uv run python -m evals retrieval --embedder-url http://localhost:8080` (needs Docker for a throwaway Qdrant and a running `tei-embedder`; no language model is called). It indexes `seed/gre-quant/`, replays 46 labelled queries (`evals/golden/gre_retrieval.jsonl`: exact terms, paraphrases, off-topic) through dense-only, hybrid and, with `--reranker-url`, hybrid plus rerank, and prints recall@3, MRR@3, how often an off-topic query still gets a note, and a sweep of the relevance floor. The rerank column is reported as not measurable locally when the reranker misses its 2 s timeout, as the emulated amd64 TEI image does on Apple Silicon (46 of 46 queries in the checked-in run). The Quant agent's note lookups apply the relevance floor (AW's do not: it has no corpus or labelled queries, so a floor there is unmeasured): every hit must clear the dense cosine floor, and a reranked hit must also clear a rerank-score floor, which stays unset until the reranker is measured, so with the reranker on the cosine floor alone keeps an off-topic question note-free. The checked-in numbers are `evals/baselines/retrieval.json` (BGE-M3, small query set: it detects large differences, not small ones).
 
 ### Golden sets for IELTS and SAT
 
 `evals/exam_set/` builds exam items (ADR-0013). Every item has a label tier (`examiner`, `teacher_graded`, `captain_blind`, `site_or_model_weak`, `solver`, `author_key`) and every metric is reported against a tier and a sample size. Committed items are original: `sat_math.jsonl` and `ielts_reading.jsonl` in `evals/golden/`, and `ielts_writing_prompts.jsonl`, which the product serves and so keeps under `shared/src/shared/ielts/data/` (evals reads it there). Third-party data is imported only into the gitignored `evals/golden/local/`:
 
 ```bash
-uv run python -m evals.exam_set generate-sat      # also generate-reading, generate-writing: rebuild the committed sets
-uv run python -m evals.exam_set import-writing9 --limit 1200
-uv run python -m evals.exam_set import-cambridge --dir ~/ielts-books
-uv run python -m evals.exam_set import-ieltsbuddy
-uv run python -m evals.exam_set summary
+uv run python -m evals exam-set generate-sat      # also generate-reading, generate-writing: rebuild the committed sets
+uv run python -m evals exam-set import-writing9 --limit 1200
+uv run python -m evals exam-set import-cambridge --dir ~/ielts-books
+uv run python -m evals exam-set import-ieltsbuddy
+uv run python -m evals exam-set summary
 ```
 
 Sources and licence notes are in `docs/ielts-golden-sources.md`.
@@ -214,7 +216,7 @@ For Claude Desktop or any MCP client. Tools are named `<area>_<verb>` so a clien
 - **A practice question never carries its answer.** `practice_get_question` returns the question and its id; `essay_get_model` takes that id and returns the anchor essay at a tier.
 - **An error says what would have worked.** A mistyped `question_type`, an unknown `prompt_id` or a tier an essay does not have comes back as an error result listing the valid values.
 - **`corpus_search` is concise by default** (source and the first 300 characters of up to 5 notes); `response_format="detailed"` returns each note in full with its source file and score.
-- Neither server authenticates its client; run them only on a machine you trust. The tool-use eval (`uv run python -m evals.tool_use_eval`, see "Evals") scores whether a model picks these tools well.
+- Neither server authenticates its client; run them only on a machine you trust. The tool-use eval (`uv run python -m evals tool-use`, see "Evals") scores whether a model picks these tools well.
 
 Both speak **stdio** by default, which is how a client such as Claude Desktop launches them:
 

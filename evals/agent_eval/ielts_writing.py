@@ -23,7 +23,6 @@ from typing import Any, Protocol
 
 from evals.agent_eval.agreement import agreement_report, quadratic_weighted_kappa
 from evals.agent_eval.cache import cache_key
-from evals.agent_eval.judges import JudgeError
 from evals.agent_eval.results import (
     IeltsAdversarialResult,
     IeltsReportResult,
@@ -39,6 +38,7 @@ from evals.exam_set.schema import (
     LabelTier,
     best_label_tier,
 )
+from evals.judges.typed import JudgeError
 from shared.src.shared.ielts import llm
 from shared.src.shared.ielts.gate import gate_report
 from shared.src.shared.ielts.grading import GradingError, grade_essay

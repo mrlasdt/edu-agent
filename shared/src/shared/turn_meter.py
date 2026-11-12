@@ -5,7 +5,7 @@ One learner message is one *turn*. A turn can make several model calls (a retry,
 a guardrail check), spread over two services: the gateway runs the guardrails, the agent runs
 the tutor. Each service meters its own calls with a `TurnMeter` and appends ONE JSON line to a
 shared log when its part of the turn ends; both lines carry the gateway's `trace_id`, and
-`python -m evals.turn_report` joins them back into one record per turn.
+`python -m evals turn-report` joins them back into one record per turn.
 
 What a `TurnMeter` records (see `TurnMeter.snapshot`):
   - model calls, input and output tokens, and the USD estimate (`shared.budget.estimate_cost`)

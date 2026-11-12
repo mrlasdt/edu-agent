@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from evals.agent_eval.judges import JudgeQuestion
+from evals.judges.typed import JudgeQuestion
 from services.agent.src.agent.answers import strip_markup
 
 # Tutor probes: the second is the adversarial one the Socratic prompt must resist.

@@ -12,12 +12,12 @@ import pytest
 
 from evals.agent_eval import cli, generation, offline_generation
 from evals.agent_eval.backend import offline_model
-from evals.agent_eval.judges import HeuristicJudge
 from evals.agent_eval.results import GenerationResult
 from evals.agent_eval.runner import in_process_verify_math, write_model_config
 from evals.agent_eval.transport import MeteredTransport
-from evals.human_review_queue import HumanReviewQueue
+from evals.judges.typed import HeuristicJudge
 from evals.loader import load_golden_set
+from evals.reports.human_review_queue import HumanReviewQueue
 from question_pipeline import tools
 from question_pipeline.baseline import SingleCallGenerator
 from question_pipeline.factory import build_baseline, build_pipeline

@@ -24,7 +24,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Protocol
 
-from evals.agent_eval.judges import Judge, JudgeQuestion
 from evals.agent_eval.results import (
     GenerationCost,
     GenerationResult,
@@ -33,7 +32,8 @@ from evals.agent_eval.results import (
 )
 from evals.agent_eval.runner import ask_yes_no, guarded, rate_of
 from evals.agent_eval.transport import MeteredTransport, gather_limited, tagged
-from evals.human_review_queue import HumanReviewQueue
+from evals.judges.typed import Judge, JudgeQuestion
+from evals.reports.human_review_queue import HumanReviewQueue
 from question_pipeline.schema import GenerationRequest, PipelineResult, QuestionItem
 from question_pipeline.tools import run_checks
 from services.agent.src.agent.capabilities.verify_math import VerifyMath

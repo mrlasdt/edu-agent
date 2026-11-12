@@ -16,7 +16,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from evals import quant_report
 from evals.agent_eval import cli, quant_suite, runner
 from evals.agent_eval.results import (
     Control,
@@ -29,6 +28,7 @@ from evals.agent_eval.results import (
 )
 from evals.judges.quant_judge import grade_quant_item
 from evals.loader import load_golden_set
+from evals.reports import quant_report
 from services.agent.src.agent.agents.quant import QuantAgent
 from shared.src.shared.events import AGREES, IndependentCheck
 

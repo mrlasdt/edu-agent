@@ -11,8 +11,8 @@ from shared.src.shared.config import PROJECT_ROOT
 
 _PROBE = (
     "from evals.agent_eval.cache import DEFAULT_CACHE_DIR;"
-    "from evals.read_transcripts import DEFAULT_RUNS_DIR;"
-    "from evals.quant_report import DEFAULT_BASELINE;"
+    "from evals.reports.read_transcripts import DEFAULT_RUNS_DIR;"
+    "from evals.reports.quant_report import DEFAULT_BASELINE;"
     "print(DEFAULT_CACHE_DIR);print(DEFAULT_RUNS_DIR);print(DEFAULT_BASELINE)"
 )
 
@@ -41,5 +41,5 @@ def test_newest_report_and_baseline_found_from_other_cwd(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    from evals.quant_report import DEFAULT_BASELINE
+    from evals.reports.quant_report import DEFAULT_BASELINE
     assert DEFAULT_BASELINE.is_file()

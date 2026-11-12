@@ -3,7 +3,7 @@ Payload indexes on the access-filter fields.
 
 Without a keyword index Qdrant reads each point's payload to evaluate the tenant
 filter, so latency grows with the collection (measured by
-`python -m evals.qdrant_filter_check`). `ensure_collection` creates the indexes,
+`python -m evals qdrant-filter`). `ensure_collection` creates the indexes,
 idempotently, for new and for already-existing collections.
 """
 from __future__ import annotations

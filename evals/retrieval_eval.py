@@ -16,9 +16,9 @@ MRR@3 for the first two groups, how often an off-topic query still gets a note, 
 the relevance floor (`corpus.search.passes_relevance_floor`) showing what each setting costs and
 buys. Run:
 
-    uv run python -m evals.retrieval_eval --embedder-url http://localhost:8080
-    uv run python -m evals.retrieval_eval --embedder-url ... --reranker-url http://localhost:8081
-    uv run python -m evals.retrieval_eval ... --json-out evals/baselines/retrieval.json
+    uv run python -m evals retrieval --embedder-url http://localhost:8080
+    uv run python -m evals retrieval --embedder-url ... --reranker-url http://localhost:8081
+    uv run python -m evals retrieval ... --json-out evals/baselines/retrieval.json
 
 Needs Docker (for Qdrant) and a running embedder (`docker compose up -d tei-embedder`). Nothing
 here calls a language model. The embedder is the only slow part, and only the first time.
@@ -42,6 +42,7 @@ from services.corpus.src.corpus.settings import CorpusSettings
 from services.ingestion.src.ingestion import pipeline as ingestion
 from services.ingestion.src.ingestion.settings import get_settings as get_ingestion_settings
 from shared.src.shared.config import anchor
+from shared.src.shared.jsonl import read_jsonl
 from shared.src.shared.stats import percentile
 
 GOLDEN_PATH = Path(__file__).parent / "golden" / "gre_retrieval.jsonl"
@@ -79,12 +80,10 @@ class QueryRun:
 
 
 def load_queries(path: Path = GOLDEN_PATH) -> list[Query]:
-    queries = []
-    for line in path.read_text().splitlines():
-        if line.strip():
-            row = json.loads(line)
-            queries.append(Query(row["id"], row["group"], row["query"], tuple(row["expect"])))
-    return queries
+    return [
+        Query(row["id"], row["group"], row["query"], tuple(row["expect"]))
+        for row in read_jsonl(path)
+    ]
 
 
 def seed_labels(seed_dir: Path) -> set[str]:

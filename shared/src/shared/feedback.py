@@ -5,9 +5,9 @@ The gateway sends each reply's trace id to the browser (`X-Trace-Id`). A thumbs 
 back as `POST /feedback` and is appended, one JSON line, to the feedback log. A line holds the
 trace id, the vote, an optional comment and a timestamp: never the learner's question or the
 reply, which the turn log does not keep either. The turn log says which agent and prompt version
-produced the reply; `python -m evals.turn_report --feedback` joins the two.
+produced the reply; `python -m evals turn-report --feedback` joins the two.
 
-To turn a thumbs-down into a complete draft eval item (`python -m evals.feedback_to_item`) the
+To turn a thumbs-down into a complete draft eval item (`python -m evals feedback-to-item`) the
 question and the reply must be kept somewhere. That is a separate decision: with
 `TURN_CAPTURE_TEXT=1` the gateway also writes them to a local capture file keyed by trace id.
 It is off by default, gitignored (`.turn-log/`) and never sent anywhere.

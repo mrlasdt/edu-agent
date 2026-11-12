@@ -12,8 +12,8 @@ unnoticed.
 Per variant it reports recall@k, mean rows returned, p50/p95 latency and which
 payload fields are indexed. Run:
 
-    uv run python -m evals.qdrant_filter_check                 # 100k points
-    uv run python -m evals.qdrant_filter_check --points 20000  # quicker
+    uv run python -m evals qdrant-filter                 # 100k points
+    uv run python -m evals qdrant-filter --points 20000  # quicker
 
 Needs Docker. The container is started on a free local port and removed on
 exit, including on Ctrl-C. Nothing here touches your real Qdrant volume.

@@ -12,7 +12,7 @@
 
 Accepted.
 
-**Implementation status (2026-11-04).** Not everything in the Observability paragraph was built. Built: Langfuse tracing through the LiteLLM callback (opt-in), and per-turn measurement in `shared/src/shared/turn_meter.py` (tokens, cost, time to first token, phases, prompt version, one JSONL line per service joined by trace id; read with `python -m evals.turn_report`). **Not built:** Prometheus, Grafana (including the Grafana eval dashboard), Sentry, and structured JSON logs. No code exports metrics, reports errors to Sentry or emits JSON logs, and no cluster deploy exists. The paragraph above is kept as the original intent, not a description of the system.
+**Implementation status (2026-11-04).** Not everything in the Observability paragraph was built. Built: Langfuse tracing through the LiteLLM callback (opt-in), and per-turn measurement in `shared/src/shared/turn_meter.py` (tokens, cost, time to first token, phases, prompt version, one JSONL line per service joined by trace id; read with `python -m evals turn-report`). **Not built:** Prometheus, Grafana (including the Grafana eval dashboard), Sentry, and structured JSON logs. No code exports metrics, reports errors to Sentry or emits JSON logs, and no cluster deploy exists. The paragraph above is kept as the original intent, not a description of the system.
 
 ## Considered options
 
