@@ -5,12 +5,13 @@ import json
 from uuid import uuid4
 
 from services.agent.src.agent.pipeline.graph import ROLE_GENERATOR, parse_item, rule_based_plan
-from services.agent.src.agent.pipeline.llm import Completer, load_prompt
+from services.agent.src.agent.pipeline.llm import Completer
 from services.agent.src.agent.pipeline.schema import (
     GenerationRequest,
     PipelineResult,
     TraceEvent,
 )
+from shared.src.shared.prompts import read_prompt
 
 
 class SingleCallGenerator:
@@ -28,8 +29,9 @@ class SingleCallGenerator:
         trace_id = uuid4().hex
         plan = rule_based_plan(request)  # the type is fixed by the request or a keyword rule
         payload = {"request_id": request.request_id, "plan": plan.model_dump(mode="json")}
+        system = read_prompt("question_pipeline", "baseline", self._version)
         messages = [
-            {"role": "system", "content": load_prompt("baseline", self._version)},
+            {"role": "system", "content": system},
             {"role": "user", "content": json.dumps(payload)},
         ]
         raw = await self._llm.complete(ROLE_GENERATOR, messages, trace_id)

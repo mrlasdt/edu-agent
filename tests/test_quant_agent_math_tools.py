@@ -304,12 +304,12 @@ def test_the_product_default_is_tools_off_and_one_switch_turns_them_on(
 
 
 def test_the_tools_prompts_resolve_and_describe_the_tools() -> None:
-    from services.agent.src.agent.agents import quant
+    from shared.src.shared.prompts import read_prompt
 
     cfg = load_model_config("config/model_config.dev.yaml")
     for mode in (Mode.tutor, Mode.solve):
         version = cfg.prompt_version("quant_agent_math_tools", mode.value)
-        text = quant._load_prompt(mode, version, "quant_agent_math_tools")
+        text = read_prompt("quant_agent_math_tools", mode.value, version)
         assert "# Math tools" in text
         assert all(name in text for name in TOOL_NAMES)
 

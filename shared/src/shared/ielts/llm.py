@@ -21,7 +21,6 @@ from shared.src.shared.config import get_llm_settings, load_model_config
 from shared.src.shared.guarded_completion import InFlight, failure_reason, guarded_acompletion
 from shared.src.shared.llm_router import Completions, configured_chain, get_router
 from shared.src.shared.observability import build_llm_metadata
-from shared.src.shared.prompts import read_prompt
 
 GRADER_ROLE = "ielts_grader"
 FEEDBACK_ROLE = "ielts_feedback"
@@ -36,10 +35,6 @@ class Completer(Protocol):
         self, role: str, messages: list[dict[str, str]], *, temperature: float, max_tokens: int,
         trace_id: str = "", prompt_version: str = "",
     ) -> Awaitable[str]: ...
-
-
-def load_prompt(agent: str, mode: str, version: str) -> str:
-    return read_prompt(agent, mode, version)
 
 
 def prompt_version(role: str) -> str:

@@ -17,11 +17,6 @@ _PROMPT_AGENT = "style_critic"
 _PROMPT_MODE = "rubric"
 
 
-def _load_rubric(version: str) -> str:
-    """The rubric prompt file for `version`, without its YAML frontmatter."""
-    return read_prompt(_PROMPT_AGENT, _PROMPT_MODE, version)
-
-
 
 async def run_style_critic(
     essay_text: str,
@@ -42,7 +37,7 @@ async def run_style_critic(
     call_args: dict[str, Any] = {
         "model": model,
         "messages": [
-            {"role": "system", "content": _load_rubric(version)},
+            {"role": "system", "content": read_prompt(_PROMPT_AGENT, _PROMPT_MODE, version)},
             {"role": "user", "content": essay_text},
         ],
         "temperature": temperature,

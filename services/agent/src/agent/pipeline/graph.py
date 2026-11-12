@@ -33,7 +33,7 @@ from langgraph.graph import END, StateGraph
 from pydantic import ValidationError
 
 from services.agent.src.agent.capabilities.verify_math import VerifyMath
-from services.agent.src.agent.pipeline.llm import Completer, extract_json, load_prompt
+from services.agent.src.agent.pipeline.llm import Completer, extract_json
 from services.agent.src.agent.pipeline.schema import (
     EXPERT_FOR_TYPE,
     CheckResult,
@@ -46,6 +46,7 @@ from services.agent.src.agent.pipeline.schema import (
     TraceEvent,
 )
 from services.agent.src.agent.pipeline.tools import run_checks
+from shared.src.shared.prompts import read_prompt
 
 DEFAULT_MAX_ATTEMPTS = 3
 _PREVIOUS_ATTEMPT_CHARS = 1500
@@ -191,7 +192,8 @@ class QuestionPipeline:
         return g.compile()
 
     def _system(self, name: str) -> dict[str, Any]:
-        return {"role": "system", "content": load_prompt(name, self._versions.get(name, "v1"))}
+        version = self._versions.get(name, "v1")
+        return {"role": "system", "content": read_prompt("question_pipeline", name, version)}
 
     async def _ask(
         self, role: str, prompt: str, payload: dict[str, Any], state: PipelineState

@@ -9,6 +9,7 @@ from services.gateway.src.gateway.guardrails.verdict import Verdict
 from services.gateway.src.gateway.settings import get_settings
 from shared.src.shared.config import load_model_config
 from shared.src.shared.models import Mode
+from shared.src.shared.prompts import read_prompt
 from shared.src.shared.turn_meter import TurnMeter
 
 # PII patterns
@@ -48,13 +49,6 @@ _BARE_ASSIGNMENT = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 _LEAK_PATTERNS = (_ANSWER_TAG, _BOLD_ANSWER, _ANSWER_IS, _CONCLUSION, _BARE_ASSIGNMENT)
-
-_LEAK_SYSTEM = (
-    "You are checking if a GRE tutor response reveals the final answer. "
-    "The tutor must NEVER directly state the numeric or symbolic final answer. "
-    "Reply with only: LEAK or SAFE"
-)
-
 
 # The verdict is one word (LEAK or SAFE). A reasoning model also spends hidden thinking tokens
 # against this cap, so it is sized well above the visible answer: low enough to stop a runaway
@@ -104,11 +98,13 @@ async def _call_leak_checker(text: str, meter: TurnMeter | None = None) -> bool:
     provider = cfg.role("orchestrator").provider
     if provider in keys and not keys[provider]:
         return False
+    version = cfg.prompt_version("orchestrator", "leak_check")
+    system = read_prompt("orchestrator", "leak_check", version)
     try:
         response = await (meter or TurnMeter.detached()).complete(
             model=cfg.litellm_model("orchestrator"),
             messages=[
-                {"role": "system", "content": _LEAK_SYSTEM},
+                {"role": "system", "content": system},
                 {"role": "user", "content": text},
             ],
             temperature=0,

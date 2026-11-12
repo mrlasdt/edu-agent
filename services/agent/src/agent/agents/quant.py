@@ -40,11 +40,6 @@ _NO_REPLY = "I could not finish working that out just now. Could you send the pr
 _MAX_RETRIES = 2
 
 
-def _load_prompt(mode: Mode, version: str, agent: str = _AGENT) -> str:
-    """Load the system prompt for the given mode + version, stripping YAML frontmatter."""
-    return read_prompt(agent, mode.value, version)
-
-
 def _format_chunks_for_context(chunks: list[CorpusChunk]) -> str:
     """Numbered notes appended to the candidate's message; [N] feeds the citation check."""
     if not chunks:
@@ -344,11 +339,9 @@ class QuantAgent(BaseAgent):
         context_section: str = "",
         notes_section: str = "",
     ) -> AsyncGenerator[Event, None]:
-        system_prompt = (
-            _load_prompt(Mode.tutor, version, _TOOLS_AGENT)
-            if self._math_tools_enabled
-            else _load_prompt(Mode.tutor, version)
-        ) + context_section + notes_section
+        agent = _TOOLS_AGENT if self._math_tools_enabled else _AGENT
+        system_prompt = read_prompt(agent, Mode.tutor.value, version)
+        system_prompt += context_section + notes_section
         messages = build_messages(session, message, system_prompt, chunk_context)
         model = self._model_config.litellm_model("quant_agent")
         temperature = self._model_config.role("quant_agent").temperature
@@ -389,11 +382,8 @@ class QuantAgent(BaseAgent):
         tools: _ToolTurn | None = None,
         context_section: str = "",
     ) -> AsyncGenerator[Event, None]:
-        system_prompt = (
-            _load_prompt(Mode.solve, version, _TOOLS_AGENT)
-            if self._math_tools_enabled
-            else _load_prompt(Mode.solve, version)
-        ) + context_section
+        agent = _TOOLS_AGENT if self._math_tools_enabled else _AGENT
+        system_prompt = read_prompt(agent, Mode.solve.value, version) + context_section
         base_messages = build_messages(session, message, system_prompt, chunk_context)
         checks = _SolveChecks(self, session, message, meter)
 

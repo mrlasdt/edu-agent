@@ -116,6 +116,24 @@ async def test_aw_judge_calls_llm_with_rubric_and_anchors():
     )
 
 
+@pytest.mark.asyncio
+async def test_aw_judge_sends_the_pinned_rubric_as_the_system_message():
+    from evals.judges.aw_judge import _call_aw_judge_llm
+
+    reply = type("R", (), {"choices": [type("C", (), {"message": type("M", (), {
+        "content": '{"score": 4, "rationale": "ok"}'})()})()]})()
+    with patch("evals.judges.aw_judge.get_router") as router:
+        router.return_value.acompletion = AsyncMock(return_value=reply)
+        await _call_aw_judge_llm("Prompt", "Essay", {"1": "Anchor"})
+    system = router.return_value.acompletion.call_args.kwargs["messages"][0]
+    assert system["role"] == "system"
+    assert system["content"].startswith("You are an expert GRE Analytical Writing scorer")
+    assert system["content"].endswith(
+        '{"score": <float 0.0-6.0 in 0.5 increments>, "rationale": "<2-3 sentences>"}'
+    )
+    assert "---" not in system["content"]  # the YAML header is cut
+
+
 _AW_ITEM = {
     "id": "aw010",
     "task_type": "issue",

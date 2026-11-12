@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from shared.src.shared.config import load_model_config
 from shared.src.shared.llm_router import get_router
+from shared.src.shared.prompts import read_prompt
 from shared.src.shared.structured import (
     StructuredOutputError,
     parse_structured,
@@ -15,22 +16,6 @@ from shared.src.shared.structured import (
 )
 
 _log = logging.getLogger(__name__)
-
-_RUBRIC = """You are an expert GRE Analytical Writing scorer calibrated to the ETS 6-point rubric.
-
-Score the candidate essay on the following scale:
-  6 – Outstanding: insightful, well-developed, precise language, varied syntax, no notable errors
-  5 – Strong: well-developed, generally precise, minor errors
-  4 – Adequate: competent but analysis is limited or language uneven
-  3 – Limited: flawed analysis, limited development, frequent errors
-  2 – Seriously flawed: little relevant analysis, serious language problems
-  1 – Fundamentally deficient: little understanding of the task, pervasive errors
-
-You have been provided anchor essays at specific score levels to calibrate your judgment.
-
-Respond with valid JSON only:
-{"score": <float 0.0-6.0 in 0.5 increments>, "rationale": "<2-3 sentences>"}
-"""
 
 
 class AWVerdict(BaseModel):
@@ -104,6 +89,7 @@ async def _call_aw_judge_llm(
     """
     cfg = load_model_config(model_config_path)
     model = cfg.litellm_model("aw_judge_nightly")
+    rubric = read_prompt("aw_judge", "rubric", cfg.prompt_version("aw_judge", "rubric"))
 
     anchor_text = "\n\n".join(
         f"--- Anchor essay (score {score}) ---\n{text}"
@@ -119,7 +105,7 @@ async def _call_aw_judge_llm(
     response = await get_router().acompletion(
         model=model,
         messages=[
-            {"role": "system", "content": _RUBRIC},
+            {"role": "system", "content": rubric},
             {"role": "user", "content": user_content},
         ],
         temperature=0,

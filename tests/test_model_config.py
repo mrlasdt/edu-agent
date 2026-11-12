@@ -79,7 +79,8 @@ PROMPT_PINS = {
     "ielts_coach": {"tutor": "v1"},
     "ielts_grader": {"writing_t2": "v1"},
     "ielts_feedback": {"writing_t2": "v2"},
-    "orchestrator": {"completeness": "v1"},
+    "orchestrator": {"completeness": "v1", "leak_check": "v1"},
+    "aw_judge": {"rubric": "v1"},
     "style_critic": {"rubric": "v1"},
     "question_pipeline": {
         "planner": "v1",

@@ -387,6 +387,26 @@ async def test_leak_check_caps_its_output_tokens():
 
 
 @pytest.mark.asyncio
+async def test_leak_check_sends_the_pinned_prompt_as_the_system_message():
+    settings = Settings(openai_api_key="k", anthropic_api_key="k")
+    with patch("services.gateway.src.gateway.guardrails.output.get_settings",
+               return_value=settings), \
+         patch("litellm.acompletion", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = _llm_response("SAFE")
+        await check_answer_leak("Try isolating x.", mode=Mode.tutor, trace_id="trace-prompt")
+    system, user = mock_llm.call_args.kwargs["messages"]
+    assert system == {
+        "role": "system",
+        "content": (
+            "You are checking if a GRE tutor response reveals the final answer. "
+            "The tutor must NEVER directly state the numeric or symbolic final answer. "
+            "Reply with only: LEAK or SAFE"
+        ),
+    }
+    assert user == {"role": "user", "content": "Try isolating x."}
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("content", [None, "", "  "])
 async def test_leak_check_cut_off_before_a_verdict_is_not_a_leak_or_a_crash(content):
     # A reasoning model can spend the whole cap thinking and return no content at all.

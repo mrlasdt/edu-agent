@@ -26,6 +26,7 @@ from shared.src.shared.ielts.scoring import (
     extract_json,
 )
 from shared.src.shared.ielts.spelling_variants import VARIANT_PAIRS
+from shared.src.shared.prompts import read_prompt
 
 FEEDBACK_MAX_TOKENS = 6000  # a cap, not a target
 MAX_QUOTE_WORDS = 15
@@ -262,7 +263,7 @@ async def generate_feedback(
 ) -> Feedback:
     """Ask the feedback model; one retry when the reply is unusable or has no verified quote."""
     version = llm.prompt_version(llm.FEEDBACK_ROLE)
-    system = llm.load_prompt("ielts_feedback", "writing_t2", version)
+    system = read_prompt("ielts_feedback", "writing_t2", version)
     messages = feedback_request(prompt, essay, bands, system, notes)
     temperature = llm.role_temperature(llm.FEEDBACK_ROLE)
     best: Feedback | None = None
