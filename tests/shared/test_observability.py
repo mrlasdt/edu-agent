@@ -13,6 +13,7 @@ Behaviors under test:
   9. AWAgent.run() (tutor and solve) and the style critic pass trace_id and prompt_version
 """
 
+import importlib.util
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -99,46 +100,58 @@ def test_setup_observability_noop_without_keys(monkeypatch, clean_callbacks):
     assert clean_callbacks.failure_callback == []
 
 
+def _run_startup_again(module):
+    """
+    Run `module`'s top-level code once more, as a throwaway copy under another name.
+
+    `importlib.reload(module)` re-runs the code inside the real module: its `app` and its
+    dependency functions are replaced, so a test module that imported the old `app` earlier
+    (or later, in another order) then overrides functions the old routes do not use. A copy
+    sees the same environment and calls `setup_observability()` the same way, and the real
+    module is left alone.
+    """
+    name = f"_startup_copy_{module.__name__}"
+    spec = importlib.util.spec_from_file_location(name, module.__file__)
+    assert spec is not None and spec.loader is not None
+    copy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(copy)
+    return copy
+
+
 def test_agent_service_registers_callback_at_startup(monkeypatch, clean_callbacks):
     """Importing the agent service app wires Langfuse when keys are configured."""
-    import importlib
-
     import services.agent.src.agent.main as agent_main
     from shared.src.shared.config import clear_settings_caches
 
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
     clear_settings_caches()
-    importlib.reload(agent_main)
+    _run_startup_again(agent_main)
 
     assert "langfuse" in clean_callbacks.success_callback
 
 
 def test_agent_service_startup_leaves_callbacks_empty_without_keys(monkeypatch, clean_callbacks):
-    import importlib
-
     import services.agent.src.agent.main as agent_main
     from shared.src.shared.config import clear_settings_caches
 
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "")
     clear_settings_caches()
-    importlib.reload(agent_main)
+    _run_startup_again(agent_main)
 
     assert clean_callbacks.success_callback == []
 
 
 def test_gateway_service_registers_callback_at_startup(monkeypatch, clean_callbacks):
     """Importing the gateway app wires Langfuse (answer-leak check uses litellm)."""
-    import importlib
-
     import services.gateway.src.gateway.main as gateway_main
     from shared.src.shared.config import clear_settings_caches
 
     monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
     monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-test")
     clear_settings_caches()
-    importlib.reload(gateway_main)
+    _run_startup_again(gateway_main)
 
     assert "langfuse" in clean_callbacks.success_callback
 
