@@ -627,6 +627,18 @@ math-verifier = [
     { name = "starlette" },
     { name = "sympy" },
 ]
+question-pipeline = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "langfuse" },
+    { name = "langgraph" },
+    { name = "litellm" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pyyaml" },
+    { name = "sympy" },
+    { name = "uvicorn", extra = ["standard"] },
+]
 
 [package.metadata]
 
@@ -710,6 +722,18 @@ math-verifier = [
     { name = "mcp", specifier = ">=1.0.0,<2" },
     { name = "starlette" },
     { name = "sympy", specifier = ">=1.12" },
+]
+question-pipeline = [
+    { name = "fastapi", specifier = ">=0.111.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "langfuse", specifier = ">=2.30.0,<3" },
+    { name = "langgraph", specifier = ">=1.0.0,<2" },
+    { name = "litellm", specifier = ">=1.103.10" },
+    { name = "pydantic", specifier = ">=2.11" },
+    { name = "pydantic-settings", specifier = ">=2.3.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "sympy", specifier = ">=1.12" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.0" },
 ]
 
 [[package]]

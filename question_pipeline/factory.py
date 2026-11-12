@@ -1,10 +1,10 @@
 """Wire the pipeline and its baseline from the shared model config."""
 from __future__ import annotations
 
+from question_pipeline.baseline import SingleCallGenerator
+from question_pipeline.graph import DEFAULT_MAX_ATTEMPTS, QuestionPipeline
+from question_pipeline.llm import LiteLLMCompleter
 from services.agent.src.agent.capabilities.verify_math import VerifyMath
-from services.agent.src.agent.pipeline.baseline import SingleCallGenerator
-from services.agent.src.agent.pipeline.graph import DEFAULT_MAX_ATTEMPTS, QuestionPipeline
-from services.agent.src.agent.pipeline.llm import LiteLLMCompleter
 
 _PROMPTS = ("planner", "numeric_expert", "choice_expert", "comparison_expert", "critic")
 

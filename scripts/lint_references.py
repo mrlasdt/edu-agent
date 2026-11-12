@@ -38,7 +38,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 
 # Code that is scanned for call sites. Tests are not: they patch and fake these names on purpose.
-CODE_DIRS = ("services", "shared", "evals", "mcp_servers")
+CODE_DIRS = ("services", "shared", "evals", "mcp_servers", "question_pipeline")
 
 PINS_PATH = "config/prompt_pins.yaml"
 MODEL_CONFIG_GLOB = "config/model_config*.yaml"

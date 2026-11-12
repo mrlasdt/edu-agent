@@ -92,8 +92,8 @@ Candidate / Admin     ┌──────────────────�
                               │ POST /generate
                      ┌────────▼────────────┐   ┌──────────────────┐
                      │ Agent: Quant, AW,   │──►│ Math verifier    │
-                     │ IELTS coach, gen.   │   │ (sympy, MCP)     │
-                     │ pipeline            │   └──────────────────┘
+                     │ IELTS coach         │   │ (sympy, MCP)     │
+                     │                     │   └──────────────────┘
                      └────────┬────────────┘
                               │ POST /corpus/retrieve
                      ┌────────▼────────────┐   ┌──────────────────┐
@@ -108,7 +108,7 @@ Candidate / Admin     ┌──────────────────�
 | `web` | 5173 | React app behind nginx. `/` is the tutor chat, `/ielts-mock` the IELTS Writing mock; the report page links to the coach |
 | `gateway` | 8000 | `POST /chat`, `POST /feedback`, the `/ielts/*` mock API (grader code in `shared/src/shared/ielts/`), orchestrator, guardrails, rate limit |
 | `corpus` | 8001 | `POST /corpus/retrieve`: Qdrant dense + sparse search fused with RRF, ACL filter, optional rerank |
-| `agent` | 8002 | `POST /generate`: Quant, AW and IELTS Writing coach agents, capabilities, tools, critics, question pipeline |
+| `agent` | 8002 | `POST /generate`: Quant, AW and IELTS Writing coach agents, capabilities, tools, critics |
 | `ingestion` | 8003 | `/admin/documents` (admin key): parse, chunk, embed, index |
 | `math-verifier` | 8090 | FastMCP server: sympy checks behind an allow-list parser, one killable child process per check; also `POST /tools/{name}` for the math tools |
 | `tei-embedder` | 8080 | BGE-M3 embeddings (Hugging Face TEI) |
@@ -190,11 +190,11 @@ Sources and licence notes are in `docs/ielts-golden-sources.md`.
 
 ## Question-generation pipeline
 
-`services/agent/src/agent/pipeline/` is a LangGraph graph that writes GRE Quant practice questions and refuses to emit ones it cannot verify (ADR-0012): plan, route to one of three experts (numeric entry, multiple choice, quantitative comparison), deterministic checks (structure, answer leak, sympy key recompute, distractors), an LLM critic that fails closed, and a revise loop of up to 3 attempts before escalating to a review queue. It is a library with an eval target; there is no HTTP endpoint.
+`question_pipeline/` (a top-level package, not part of any service image) is a LangGraph graph that writes GRE Quant practice questions and refuses to emit ones it cannot verify (ADR-0012): plan, route to one of three experts (numeric entry, multiple choice, quantitative comparison), deterministic checks (structure, answer leak, sympy key recompute, distractors), an LLM critic that fails closed, and a revise loop of up to 3 attempts before escalating to a review queue. It is a library with an eval target; there is no HTTP endpoint.
 
 ```python
-from services.agent.src.agent.pipeline.factory import build_pipeline
-from services.agent.src.agent.pipeline.schema import GenerationRequest
+from question_pipeline.factory import build_pipeline
+from question_pipeline.schema import GenerationRequest
 
 result = await build_pipeline().run(GenerationRequest(request_id="r1", topic="quadratic equations"))
 result.status, result.item, result.trace   # accepted | needs_review
@@ -284,6 +284,7 @@ Docker Compose (`infra/docker-compose.yml`) is the one supported way to run the 
 services/   gateway, agent, corpus, ingestion, math_verifier
 shared/     Pydantic models, config loader, vector store, embedder, turn meter
 mcp_servers/ candidate and admin MCP servers
+question_pipeline/ offline question-generation graph (ADR-0012), eval-only
 web/        Vite + React app, nginx image, unit and Playwright tests
 seed/       self-written GRE Quant notes ingested on first start
 evals/      eval harness, golden sets, baselines, exam_set tooling

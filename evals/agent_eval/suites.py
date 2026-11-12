@@ -32,9 +32,9 @@ from evals.agent_eval.results import (
 from evals.agent_eval.transport import MeteredTransport
 from evals.exam_set.schema import ExamItem
 from evals.loader import load_exam_items, load_golden_set, sample_golden_set
+from question_pipeline.factory import build_baseline, build_pipeline
+from question_pipeline.schema import GenerationRequest
 from services.agent.src.agent.agents.quant import QuantAgent
-from services.agent.src.agent.pipeline.factory import build_baseline, build_pipeline
-from services.agent.src.agent.pipeline.schema import GenerationRequest
 
 SEED = 42
 

@@ -48,6 +48,14 @@ math-verifier = [
     "starlette",
     "sympy>=1.12",
 ]
+# The question-generation pipeline (question_pipeline/, ADR-0012): offline and eval-only, so no
+# service image installs this group. It calls the math verifier through the agent's client, so it
+# includes the agent group; sympy recomputes keys, langgraph runs the graph.
+question-pipeline = [
+    {include-group = "agent"},
+    "langgraph>=1.0.0,<2",
+    "sympy>=1.12",
+]
 # Local development, tests and evals: every service group plus what only they use.
 # `uv sync` installs this group by default (default-groups below).
 dev = [
@@ -56,7 +64,7 @@ dev = [
     {include-group = "corpus"},
     {include-group = "ingestion"},
     {include-group = "math-verifier"},
-    "langgraph>=1.0.0,<2",  # services/agent pipeline/graph.py, imported only by evals/
+    {include-group = "question-pipeline"},
     "python-dotenv>=1.0.0",  # tests/test_observability.py
     "numpy>=1.26",  # evals.qdrant_filter_check (exact ground truth)
     "pytest>=8.2.0",
