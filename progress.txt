@@ -32,7 +32,7 @@ Moderation API). See README "Not built yet" for what is still missing.
 - real dense RAG: ingest -> Qdrant -> retrieve (Qdrant v1.18)
 - CI made green: web peer-dependency fix (@vitejs/plugin-react 6), ruff clean, mypy strict clean
 - agent-in-the-loop eval harness with budget ledger (evals/agent_eval)
-- LangGraph question-generation pipeline (services/agent/src/agent/pipeline, ADR-0012): planner,
+- LangGraph question-generation pipeline (question_pipeline/, ADR-0012): planner,
   expert routing, sympy/leak/distractor tools, critic, bounded revise loop, per-item trace; eval
   target `generation` compares it with a single-call baseline (offline fake in CI)
 

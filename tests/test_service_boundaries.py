@@ -83,3 +83,17 @@ _CASES = [
 def test_package_imports_without_the_forbidden_package(package_dir, blocked):
     result = _import_every_module(package_dir, blocked)
     assert result.returncode == 0, result.stderr[-2000:]
+
+
+@pytest.mark.parametrize(
+    "package_dir",
+    [
+        pytest.param(ROOT / "services" / name, id=name)
+        for name in ("gateway", "agent", "corpus", "ingestion", "math_verifier")
+    ]
+    + [pytest.param(ROOT / "shared", id="shared")],
+)
+def test_no_service_image_carries_the_question_pipeline(package_dir):
+    """`question_pipeline/` is offline and eval-only (ADR-0012): it is not in any service image."""
+    result = _import_every_module(package_dir, "question_pipeline")
+    assert result.returncode == 0, result.stderr[-2000:]

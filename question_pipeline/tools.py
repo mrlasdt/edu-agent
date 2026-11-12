@@ -18,8 +18,8 @@ from sympy.parsing.sympy_parser import (
     standard_transformations,
 )
 
+from question_pipeline.schema import CheckResult, QuestionItem, QuestionType
 from services.agent.src.agent.capabilities.verify_math import VerifyMath
-from services.agent.src.agent.pipeline.schema import CheckResult, QuestionItem, QuestionType
 
 _TRANSFORMS = standard_transformations + (implicit_multiplication_application,)
 _QC_LETTERS = {"A", "B", "C", "D"}

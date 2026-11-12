@@ -190,11 +190,11 @@ Sources and licence notes are in `docs/ielts-golden-sources.md`.
 
 ## Question-generation pipeline
 
-`services/agent/src/agent/pipeline/` is a LangGraph graph that writes GRE Quant practice questions and refuses to emit ones it cannot verify (ADR-0012): plan, route to one of three experts (numeric entry, multiple choice, quantitative comparison), deterministic checks (structure, answer leak, sympy key recompute, distractors), an LLM critic that fails closed, and a revise loop of up to 3 attempts before escalating to a review queue. It is a library with an eval target; there is no HTTP endpoint.
+`question_pipeline/` (a top-level package, not part of any service image) is a LangGraph graph that writes GRE Quant practice questions and refuses to emit ones it cannot verify (ADR-0012): plan, route to one of three experts (numeric entry, multiple choice, quantitative comparison), deterministic checks (structure, answer leak, sympy key recompute, distractors), an LLM critic that fails closed, and a revise loop of up to 3 attempts before escalating to a review queue. It is a library with an eval target; there is no HTTP endpoint.
 
 ```python
-from services.agent.src.agent.pipeline.factory import build_pipeline
-from services.agent.src.agent.pipeline.schema import GenerationRequest
+from question_pipeline.factory import build_pipeline
+from question_pipeline.schema import GenerationRequest
 
 result = await build_pipeline().run(GenerationRequest(request_id="r1", topic="quadratic equations"))
 result.status, result.item, result.trace   # accepted | needs_review

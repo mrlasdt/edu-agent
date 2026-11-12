@@ -19,10 +19,9 @@ import traceback
 from pathlib import Path
 
 ROOT = Path.cwd()  # /app in the image: services/ and shared/ sit beside it
-# The question-generation pipeline is imported only by evals/ and tests/, never by a service
-# (its graph.py needs langgraph, its tools.py sympy), so those modules are skipped, and no
-# service group carries langgraph.
-EVAL_ONLY_PREFIXES = ("services.agent.src.agent.pipeline",)
+# The question-generation pipeline (question_pipeline/, outside services/) is imported only by
+# evals/ and tests/, never by a service (its graph.py needs langgraph), so no service image
+# carries it and no service group carries langgraph: finding langgraph installed here fails.
 EVAL_ONLY_PACKAGES = ("langgraph",)
 FIRST_PARTY = {"services", "shared"}
 
@@ -50,7 +49,7 @@ def imported_packages(path: Path) -> set[str]:
 def main() -> int:
     sys.path.insert(0, str(ROOT))
     failures = []
-    modules = {n: p for n, p in shipped_modules().items() if not n.startswith(EVAL_ONLY_PREFIXES)}
+    modules = shipped_modules()
     for name in modules:
         try:
             importlib.import_module(name)

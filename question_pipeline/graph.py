@@ -32,9 +32,8 @@ from uuid import uuid4
 from langgraph.graph import END, StateGraph
 from pydantic import ValidationError
 
-from services.agent.src.agent.capabilities.verify_math import VerifyMath
-from services.agent.src.agent.pipeline.llm import Completer, extract_json
-from services.agent.src.agent.pipeline.schema import (
+from question_pipeline.llm import Completer, extract_json
+from question_pipeline.schema import (
     EXPERT_FOR_TYPE,
     CheckResult,
     Expert,
@@ -45,7 +44,8 @@ from services.agent.src.agent.pipeline.schema import (
     QuestionType,
     TraceEvent,
 )
-from services.agent.src.agent.pipeline.tools import run_checks
+from question_pipeline.tools import run_checks
+from services.agent.src.agent.capabilities.verify_math import VerifyMath
 from shared.src.shared.prompts import read_prompt
 
 DEFAULT_MAX_ATTEMPTS = 3

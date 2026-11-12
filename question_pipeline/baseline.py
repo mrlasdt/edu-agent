@@ -4,9 +4,9 @@ from __future__ import annotations
 import json
 from uuid import uuid4
 
-from services.agent.src.agent.pipeline.graph import ROLE_GENERATOR, parse_item, rule_based_plan
-from services.agent.src.agent.pipeline.llm import Completer
-from services.agent.src.agent.pipeline.schema import (
+from question_pipeline.graph import ROLE_GENERATOR, parse_item, rule_based_plan
+from question_pipeline.llm import Completer
+from question_pipeline.schema import (
     GenerationRequest,
     PipelineResult,
     TraceEvent,

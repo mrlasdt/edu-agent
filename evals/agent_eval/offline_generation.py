@@ -15,8 +15,8 @@ import json
 import re
 from typing import Any
 
-from services.agent.src.agent.pipeline.graph import rule_based_type
-from services.agent.src.agent.pipeline.schema import QuestionType
+from question_pipeline.graph import rule_based_type
+from question_pipeline.schema import QuestionType
 
 # Index into this by (digits of the request id) % 7.
 FLAW_CYCLE = [None, "wrong_key", "leak", "bad_distractor", "not_json", None, "stubborn"]

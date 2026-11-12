@@ -34,9 +34,9 @@ from evals.agent_eval.results import (
 from evals.agent_eval.runner import ask_yes_no, guarded, rate_of
 from evals.agent_eval.transport import MeteredTransport, gather_limited, tagged
 from evals.human_review_queue import HumanReviewQueue
+from question_pipeline.schema import GenerationRequest, PipelineResult, QuestionItem
+from question_pipeline.tools import run_checks
 from services.agent.src.agent.capabilities.verify_math import VerifyMath
-from services.agent.src.agent.pipeline.schema import GenerationRequest, PipelineResult, QuestionItem
-from services.agent.src.agent.pipeline.tools import run_checks
 
 GEN_JUDGE_INSTRUCTIONS = (
     "Is the keyed answer of the GRE question below correct, and is the question unambiguous "
