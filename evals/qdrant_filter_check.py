@@ -157,7 +157,7 @@ def caller_mask(corpus: Corpus, caller: Caller) -> np.ndarray:
     """
     The set of chunks the caller may see, evaluated in plain numpy so it is
     independent of Qdrant's filter engine. Mirrors the ACL in
-    `corpus.retriever._build_acl_filter`: an empty school grants no school tier.
+    `corpus.retriever.build_acl_filter`: an empty school grants no school tier.
     """
     allowed = corpus.tier == 0
     if caller.school >= 0:
