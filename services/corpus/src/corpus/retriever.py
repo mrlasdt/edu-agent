@@ -15,7 +15,7 @@ RRF_K = 60  # Standard RRF constant
 RRF_TIE_THRESHOLD = 1e-9
 
 
-def _rrf_merge(
+def rrf_merge(
     dense_results: list[dict[str, Any]],
     sparse_results: list[dict[str, Any]],
     k: int = RRF_K,
@@ -46,7 +46,7 @@ def _rrf_merge(
     ]
 
 
-def _tier_tiebreak(
+def tier_tiebreak(
     results: list[dict[str, Any]],
     threshold: float = 0.05,
 ) -> list[dict[str, Any]]:
@@ -75,7 +75,7 @@ def _tier_tiebreak(
     return result
 
 
-def _build_acl_filter(candidate_id: str, school_id: str) -> dict[str, Any]:
+def build_acl_filter(candidate_id: str, school_id: str) -> dict[str, Any]:
     """
     Build a Qdrant payload filter enforcing the three-tier ACL:
       tier=global  OR  (tier=school AND school_id=:s)  OR  (tier=candidate AND candidate_id=:u)
@@ -110,11 +110,11 @@ def build_search_filter(candidate_id: str, school_id: str, test_type: str) -> mo
     Realise the logical filter for a query as a Qdrant models.Filter:
         test_type = :t  AND  (<three-tier ACL>)
 
-    The ACL branch reuses _build_acl_filter (the unit-tested spec), nested under
+    The ACL branch reuses build_acl_filter (the unit-tested spec), nested under
     a top-level `must` alongside the test_type match so a candidate can never
     retrieve another candidate's — or the wrong test's — chunks.
     """
-    acl = _build_acl_filter(candidate_id=candidate_id, school_id=school_id)
+    acl = build_acl_filter(candidate_id=candidate_id, school_id=school_id)
     return models.Filter.model_validate(
         {
             "must": [

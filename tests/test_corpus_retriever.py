@@ -18,9 +18,9 @@ from fastapi.testclient import TestClient
 
 from services.corpus.src.corpus.main import app
 from services.corpus.src.corpus.retriever import (
-    _build_acl_filter,
-    _rrf_merge,
-    _tier_tiebreak,
+    build_acl_filter,
+    rrf_merge,
+    tier_tiebreak,
 )
 
 
@@ -32,7 +32,7 @@ def client():
 # ── 1. RRF merge ──────────────────────────────────────────────────────────────
 
 
-def test_rrf_merge_combines_two_lists():
+def testrrf_merge_combines_two_lists():
     dense = [
         {"id": "a", "score": 0.9, "payload": {"text": "A", "tier": "global"}},
         {"id": "b", "score": 0.8, "payload": {"text": "B", "tier": "global"}},
@@ -41,29 +41,29 @@ def test_rrf_merge_combines_two_lists():
         {"id": "b", "score": 0.95, "payload": {"text": "B", "tier": "global"}},
         {"id": "c", "score": 0.7, "payload": {"text": "C", "tier": "global"}},
     ]
-    merged = _rrf_merge(dense, sparse)
+    merged = rrf_merge(dense, sparse)
     ids = [r["id"] for r in merged]
     # "b" appears in both lists → should rank highest
     assert ids[0] == "b"
 
 
-def test_rrf_merge_unique_ids_only():
+def testrrf_merge_unique_ids_only():
     dense = [{"id": "x", "score": 0.9, "payload": {}}]
     sparse = [{"id": "x", "score": 0.8, "payload": {}}]
-    merged = _rrf_merge(dense, sparse)
+    merged = rrf_merge(dense, sparse)
     assert len(merged) == 1
 
 
-def test_rrf_merge_empty_inputs():
-    assert _rrf_merge([], []) == []
+def testrrf_merge_empty_inputs():
+    assert rrf_merge([], []) == []
 
 
-def test_rrf_merge_single_list():
+def testrrf_merge_single_list():
     dense = [
         {"id": "a", "score": 0.9, "payload": {"text": "A"}},
         {"id": "b", "score": 0.5, "payload": {"text": "B"}},
     ]
-    merged = _rrf_merge(dense, [])
+    merged = rrf_merge(dense, [])
     assert [r["id"] for r in merged] == ["a", "b"]
 
 
@@ -71,7 +71,7 @@ def test_rrf_merge_single_list():
 
 
 def test_acl_filter_includes_global_tier():
-    f = _build_acl_filter(candidate_id="c1", school_id="s1")
+    f = build_acl_filter(candidate_id="c1", school_id="s1")
     conditions = f["should"]
     global_cond = next(
         (c for c in conditions if c.get("key") == "tier" and c["match"]["value"] == "global"),
@@ -81,7 +81,7 @@ def test_acl_filter_includes_global_tier():
 
 
 def test_acl_filter_includes_school_tier_with_school_id():
-    f = _build_acl_filter(candidate_id="c1", school_id="s1")
+    f = build_acl_filter(candidate_id="c1", school_id="s1")
     conditions = f["should"]
     school_cond = next(
         (
@@ -99,7 +99,7 @@ def test_acl_filter_includes_school_tier_with_school_id():
 
 
 def test_acl_filter_includes_candidate_tier_with_candidate_id():
-    f = _build_acl_filter(candidate_id="c1", school_id="s1")
+    f = build_acl_filter(candidate_id="c1", school_id="s1")
     conditions = f["should"]
     cand_cond = next(
         (
@@ -128,7 +128,7 @@ def test_tiebreak_promotes_candidate_over_global_when_close():
         make_result("global-doc", 1.000, "global"),
         make_result("cand-doc", 0.998, "candidate"),  # within 5%
     ]
-    reranked = _tier_tiebreak(results, threshold=0.05)
+    reranked = tier_tiebreak(results, threshold=0.05)
     assert reranked[0]["id"] == "cand-doc"
 
 
@@ -137,7 +137,7 @@ def test_tiebreak_no_swap_when_scores_differ_significantly():
         make_result("global-doc", 1.000, "global"),
         make_result("cand-doc", 0.50, "candidate"),  # >5% gap
     ]
-    reranked = _tier_tiebreak(results, threshold=0.05)
+    reranked = tier_tiebreak(results, threshold=0.05)
     assert reranked[0]["id"] == "global-doc"
 
 
@@ -146,13 +146,13 @@ def test_tiebreak_preserves_order_when_same_tier():
         make_result("doc-a", 1.000, "global"),
         make_result("doc-b", 0.999, "global"),
     ]
-    reranked = _tier_tiebreak(results, threshold=0.05)
+    reranked = tier_tiebreak(results, threshold=0.05)
     assert reranked[0]["id"] == "doc-a"
 
 
 def test_tiebreak_single_result_unchanged():
     results = [make_result("a", 1.0, "global")]
-    assert _tier_tiebreak(results) == results
+    assert tier_tiebreak(results) == results
 
 
 # ── 4. HTTP endpoint ──────────────────────────────────────────────────────────

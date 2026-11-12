@@ -118,7 +118,7 @@ Candidate / Admin     ┌──────────────────�
 
 ### Three-tier corpus
 
-Every retrieval filters by tier: global (admin uploads, visible to all), school (teacher uploads, not yet writable) and candidate (private to its owner). An empty `school_id` or `candidate_id` grants no access to that tier. The filter is `_build_acl_filter` in `services/corpus/src/corpus/retriever.py` and the filter fields carry keyword payload indexes; `tests/test_tenant_isolation.py` checks tenant isolation. Re-ingest a collection created before the indexes existed into a fresh one. `uv run python -m evals.qdrant_filter_check` measures filter recall and latency against a throwaway Qdrant container (needs Docker, no model calls; `--points 20000` for a quick run).
+Every retrieval filters by tier: global (admin uploads, visible to all), school (teacher uploads, not yet writable) and candidate (private to its owner). An empty `school_id` or `candidate_id` grants no access to that tier. The filter is `build_acl_filter` in `services/corpus/src/corpus/retriever.py` and the filter fields carry keyword payload indexes; `tests/test_tenant_isolation.py` checks tenant isolation. Re-ingest a collection created before the indexes existed into a fresh one. `uv run python -m evals.qdrant_filter_check` measures filter recall and latency against a throwaway Qdrant container (needs Docker, no model calls; `--points 20000` for a quick run).
 
 ### Guardrails
 

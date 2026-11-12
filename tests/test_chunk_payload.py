@@ -65,7 +65,7 @@ def test_invalid_tier_rejected():
 # ── 3 & 4. to_chunk_result projection ────────────────────────────────────────
 
 def test_to_chunk_result_includes_citation_fields_and_score():
-    from services.corpus.src.corpus.main import to_chunk_result
+    from services.corpus.src.corpus.search import to_chunk_result
 
     payload = {
         "text": "GRE prep content", "tier": "global", "test_type": "gre",
@@ -83,7 +83,7 @@ def test_to_chunk_result_includes_citation_fields_and_score():
 
 
 def test_to_chunk_result_excludes_acl_ids():
-    from services.corpus.src.corpus.main import to_chunk_result
+    from services.corpus.src.corpus.search import to_chunk_result
 
     payload = {
         "text": "x", "tier": "candidate", "test_type": "gre",
@@ -99,9 +99,9 @@ def test_to_chunk_result_excludes_acl_ids():
 # ── 5. ACL filter rename guard ────────────────────────────────────────────────
 
 def test_acl_filter_keys_are_valid_chunk_payload_fields():
-    from services.corpus.src.corpus.retriever import _build_acl_filter
+    from services.corpus.src.corpus.retriever import build_acl_filter
 
-    f = _build_acl_filter(candidate_id="c1", school_id="s1")
+    f = build_acl_filter(candidate_id="c1", school_id="s1")
     valid_fields = set(ChunkPayload.model_fields.keys())
 
     def collect_keys(node):

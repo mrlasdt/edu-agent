@@ -13,7 +13,7 @@ configurations:
 Each query has a group: `exact` (a GRE term or symbol), `paraphrase` (a student's own words) or
 `off_topic` (no note applies; the right answer is to show nothing). It reports recall@3 and
 MRR@3 for the first two groups, how often an off-topic query still gets a note, and a sweep of
-the relevance floor (`corpus.main.passes_relevance_floor`) showing what each setting costs and
+the relevance floor (`corpus.search.passes_relevance_floor`) showing what each setting costs and
 buys. Run:
 
     uv run python -m evals.retrieval_eval --embedder-url http://localhost:8080
@@ -37,9 +37,9 @@ from pathlib import Path
 from typing import Any
 
 from evals.qdrant_filter_check import start_qdrant, stop_qdrant
-from services.corpus.src.corpus.main import passes_relevance_floor, search_candidates
+from services.corpus.src.corpus.search import passes_relevance_floor, search_candidates
 from services.corpus.src.corpus.settings import CorpusSettings
-from services.ingestion.src.ingestion import main as ingestion
+from services.ingestion.src.ingestion import pipeline as ingestion
 from services.ingestion.src.ingestion.settings import get_settings as get_ingestion_settings
 from shared.src.shared.config import anchor
 from shared.src.shared.stats import percentile

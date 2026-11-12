@@ -15,8 +15,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from services.corpus.src.corpus.main import (
-    RetrieveRequest,
+from services.corpus.src.corpus.main import RetrieveRequest
+from services.corpus.src.corpus.search import (
     passes_relevance_floor,
     search_candidates,
     search_corpus,
@@ -66,15 +66,15 @@ async def _search(settings, client, *, floor, top_k=3, reranker=None):
     """`reranker` is the scores the fake cross-encoder returns, or an exception it raises."""
     failing = isinstance(reranker, Exception)
     with (
-        patch("services.corpus.src.corpus.main.get_settings", return_value=settings),
-        patch("services.corpus.src.corpus.main.get_qdrant_client", return_value=client),
+        patch("services.corpus.src.corpus.search.get_settings", return_value=settings),
+        patch("services.corpus.src.corpus.search.get_qdrant_client", return_value=client),
         patch(
-            "services.corpus.src.corpus.main.embed_query",
+            "services.corpus.src.corpus.search.embed_query",
             new_callable=AsyncMock,
             return_value=[0.1],
         ),
         patch(
-            "services.corpus.src.corpus.main.rerank_texts",
+            "services.corpus.src.corpus.search.rerank_texts",
             new_callable=AsyncMock,
             side_effect=reranker if failing else None,
             return_value=None if failing else reranker,
@@ -177,16 +177,16 @@ async def test_the_injected_settings_decide_the_reranker_url():
     rerank = AsyncMock(return_value=[0.2, 0.9])
     with (
         patch(
-            "services.corpus.src.corpus.main.get_settings",
+            "services.corpus.src.corpus.search.get_settings",
             return_value=_settings(tei_reranker_url=""),
         ),
-        patch("services.corpus.src.corpus.main.get_qdrant_client", return_value=client),
+        patch("services.corpus.src.corpus.search.get_qdrant_client", return_value=client),
         patch(
-            "services.corpus.src.corpus.main.embed_query",
+            "services.corpus.src.corpus.search.embed_query",
             new_callable=AsyncMock,
             return_value=[0.1],
         ),
-        patch("services.corpus.src.corpus.main.rerank_texts", rerank),
+        patch("services.corpus.src.corpus.search.rerank_texts", rerank),
     ):
         ranked = await search_candidates(
             "q", "c1", "s1", "gre", 3, settings=_settings(tei_reranker_url=RERANKER_URL)
