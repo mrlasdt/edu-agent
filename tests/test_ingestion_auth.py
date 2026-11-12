@@ -23,7 +23,7 @@ from services.ingestion.src.ingestion.settings import get_settings
 from shared.src.shared.config import ADMIN_KEY_HEADER
 
 KEY = "correct-horse-battery-staple"
-PIPELINE = "services.ingestion.src.ingestion.main.run_ingestion_pipeline"
+PIPELINE = "services.ingestion.src.ingestion.pipeline.run_ingestion_pipeline"
 
 
 @pytest.fixture

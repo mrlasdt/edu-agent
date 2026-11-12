@@ -24,10 +24,11 @@ import pytest
 from qdrant_client import models
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 
-from services.corpus.src.corpus.main import app, lifespan, search_corpus
+from services.corpus.src.corpus.main import app, lifespan
 from services.corpus.src.corpus.retriever import build_search_filter
+from services.corpus.src.corpus.search import search_corpus
 from services.corpus.src.corpus.settings import CorpusSettings
-from services.ingestion.src.ingestion.main import chunk_point_id, run_ingestion_pipeline
+from services.ingestion.src.ingestion.pipeline import chunk_point_id, run_ingestion_pipeline
 from shared.src.shared.vectorstore import CollectionSchemaError, ensure_collection
 
 # ── 1. filter builder ─────────────────────────────────────────────────────────
@@ -62,9 +63,9 @@ def _settings(hybrid: bool) -> CorpusSettings:
     return CorpusSettings(hybrid_retrieval_enabled=hybrid)
 
 
-@patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(False))
-@patch("services.corpus.src.corpus.main.get_qdrant_client")
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.get_settings", return_value=_settings(False))
+@patch("services.corpus.src.corpus.search.get_qdrant_client")
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_search_corpus_projects_and_strips_acl_ids(mock_embed, mock_factory, _settings):
     mock_embed.return_value = [0.1, 0.2, 0.3, 0.4]
     client = AsyncMock()
@@ -114,9 +115,9 @@ def _payload(text, tier="global"):
     }
 
 
-@patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(True))
-@patch("services.corpus.src.corpus.main.get_qdrant_client")
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.get_settings", return_value=_settings(True))
+@patch("services.corpus.src.corpus.search.get_qdrant_client")
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_search_corpus_hybrid_fuses_dense_and_sparse_with_same_acl_filter(
     mock_embed, mock_factory, _settings
 ):
@@ -159,9 +160,9 @@ def _hybrid_client(dense_points, sparse_points):
     return client
 
 
-@patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(True))
-@patch("services.corpus.src.corpus.main.get_qdrant_client")
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.get_settings", return_value=_settings(True))
+@patch("services.corpus.src.corpus.search.get_qdrant_client")
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_search_corpus_hybrid_does_not_demote_higher_ranked_chunk_by_tier(
     mock_embed, mock_factory, _settings
 ):
@@ -177,9 +178,9 @@ async def test_search_corpus_hybrid_does_not_demote_higher_ranked_chunk_by_tier(
     assert [r["text"] for r in out] == ["G", "K"]
 
 
-@patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(True))
-@patch("services.corpus.src.corpus.main.get_qdrant_client")
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.get_settings", return_value=_settings(True))
+@patch("services.corpus.src.corpus.search.get_qdrant_client")
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_search_corpus_hybrid_tier_breaks_exact_rrf_ties(mock_embed, mock_factory, _settings):
     mock_embed.return_value = [0.1]
     # Ranks swapped between channels give identical RRF scores; candidate tier wins.
@@ -193,9 +194,9 @@ async def test_search_corpus_hybrid_tier_breaks_exact_rrf_ties(mock_embed, mock_
     assert [r["text"] for r in out] == ["K", "G"]
 
 
-@patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(True))
-@patch("services.corpus.src.corpus.main.get_qdrant_client")
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.get_settings", return_value=_settings(True))
+@patch("services.corpus.src.corpus.search.get_qdrant_client")
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_search_corpus_hybrid_falls_back_to_dense_when_sparse_fails(
     mock_embed, mock_factory, _settings
 ):
@@ -221,9 +222,9 @@ async def test_search_corpus_hybrid_falls_back_to_dense_when_sparse_fails(
 @pytest.mark.parametrize("hybrid", [True, False])
 async def test_search_corpus_propagates_schema_rejection_instead_of_empty(hybrid):
     with (
-        patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(hybrid)),
-        patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock) as embed,
-        patch("services.corpus.src.corpus.main.get_qdrant_client") as factory,
+        patch("services.corpus.src.corpus.search.get_settings", return_value=_settings(hybrid)),
+        patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock) as embed,
+        patch("services.corpus.src.corpus.search.get_qdrant_client") as factory,
     ):
         embed.return_value = [0.1]
         client = AsyncMock()
@@ -245,8 +246,8 @@ async def test_search_corpus_propagates_schema_rejection_instead_of_empty(hybrid
         ResponseHandlingException(httpx.ConnectError("down")),
     ],
 )
-@patch("services.corpus.src.corpus.main.get_qdrant_client")
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.get_qdrant_client")
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_search_corpus_degrades_on_transient_qdrant_failure(mock_embed, mock_factory, error):
     mock_embed.return_value = [0.1]
     client = AsyncMock()
@@ -258,17 +259,17 @@ async def test_search_corpus_degrades_on_transient_qdrant_failure(mock_embed, mo
 
 
 @pytest.mark.parametrize("error", [ValueError("bad json"), KeyError("embeddings")])
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_search_corpus_degrades_on_malformed_embedder_response(mock_embed, error):
     mock_embed.side_effect = error
     assert await search_corpus("q", "c1", "s1", "gre") == []
 
 
 @pytest.mark.parametrize("error", [ValueError("bad input"), KeyError("k")])
-@patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(True))
-@patch("services.corpus.src.corpus.main.encode_query")
-@patch("services.corpus.src.corpus.main.get_qdrant_client")
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.get_settings", return_value=_settings(True))
+@patch("services.corpus.src.corpus.search.encode_query")
+@patch("services.corpus.src.corpus.search.get_qdrant_client")
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_search_corpus_propagates_value_and_key_errors_after_embedding(
     mock_embed, mock_factory, mock_encode, _settings, error
 ):
@@ -293,9 +294,9 @@ async def test_corpus_startup_does_not_swallow_value_errors(mock_factory):
             pass
 
 
-@patch("services.corpus.src.corpus.main.get_settings", return_value=_settings(False))
-@patch("services.corpus.src.corpus.main.get_qdrant_client")
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.get_settings", return_value=_settings(False))
+@patch("services.corpus.src.corpus.search.get_qdrant_client")
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_search_corpus_dense_only_when_hybrid_disabled(mock_embed, mock_factory, _settings):
     mock_embed.return_value = [0.1]
     client = AsyncMock()
@@ -313,8 +314,8 @@ async def test_search_corpus_dense_only_when_hybrid_disabled(mock_embed, mock_fa
 # ── 3. graceful degradation ───────────────────────────────────────────────────
 
 
-@patch("services.corpus.src.corpus.main.get_qdrant_client")
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.get_qdrant_client")
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_search_corpus_empty_when_collection_missing(mock_embed, mock_factory):
     mock_embed.return_value = [0.1, 0.2]
     client = AsyncMock()
@@ -324,7 +325,7 @@ async def test_search_corpus_empty_when_collection_missing(mock_embed, mock_fact
     client.query_points.assert_not_awaited()
 
 
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_search_corpus_degrades_on_embedder_failure(mock_embed):
     mock_embed.side_effect = httpx.ConnectError("tei down")
     assert await search_corpus("q", "c1", "s1", "gre") == []
@@ -333,9 +334,9 @@ async def test_search_corpus_degrades_on_embedder_failure(mock_embed):
 # ── 4 & 5. ingestion pipeline ─────────────────────────────────────────────────
 
 
-@patch("services.ingestion.src.ingestion.main.get_qdrant_client")
-@patch("services.ingestion.src.ingestion.main.ensure_collection", new_callable=AsyncMock)
-@patch("services.ingestion.src.ingestion.main.embed_texts", new_callable=AsyncMock)
+@patch("services.ingestion.src.ingestion.pipeline.get_qdrant_client")
+@patch("services.ingestion.src.ingestion.pipeline.ensure_collection", new_callable=AsyncMock)
+@patch("services.ingestion.src.ingestion.pipeline.embed_texts", new_callable=AsyncMock)
 async def test_run_ingestion_pipeline_upserts_one_point_per_chunk(
     mock_embed, mock_ensure, mock_factory
 ):
@@ -364,7 +365,7 @@ async def test_run_ingestion_pipeline_upserts_one_point_per_chunk(
         assert isinstance(p.vector["sparse"], models.SparseVector)
 
 
-@patch("services.ingestion.src.ingestion.main.embed_texts", new_callable=AsyncMock)
+@patch("services.ingestion.src.ingestion.pipeline.embed_texts", new_callable=AsyncMock)
 async def test_run_ingestion_pipeline_empty_short_circuits(mock_embed):
     assert await run_ingestion_pipeline([], {}) == {"chunks_indexed": 0}
     mock_embed.assert_not_awaited()

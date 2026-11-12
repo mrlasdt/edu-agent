@@ -20,7 +20,7 @@ import httpx
 import pytest
 import respx
 
-from services.corpus.src.corpus.main import search_corpus
+from services.corpus.src.corpus.search import search_corpus
 from services.corpus.src.corpus.settings import CorpusSettings
 from shared.src.shared.reranker import rerank_texts
 
@@ -76,10 +76,10 @@ def _abc_client():
     )
 
 
-@patch("services.corpus.src.corpus.main.rerank_texts", new_callable=AsyncMock)
-@patch("services.corpus.src.corpus.main.get_settings")
-@patch("services.corpus.src.corpus.main.get_qdrant_client")
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.rerank_texts", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.get_settings")
+@patch("services.corpus.src.corpus.search.get_qdrant_client")
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_rerank_reorders_fused_candidates(mock_embed, mock_factory, mock_settings, mock_rr):
     mock_embed.return_value = [0.1]
     mock_settings.return_value = _settings()
@@ -97,10 +97,10 @@ async def test_rerank_reorders_fused_candidates(mock_embed, mock_factory, mock_s
     assert "school_id" not in out[0]
 
 
-@patch("services.corpus.src.corpus.main.rerank_texts", new_callable=AsyncMock)
-@patch("services.corpus.src.corpus.main.get_settings")
-@patch("services.corpus.src.corpus.main.get_qdrant_client")
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.rerank_texts", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.get_settings")
+@patch("services.corpus.src.corpus.search.get_qdrant_client")
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_rerank_only_sends_top_candidates(mock_embed, mock_factory, mock_settings, mock_rr):
     mock_embed.return_value = [0.1]
     mock_settings.return_value = _settings()
@@ -114,10 +114,10 @@ async def test_rerank_only_sends_top_candidates(mock_embed, mock_factory, mock_s
     assert [r["text"] for r in out] == ["T19", "T18"]
 
 
-@patch("services.corpus.src.corpus.main.rerank_texts", new_callable=AsyncMock)
-@patch("services.corpus.src.corpus.main.get_settings")
-@patch("services.corpus.src.corpus.main.get_qdrant_client")
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.rerank_texts", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.get_settings")
+@patch("services.corpus.src.corpus.search.get_qdrant_client")
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_rerank_candidates_never_below_top_k(
     mock_embed, mock_factory, mock_settings, mock_rr
 ):
@@ -141,10 +141,10 @@ async def test_rerank_candidates_never_below_top_k(
         KeyError("score"),
     ],
 )
-@patch("services.corpus.src.corpus.main.rerank_texts", new_callable=AsyncMock)
-@patch("services.corpus.src.corpus.main.get_settings")
-@patch("services.corpus.src.corpus.main.get_qdrant_client")
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.rerank_texts", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.get_settings")
+@patch("services.corpus.src.corpus.search.get_qdrant_client")
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_rerank_fails_open_to_rrf_order(
     mock_embed, mock_factory, mock_settings, mock_rr, error, caplog
 ):
@@ -160,10 +160,10 @@ async def test_rerank_fails_open_to_rrf_order(
     assert any("rerank" in r.message and r.levelno == logging.WARNING for r in caplog.records)
 
 
-@patch("services.corpus.src.corpus.main.rerank_texts", new_callable=AsyncMock)
-@patch("services.corpus.src.corpus.main.get_settings")
-@patch("services.corpus.src.corpus.main.get_qdrant_client")
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.rerank_texts", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.get_settings")
+@patch("services.corpus.src.corpus.search.get_qdrant_client")
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_rerank_fails_open_on_wrong_score_count(
     mock_embed, mock_factory, mock_settings, mock_rr
 ):
@@ -177,10 +177,10 @@ async def test_rerank_fails_open_on_wrong_score_count(
     assert [r["text"] for r in out] == ["B", "A", "C"]
 
 
-@patch("services.corpus.src.corpus.main.rerank_texts", new_callable=AsyncMock)
-@patch("services.corpus.src.corpus.main.get_settings")
-@patch("services.corpus.src.corpus.main.get_qdrant_client")
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.rerank_texts", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.get_settings")
+@patch("services.corpus.src.corpus.search.get_qdrant_client")
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_rerank_skipped_without_reranker_url(
     mock_embed, mock_factory, mock_settings, mock_rr
 ):
@@ -194,10 +194,10 @@ async def test_rerank_skipped_without_reranker_url(
     assert [r["text"] for r in out] == ["B", "A", "C"]
 
 
-@patch("services.corpus.src.corpus.main.rerank_texts", new_callable=AsyncMock)
-@patch("services.corpus.src.corpus.main.get_settings")
-@patch("services.corpus.src.corpus.main.get_qdrant_client")
-@patch("services.corpus.src.corpus.main.embed_query", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.rerank_texts", new_callable=AsyncMock)
+@patch("services.corpus.src.corpus.search.get_settings")
+@patch("services.corpus.src.corpus.search.get_qdrant_client")
+@patch("services.corpus.src.corpus.search.embed_query", new_callable=AsyncMock)
 async def test_rerank_exact_ties_prefer_more_specific_tier(
     mock_embed, mock_factory, mock_settings, mock_rr
 ):
