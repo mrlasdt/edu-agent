@@ -106,7 +106,7 @@ Candidate / Admin     ┌──────────────────�
 | Service | Port | Role |
 |---|---|---|
 | `web` | 5173 | React app behind nginx. `/` is the tutor chat, `/ielts-mock` the IELTS Writing mock; the report page links to the coach |
-| `gateway` | 8000 | `POST /chat`, `POST /feedback`, the `/ielts/*` mock API (grader code in `shared/src/shared/ielts/`), orchestrator, guardrails, rate limit |
+| `gateway` | 8000 | `POST /chat`, `POST /feedback`, the `/ielts/*` mock API (grader code in `services/gateway/src/gateway/ielts/`), orchestrator, guardrails, rate limit |
 | `corpus` | 8001 | `POST /corpus/retrieve`: Qdrant dense + sparse search fused with RRF, ACL filter, optional rerank |
 | `agent` | 8002 | `POST /generate`: Quant, AW and IELTS Writing coach agents, capabilities, tools, critics |
 | `ingestion` | 8003 | `/admin/documents` (admin key): parse, chunk, embed, index |
@@ -178,7 +178,7 @@ Retrieval has its own eval, `uv run python -m evals retrieval --embedder-url htt
 
 ### Golden sets for IELTS and SAT
 
-`evals/exam_set/` builds exam items (ADR-0013). Every item has a label tier (`examiner`, `teacher_graded`, `captain_blind`, `site_or_model_weak`, `solver`, `author_key`) and every metric is reported against a tier and a sample size. Committed items are original: `sat_math.jsonl` and `ielts_reading.jsonl` in `evals/golden/`, and `ielts_writing_prompts.jsonl`, which the product serves and so keeps under `shared/src/shared/ielts/data/` (evals reads it there). Third-party data is imported only into the gitignored `evals/golden/local/`:
+`evals/exam_set/` builds exam items (ADR-0013). Every item has a label tier (`examiner`, `teacher_graded`, `captain_blind`, `site_or_model_weak`, `solver`, `author_key`) and every metric is reported against a tier and a sample size. Committed items are original: `sat_math.jsonl` and `ielts_reading.jsonl` in `evals/golden/`, and `ielts_writing_prompts.jsonl`, which the product serves and so keeps under `services/gateway/src/gateway/ielts/data/` (evals reads it there). Third-party data is imported only into the gitignored `evals/golden/local/`:
 
 ```bash
 uv run python -m evals exam-set generate-sat      # also generate-reading, generate-writing: rebuild the committed sets

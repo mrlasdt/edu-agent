@@ -18,7 +18,7 @@ _NO_REPORT = (
 
 def _report_block(digest: str) -> str:
     """The digest as the last block of the learner's message. It is delimited data (see
-    shared/ielts/digest.py), so it is never part of the system prompt."""
+    gateway/ielts/digest.py), so it is never part of the system prompt."""
     return f"\n\n{digest}" if digest else ""
 
 

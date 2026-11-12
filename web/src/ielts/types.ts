@@ -1,4 +1,4 @@
-// Mirrors shared/src/shared/ielts/models.py and services/gateway/.../ielts_api.py.
+// Mirrors services/gateway/src/gateway/ielts/models.py and services/gateway/.../ielts_api.py.
 
 export interface Budget {
   cap_usd: number;

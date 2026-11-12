@@ -12,6 +12,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from services.gateway.src.gateway import ielts_api
+from services.gateway.src.gateway.ielts import llm
+from services.gateway.src.gateway.ielts.checks import words
 from services.gateway.src.gateway.ielts_store import (
     ALLOWED_S,
     GRACE_S,
@@ -22,8 +24,6 @@ from services.gateway.src.gateway.ielts_store import (
 from services.gateway.src.gateway.limits import ielts_limiter
 from services.gateway.src.gateway.main import app
 from shared.src.shared.budget import Ledger
-from shared.src.shared.ielts import llm
-from shared.src.shared.ielts.checks import words
 from tests.test_ielts_marking import ESSAY, Scripted, feedback_reply, grade_reply
 
 

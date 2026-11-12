@@ -37,7 +37,7 @@ from evals.exam_set.schema import (
     LabelTier,
     Source,
 )
-from shared.src.shared.ielts.scoring import round_overall
+from services.gateway.src.gateway.ielts.scoring import round_overall
 from shared.src.shared.stats import to_half_band
 
 SOURCE_ID = "ieltsbuddy_essays"

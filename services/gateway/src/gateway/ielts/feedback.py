@@ -12,20 +12,20 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from shared.src.shared.ielts import llm
-from shared.src.shared.ielts.checks import paragraph_spans
-from shared.src.shared.ielts.models import (
+from services.gateway.src.gateway.ielts import llm
+from services.gateway.src.gateway.ielts.checks import paragraph_spans
+from services.gateway.src.gateway.ielts.models import (
     Action,
     ErrorSpan,
     Evidence,
     ParagraphRole,
 )
-from shared.src.shared.ielts.scoring import (
+from services.gateway.src.gateway.ielts.scoring import (
     CRITERIA,
     GradeParseError,
     extract_json,
 )
-from shared.src.shared.ielts.spelling_variants import VARIANT_PAIRS
+from services.gateway.src.gateway.ielts.spelling_variants import VARIANT_PAIRS
 from shared.src.shared.prompts import read_prompt
 
 FEEDBACK_MAX_TOKENS = 6000  # a cap, not a target

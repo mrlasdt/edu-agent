@@ -1,14 +1,14 @@
 """Mechanical checks on a finished report: no model needed, so they run in CI and on live output."""
 from __future__ import annotations
 
-from shared.src.shared.ielts.checks import paragraph_spans
-from shared.src.shared.ielts.feedback import (
+from services.gateway.src.gateway.ielts.checks import paragraph_spans
+from services.gateway.src.gateway.ielts.feedback import (
     MAX_QUOTE_WORDS,
     is_bare_number,
     within_paragraph,
 )
-from shared.src.shared.ielts.models import DISCLAIMER, Report
-from shared.src.shared.ielts.scoring import CRITERIA, round_overall
+from services.gateway.src.gateway.ielts.models import DISCLAIMER, Report
+from services.gateway.src.gateway.ielts.scoring import CRITERIA, round_overall
 
 
 def _in_paragraph(paragraphs: list[tuple[int, int]], number: int, start: int, end: int) -> bool:

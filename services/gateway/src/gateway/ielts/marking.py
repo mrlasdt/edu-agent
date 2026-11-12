@@ -11,17 +11,16 @@ from collections import Counter
 from collections.abc import Mapping
 from typing import Any
 
-from shared.src.shared.budget import BudgetExceededError
-from shared.src.shared.ielts import llm
-from shared.src.shared.ielts.checks import check_essay
-from shared.src.shared.ielts.feedback import Feedback, generate_feedback
-from shared.src.shared.ielts.gate import load_calibration
-from shared.src.shared.ielts.grading import (
+from services.gateway.src.gateway.ielts import llm
+from services.gateway.src.gateway.ielts.checks import check_essay
+from services.gateway.src.gateway.ielts.feedback import Feedback, generate_feedback
+from services.gateway.src.gateway.ielts.gate import load_calibration
+from services.gateway.src.gateway.ielts.grading import (
     EssayNotMarkableError,
     GradeOutcome,
     grade_essay,
 )
-from shared.src.shared.ielts.models import (
+from services.gateway.src.gateway.ielts.models import (
     Calibration,
     CriterionReport,
     ErrorSpan,
@@ -34,7 +33,8 @@ from shared.src.shared.ielts.models import (
     TaskCheck,
     Timing,
 )
-from shared.src.shared.ielts.scoring import CRITERIA, CRITERION_NAMES, MAX_ESTIMATED_BAND
+from services.gateway.src.gateway.ielts.scoring import CRITERIA, CRITERION_NAMES, MAX_ESTIMATED_BAND
+from shared.src.shared.budget import BudgetExceededError
 
 LOW_CONFIDENCE_FLAGS = frozenset(
     {"possibly_off_topic", "copies_prompt", "addressed_to_marker", "repetitive_text"}

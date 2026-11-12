@@ -2,13 +2,13 @@
 import pytest
 
 from evals.exam_set import ielts_writing_adversarial as adversarial
-from shared.src.shared.ielts.checks import (
+from services.gateway.src.gateway.ielts.checks import (
     check_essay,
     paragraph_spans,
     prompt_copy_share,
     prompt_overlap,
 )
-from shared.src.shared.ielts.scoring import (
+from services.gateway.src.gateway.ielts.scoring import (
     GradeParseError,
     median_band,
     parse_sample,

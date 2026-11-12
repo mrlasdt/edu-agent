@@ -35,7 +35,7 @@ class Session(BaseModel):
     history: list[Message] = Field(default_factory=list)
     personal_style_enabled: bool = False
     # What the gateway resolved for this turn and the agent cannot look up itself: the IELTS
-    # Writing coach's digest of the learner's graded report (shared/ielts/digest.py). Empty for
+    # Writing coach's digest of the learner's graded report (gateway/ielts/digest.py). Empty for
     # the GRE agents.
     report_digest: str = ""
 

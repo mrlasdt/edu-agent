@@ -37,12 +37,12 @@ from litellm.types.utils import (
 )
 
 from evals.agent_eval.cache import ResponseCache, cache_key
-from shared.src.shared.budget import BudgetExceededError, Ledger, estimate_tokens
-from shared.src.shared.guarded_completion import (
+from services.gateway.src.gateway.guarded_completion import (
     failure_reason,
     guarded_acompletion,
     prompt_text,
 )
+from shared.src.shared.budget import BudgetExceededError, Ledger, estimate_tokens
 from shared.src.shared.llm_router import (
     EVAL_POLICY,
     Completions,

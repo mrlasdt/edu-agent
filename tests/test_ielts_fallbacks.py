@@ -10,10 +10,10 @@ from pathlib import Path
 
 import pytest
 
+from services.gateway.src.gateway.ielts import llm
+from services.gateway.src.gateway.ielts.llm import LiteLLMCompleter, ModelUnavailableError
 from shared.src.shared.budget import Ledger
 from shared.src.shared.config import LlmSettings, load_model_config
-from shared.src.shared.ielts import llm
-from shared.src.shared.ielts.llm import LiteLLMCompleter, ModelUnavailableError
 from shared.src.shared.llm_router import build_router, configured_chain
 from tests.llm_fakes import FAST, SERVER_ERROR, calls, mock_router
 

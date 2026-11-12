@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import hashlib
 
-from shared.src.shared.ielts.models import CriterionReport, Report
+from services.gateway.src.gateway.ielts.models import CriterionReport, Report
 from shared.src.shared.wire import MAX_REPORT_DIGEST_CHARS
 
 # About 1.5k tokens of body; the markers and the heading add a few dozen characters.

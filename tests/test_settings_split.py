@@ -117,7 +117,7 @@ def test_agent_prompts_load_from_another_working_directory(tmp_path, monkeypatch
 
 
 def test_ielts_calibration_is_read_from_another_working_directory(tmp_path, monkeypatch):
-    from shared.src.shared.ielts import gate
+    from services.gateway.src.gateway.ielts import gate
 
     committed = gate.load_calibration(REPO_ROOT / "config" / "ielts_calibration.json")
     monkeypatch.chdir(tmp_path)

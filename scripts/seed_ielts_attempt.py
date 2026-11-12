@@ -12,10 +12,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from services.gateway.src.gateway.ielts_store import ALLOWED_S, Attempt, AttemptStore
-from services.gateway.src.gateway.settings import get_settings
-from shared.src.shared.ielts.checks import words
-from shared.src.shared.ielts.models import (
+from services.gateway.src.gateway.ielts.checks import words
+from services.gateway.src.gateway.ielts.models import (
     Action,
     Calibration,
     CriterionReport,
@@ -27,7 +25,9 @@ from shared.src.shared.ielts.models import (
     TaskCheck,
     Timing,
 )
-from shared.src.shared.ielts.scoring import CRITERION_NAMES
+from services.gateway.src.gateway.ielts.scoring import CRITERION_NAMES
+from services.gateway.src.gateway.ielts_store import ALLOWED_S, Attempt, AttemptStore
+from services.gateway.src.gateway.settings import get_settings
 
 PROMPT_ID = "seed-1"
 PROMPT = (

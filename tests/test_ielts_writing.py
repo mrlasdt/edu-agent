@@ -29,9 +29,9 @@ from evals.exam_set.schema import (
 )
 from evals.judges.typed import JudgeError
 from evals.loader import load_exam_items
+from services.gateway.src.gateway.ielts.grading import grade_request
+from services.gateway.src.gateway.ielts.scoring import GradeParseError
 from shared.src.shared.budget import Ledger
-from shared.src.shared.ielts.grading import grade_request
-from shared.src.shared.ielts.scoring import GradeParseError
 from tests.llm_fakes import ScriptedRouter
 from tests.test_ielts_marking import ESSAY, PROMPT
 

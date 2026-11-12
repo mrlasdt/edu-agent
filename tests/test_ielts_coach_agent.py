@@ -9,7 +9,7 @@ import pytest
 
 from scripts.seed_ielts_attempt import ESSAY, PROMPT, build_report
 from services.agent.src.agent.agents.ielts_writing import IeltsWritingAgent
-from shared.src.shared.ielts.digest import build_digest
+from services.gateway.src.gateway.ielts.digest import build_digest
 from shared.src.shared.models import Session
 from shared.src.shared.prompts import read_prompt
 from tests.agent_events import reply_of
