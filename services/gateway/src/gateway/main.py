@@ -41,7 +41,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # build the orchestrator and the limiters now, so a broken one fails the start, not the
     # first request
     app.dependency_overrides.get(get_orchestrator, get_orchestrator)()
-    app.dependency_overrides.get(get_rate_limiter, get_rate_limiter)()
+    app.dependency_overrides.get(chat_limiter, chat_limiter)()
     ielts_limiter()
     feedback_limiter()
     yield
@@ -73,11 +73,6 @@ def get_orchestrator() -> Orchestrator:
     return Orchestrator()
 
 
-def get_rate_limiter() -> RateLimiter:
-    """The /chat limiter (see `limits`); a name here so tests override it on this module."""
-    return chat_limiter()
-
-
 # Response header carrying the turn's trace id, so the browser can attach feedback to it.
 TRACE_ID_HEADER = "X-Trace-Id"
 
@@ -90,7 +85,7 @@ async def health() -> dict[str, str]:
 @app.post("/chat")
 async def chat(
     req: ChatRequest,
-    limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
+    limiter: Annotated[RateLimiter, Depends(chat_limiter)],
     orchestrator: Annotated[Orchestrator, Depends(get_orchestrator)],
     agent: Annotated[AgentClient, Depends(get_agent_client)],
 ) -> StreamingResponse:
