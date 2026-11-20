@@ -14,6 +14,12 @@ What it covers today, by exam:
 
 Only `gre/quant`, `gre/aw` and `ielts/writing` are registered agents (`services/agent/src/agent/bootstrap.py`, with the pair list in `shared/src/shared/catalog.py`); any other `test_type` and `section` sent to `/chat` gets a "not set up yet" reply.
 
+## Goals and scope
+
+- **Product goal:** full IELTS mock tests that end in a band score and detailed feedback.
+- **Engineering notes:** the repo doubles as agentic-engineering notes. Every step records its rationale, the trade-offs and the industry landscape (what existing libraries or products already do), in `docs/design-log/` and `docs/adr/`.
+- **Scope:** only the EduAgent system lives here. Showcase and interview material live in a separate private repo.
+
 ## Quickstart
 
 Prerequisites: Python 3.12+, `uv`, Node 20.19+, Docker (running).
