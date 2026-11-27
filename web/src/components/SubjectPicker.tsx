@@ -18,9 +18,14 @@ export function SubjectPicker({ onSelect }: Props) {
         <button onClick={() => onSelect("ielts_writing")} aria-label="IELTS Writing">
           IELTS Writing
         </button>
+        <button onClick={() => onSelect("ielts_reading")} aria-label="IELTS Reading">
+          IELTS Reading
+        </button>
       </div>
       <p className="subject-other">
-        IELTS Writing coaches you from a marked mock. <a href="/ielts-mock">Take an IELTS Writing mock</a>
+        The IELTS coaches work from a marked mock. <a href="/ielts-mock">Take an IELTS Writing mock</a>
+        {" or "}
+        <a href="/ielts-mock?module=reading">an IELTS Reading mock</a>
       </p>
     </div>
   );

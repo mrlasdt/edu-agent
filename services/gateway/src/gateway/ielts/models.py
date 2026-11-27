@@ -121,3 +121,49 @@ class Report(BaseModel):
     ungraded_reason: str | None = None
     prompt_versions: ModelInfo | None = None
     disclaimer: str = DISCLAIMER
+
+
+class QuestionResult(BaseModel):
+    """One Reading question as marked: what was asked, answered, and the sentence behind the key."""
+
+    number: int
+    id: str
+    passage: str  # the passage title
+    task_type: str
+    task_label: str
+    prompt: str
+    paragraph: int | None = None
+    answer: str  # as the learner gave it ("" when left blank)
+    answer_label: str
+    key: str
+    key_label: str
+    correct: bool
+    evidence: str
+
+
+class TypeScore(BaseModel):
+    task_type: str
+    label: str
+    correct: int
+    total: int
+
+
+class ReadingReport(BaseModel):
+    """Marked in code from the stored answers. Carries everything the coach digest needs."""
+
+    status: Literal["graded"] = "graded"
+    module: Literal["ielts_reading"] = "ielts_reading"
+    set_id: str
+    raw: int
+    total: int
+    scaled_40: int  # raw scaled to the 40-mark band table
+    band: float
+    timing: Timing
+    by_type: list[TypeScore]
+    questions: list[QuestionResult]
+    band_note: str
+    set_note: str
+    keys_note: str
+    band_source_url: str
+    timing_source_url: str
+    disclaimer: str = DISCLAIMER

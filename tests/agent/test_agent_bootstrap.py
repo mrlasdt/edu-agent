@@ -38,7 +38,7 @@ def test_registry_binds_exactly_the_catalog_pairs():
         registry.get(test_type, section)  # raises AgentNotRegisteredError if it is not bound
     with pytest.raises(AgentNotRegisteredError):
         registry.get("gre", "verbal")
-    assert len(SUPPORTED_PAIRS) == 3
+    assert len(SUPPORTED_PAIRS) == 4
 
 
 def test_registry_refuses_to_start_when_it_drifts_from_the_catalog(monkeypatch):

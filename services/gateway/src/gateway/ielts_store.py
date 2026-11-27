@@ -17,7 +17,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 MODULE_WRITING_T2 = "ielts_writing_t2"
-ALLOWED_S = 40 * 60
+MODULE_READING = "ielts_reading"
+ALLOWED_S = 40 * 60  # Writing Task 2
+READING_ALLOWED_S = 60 * 60  # General Training Reading (source in ielts/reading.py)
+ALLOWED_S_BY_MODULE = {MODULE_WRITING_T2: ALLOWED_S, MODULE_READING: READING_ALLOWED_S}
 GRACE_S = 30  # network and clock slack before a submission counts as late
 DRAFT_MAX_CHARS = 20_000
 
@@ -148,7 +151,7 @@ class AttemptStore:
             db.execute(
                 "UPDATE attempts SET status = 'in_progress', started_at = ?, deadline_at = ? "
                 "WHERE id = ? AND status = 'created'",
-                (now, now + ALLOWED_S, attempt_id),
+                (now, now + ALLOWED_S_BY_MODULE[attempt.module], attempt_id),
             )
         return self.get(attempt_id)
 

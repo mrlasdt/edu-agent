@@ -34,4 +34,15 @@ describe("SubjectPicker", () => {
       "/ielts-mock"
     );
   });
+
+  it("offers IELTS Reading, with a link to its mock", async () => {
+    const onSelect = vi.fn();
+    render(<SubjectPicker onSelect={onSelect} />);
+    await userEvent.click(screen.getByRole("button", { name: "IELTS Reading" }));
+    expect(onSelect).toHaveBeenCalledWith("ielts_reading");
+    expect(screen.getByRole("link", { name: /ielts reading mock/i })).toHaveAttribute(
+      "href",
+      "/ielts-mock?module=reading"
+    );
+  });
 });

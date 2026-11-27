@@ -27,6 +27,9 @@ aw_agent:
 # IELTS Writing coach in /chat: tutor only (prompts/ielts_coach/tutor/<version>.md)
 ielts_coach:
   tutor: v2  # v1 plus: the mark_revision tool re-marks a pasted revised essay (practice, unsaved)
+# IELTS Reading coach in /chat: tutor only, no tools (prompts/ielts_reading_coach/tutor/<version>.md)
+ielts_reading_coach:
+  tutor: v1
 # IELTS mock (prompts/<agent>/writing_t2/<version>.md)
 ielts_grader:
   writing_t2: v1

@@ -10,6 +10,7 @@ import {
   regradeAttempt,
   startAttempt,
 } from "./api";
+import { ModuleNav } from "./ModuleNav";
 import { MarkingScreen } from "./MarkingScreen";
 import { PromptPicker } from "./PromptPicker";
 import { ReadyScreen } from "./ReadyScreen";
@@ -186,6 +187,7 @@ export function IeltsMock({ pollMs = POLL_MS, autosaveMs }: IeltsMockProps) {
           Tutor chat
         </a>
       </header>
+      <ModuleNav current="writing" />
       {notice && (
         <p className="ielts-error" role="alert">
           {notice}

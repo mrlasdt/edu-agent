@@ -25,6 +25,7 @@ from services.gateway.src.gateway.ielts.prompts import WritingPrompt, load_promp
 from services.gateway.src.gateway.ielts_store import (
     ALLOWED_S,
     DRAFT_MAX_CHARS,
+    MODULE_WRITING_T2,
     Attempt,
     AttemptNotFoundError,
     AttemptStateError,
@@ -150,11 +151,14 @@ def recover_interrupted_attempts(store: AttemptStore) -> int:
     return settled
 
 
-def _load(store: AttemptStore, attempt_id: str) -> Attempt:
+def _load(store: AttemptStore, attempt_id: str, module: str = MODULE_WRITING_T2) -> Attempt:
     try:
-        return store.get(attempt_id)
+        attempt = store.get(attempt_id)
     except AttemptNotFoundError:
         raise HTTPException(404, "attempt not found") from None
+    if attempt.module != module:
+        raise HTTPException(404, "attempt not found")
+    return attempt
 
 
 def _budget(ledger: Ledger) -> BudgetOut:

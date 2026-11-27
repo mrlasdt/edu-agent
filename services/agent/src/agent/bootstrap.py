@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from services.agent.src.agent.agents.aw import AWAgent
+from services.agent.src.agent.agents.ielts_reading import IeltsReadingAgent
 from services.agent.src.agent.agents.ielts_writing import IeltsWritingAgent
 from services.agent.src.agent.agents.quant import QuantAgent
 from services.agent.src.agent.base import BaseAgent
@@ -20,6 +21,7 @@ from shared.src.shared.catalog import SUPPORTED_PAIRS
 _AGENTS: dict[tuple[str, str], type[BaseAgent[Any]]] = {
     ("gre", "quant"): QuantAgent,
     ("gre", "aw"): AWAgent,
+    ("ielts", "reading"): IeltsReadingAgent,
     ("ielts", "writing"): IeltsWritingAgent,
 }
 

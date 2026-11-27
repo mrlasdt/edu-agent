@@ -9,10 +9,10 @@ What it covers today, by exam:
 | GRE Quant | Tutor (Socratic hints) and Solve (worked solution, answer checked by sympy for well-formedness, and independently for numeric answers: a model-written equation solved by sympy, shown as agrees / disagrees / not checkable), grounded in a seeded corpus | Failure-seeded eval suite, question-generation pipeline, opt-in math tools |
 | GRE Analytical Writing | Tutor and Solve (scored sample essay), needs an ingested corpus | 2 golden items |
 | IELTS Writing (Task 2) | Chat coach (`ielts/writing`, tutor only) that coaches from your graded mock report, never writes the essay, and re-marks a revised essay you paste (a practice mark: untimed, not saved, with the change against your mock); the timed mock itself is at `/ielts-mock` with per-criterion mock scores and feedback | Grader eval suites (`ielts_writing`, `ielts_report`, `ielts_adversarial`) |
-| IELTS Reading | None | 41 golden items |
+| IELTS Reading | Chat coach (`ielts/reading`, tutor only) that explains your marked Reading mock (missed question types, the evidence sentence); the 60-minute mock is at `/ielts-mock?module=reading`, marked in code with no model call | 41 golden items (the mock scales the score to 40) |
 | SAT Math | None | 33 golden items from 11 solver-verified templates |
 
-Only `gre/quant`, `gre/aw` and `ielts/writing` are registered agents (`services/agent/src/agent/bootstrap.py`, with the pair list in `shared/src/shared/catalog.py`); any other `test_type` and `section` sent to `/chat` gets a "not set up yet" reply.
+Only `gre/quant`, `gre/aw`, `ielts/writing` and `ielts/reading` are registered agents (`services/agent/src/agent/bootstrap.py`, with the pair list in `shared/src/shared/catalog.py`); any other `test_type` and `section` sent to `/chat` gets a "not set up yet" reply.
 
 ## Goals and scope
 
@@ -152,6 +152,16 @@ Without Docker: run the gateway (`uv run uvicorn services.gateway.src.gateway.ma
 
 To calibrate against your own scores: `uv run python -m evals exam-set build-blind-pool`, fill `ielts-local/blind/scores.csv`, then `import-blind-scores` and the `ielts_writing` eval below (ADR-0014).
 
+## IELTS Reading mock
+
+A 60-minute General Training Reading mock at `/ielts-mock?module=reading` (the Writing and Reading links at the top of the page switch between modules). The clock is server-side and shares the Writing attempt store (module `ielts_reading`). It serves the committed golden passages and is marked in code, with no model call: answers are matched after normalisation and the report shows the raw score, a mock band, the score by question type and, for each miss, your answer, the key and the evidence sentence. Three limits are stated in the UI and the report:
+
+- The set has 41 items, not a full 40-question section, so the raw score is scaled to 40 before the band lookup.
+- The band table uses the anchors IDP publishes for General Training Reading (4 = 15, 5 = 23, 6 = 30, 7 = 34, 8 = 38 of 40, https://ielts.idp.com/bangladesh/results/scores/reading); half bands are interpolated.
+- The keys are author-written (tier `author_key`), not human-checked. The 60 minutes follow https://ielts.org/take-a-test/test-types/ielts-general-training-test/ielts-general-training-format-reading.
+
+A marked report has a "Discuss this result with the coach" link that opens the Reading coach on that attempt.
+
 ## Evals
 
 Every eval and report tool is one command of `uv run python -m evals <command>` (run it with no command to list them; add `--help` after a command for its flags). The older `python -m evals.<module>` spellings of the moved report tools still work for one more release.
@@ -186,7 +196,7 @@ Retrieval has its own eval, `uv run python -m evals retrieval --embedder-url htt
 
 ### Golden sets for IELTS and SAT
 
-`evals/exam_set/` builds exam items (ADR-0013). Every item has a label tier (`examiner`, `teacher_graded`, `captain_blind`, `site_or_model_weak`, `solver`, `author_key`) and every metric is reported against a tier and a sample size. Committed items are original: `sat_math.jsonl` and `ielts_reading.jsonl` in `evals/golden/`, and `ielts_writing_prompts.jsonl`, which the product serves and so keeps under `services/gateway/src/gateway/ielts/data/` (evals reads it there). Third-party data is imported only into the gitignored `evals/golden/local/`:
+`evals/exam_set/` builds exam items (ADR-0013). Every item has a label tier (`examiner`, `teacher_graded`, `captain_blind`, `site_or_model_weak`, `solver`, `author_key`) and every metric is reported against a tier and a sample size. Committed items are original: `sat_math.jsonl` in `evals/golden/`, and `ielts_reading.jsonl` and `ielts_writing_prompts.jsonl`, which the product serves and so live under `services/gateway/src/gateway/ielts/data/` (evals reads them there). Third-party data is imported only into the gitignored `evals/golden/local/`:
 
 ```bash
 uv run python -m evals exam-set generate-sat      # also generate-reading, generate-writing: rebuild the committed sets
@@ -263,7 +273,7 @@ Docker Compose (`infra/docker-compose.yml`) is the one supported way to run the 
 
 ## Not built yet
 
-- Tutoring chat for SAT Math, IELTS Reading and the other IELTS sections (only golden sets exist), and SAT Reading and Writing.
+- Tutoring chat for SAT Math, IELTS Listening and Speaking, and SAT Reading and Writing (SAT Math has only a golden set).
 - Login and learner identity: school and candidate corpus tiers cannot be written, and the IELTS mock is single-user.
 - Web UI beyond the chat shell: no sources panel, preferences, upload or conversation persistence (components exist but are not wired); math is typeset lightly, no LaTeX.
 - Most agent metadata is dropped on the way to the UI. The Solve-mode independent check (ADR-0015) covers numeric answers only: quantitative comparisons and other non-numeric answers show "not checkable", and "agrees" does not show the problem was read correctly. It costs one extra short model call per solve turn, and how often a real model writes a faithful equation is measured only by a live run (the offline `wrong_but_verified` uses each item's own expression).

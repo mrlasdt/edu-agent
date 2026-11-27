@@ -11,16 +11,23 @@ const SUBJECT_TITLE: Record<Subject, string> = {
   quant: "GRE Quant",
   aw: "GRE AW",
   ielts_writing: "IELTS Writing coach",
+  ielts_reading: "IELTS Reading coach",
 };
 
-// The mock report's "Discuss this report" link opens the coach on that attempt: /?attempt=<id>.
+const isCoach = (subject: Subject) => subject === "ielts_writing" || subject === "ielts_reading";
+
+// A mock report's "Discuss" link opens the coach on that attempt: /?attempt=<id>, plus
+// &subject=reading for a Reading attempt (Writing is the default).
 function attemptFromUrl(): string | undefined {
   return new URLSearchParams(window.location.search).get("attempt") || undefined;
 }
 
 export function App() {
   const attemptId = attemptFromUrl();
-  const [subject, setSubject] = useState<Subject | null>(attemptId ? "ielts_writing" : null);
+  const fromUrl = new URLSearchParams(window.location.search).get("subject") === "reading";
+  const [subject, setSubject] = useState<Subject | null>(
+    attemptId ? (fromUrl ? "ielts_reading" : "ielts_writing") : null
+  );
   if (!subject) {
     return (
       <main className="app">
@@ -28,7 +35,7 @@ export function App() {
       </main>
     );
   }
-  return <Chat subject={subject} attemptId={subject === "ielts_writing" ? attemptId : undefined} />;
+  return <Chat subject={subject} attemptId={isCoach(subject) ? attemptId : undefined} />;
 }
 
 function Chat({ subject, attemptId }: { subject: Subject; attemptId?: string }) {
@@ -51,7 +58,7 @@ function Chat({ subject, attemptId }: { subject: Subject; attemptId?: string }) 
       <header className="app-header">
         <h1>Edu Agent: {SUBJECT_TITLE[subject]}</h1>
         {/* The coach has one mode: it never writes the essay, so there is no solve mode to switch to. */}
-        {subject !== "ielts_writing" && (
+        {!isCoach(subject) && (
           <ModeSwitch
             mode={mode}
             onToggle={() => setMode((m) => (m === "tutor" ? "solve" : "tutor"))}
@@ -79,7 +86,11 @@ function Chat({ subject, attemptId }: { subject: Subject; attemptId?: string }) 
           maxLength={MAX_MESSAGE_CHARS}
           onChange={(e) => setDraft(e.target.value)}
           placeholder={
-            subject === "ielts_writing" ? "Ask about your report, e.g. what should I fix first?" : "Ask a question"
+            subject === "ielts_writing"
+              ? "Ask about your report, e.g. what should I fix first?"
+              : subject === "ielts_reading"
+                ? "Ask about your result, e.g. why did I miss the matching headings?"
+                : "Ask a question"
           }
           disabled={busy}
         />

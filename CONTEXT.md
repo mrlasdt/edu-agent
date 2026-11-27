@@ -1,6 +1,6 @@
 # Edu Agent
 
-An LLM-powered exam-prep tutor. The tutoring chat helps Candidates improve their score on the GRE General Test (Quant and AW). v1 is English-only and section-scoped (see below); the system is architected for multilingual extension and additional test types in v2. An IELTS Writing coach in the chat coaches from the graded IELTS Writing mock (a separate timed mock); SAT Math and IELTS Reading (golden sets only) exist outside the chat. Deployed as a web chat.
+An LLM-powered exam-prep tutor. The tutoring chat helps Candidates improve their score on the GRE General Test (Quant and AW). v1 is English-only and section-scoped (see below); the system is architected for multilingual extension and additional test types in v2. IELTS Writing and Reading coaches in the chat coach from the marked IELTS mocks (separate timed mocks); SAT Math (a golden set only) exists outside the chat. Deployed as a web chat.
 
 ## Language
 
@@ -27,7 +27,7 @@ _Avoid_: Project mode, plan mode, expert mode
 ## Roles
 
 **Candidate**:
-The end user of the agent — a test-taker preparing for a supported exam (GRE General Test in the chat; IELTS Writing in the mock). Adult, English-proficient by definition (the supported exams are administered in English). May be a native English speaker or not. v1 makes no distinction between sub-populations.
+The end user of the agent — a test-taker preparing for a supported exam (GRE General Test in the chat; IELTS Writing and Reading in the mocks). Adult, English-proficient by definition (the supported exams are administered in English). May be a native English speaker or not. v1 makes no distinction between sub-populations.
 _Avoid_: Student, user, learner, test-taker
 
 **Teacher**:
@@ -109,7 +109,7 @@ A plugin registry inside the Agent service. Agents register by `(test_type, sect
 _Avoid_: Agent factory, agent map, agent pool
 
 **Test type**:
-The standardised test a Candidate is preparing for. A first-class field on session state and corpus document metadata from v1. The chat serves `gre` and, for the Writing coach only, `ielts`; `ielts` also exists for the Writing mock and corpus metadata, and `sat` for the eval set. Determines which agents, prompts, corpus documents, and golden set items apply to a session.
+The standardised test a Candidate is preparing for. A first-class field on session state and corpus document metadata from v1. The chat serves `gre` and, for the Writing and Reading coaches only, `ielts`; `ielts` also exists for the mocks and corpus metadata, and `sat` for the eval set. Determines which agents, prompts, corpus documents, and golden set items apply to a session.
 _Avoid_: Exam type, test, product type
 
 **Clarification turn**:
@@ -163,7 +163,7 @@ _Avoid_: Truncation, memory
 ## IELTS mock
 
 **IELTS mock**:
-A timed practice attempt shaped like part of the IELTS exam, for the General Training variant (Task 2 is the same for both variants). Always called a "mock", never an official IELTS test or result. Only Writing Task 2 exists so far (ADR-0014).
+A timed practice attempt shaped like part of the IELTS exam, for the General Training variant (Task 2 is the same for both variants). Always called a "mock", never an official IELTS test or result. Writing Task 2 (ADR-0014) and Reading (marked in code, no model call) exist so far.
 _Avoid_: IELTS test, official mock, IELTS simulator, IELTS-style
 
 **Attempt**:

@@ -180,3 +180,18 @@ a.ielts-primary { display: inline-block; box-sizing: border-box; min-height: 40p
 }
 .ielts-report-foot { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--border); }
 .ielts-sub { margin: 14px 0 2px !important; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.7; }
+
+/* IELTS Reading mock */
+.ielts-chips a.ielts-chip { text-decoration: none; color: inherit; }
+.ielts-chips a.ielts-chip[aria-current="page"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+@media (prefers-color-scheme: dark) { .ielts-chips a.ielts-chip[aria-current="page"] { color: #10131f; } }
+ul.ielts-chips { list-style: none; padding: 0; }
+.reading-block { display: grid; gap: 12px; margin-bottom: 24px; }
+.reading-passage { padding: 12px 16px; background: var(--surface); border-radius: 10px; line-height: 1.6; }
+.reading-passage h2 { margin: 0 0 8px; font-size: 1.15rem; }
+.reading-para { display: inline-block; min-width: 1.4em; opacity: 0.6; }
+.reading-questions { padding-left: 1.6em; display: grid; gap: 14px; }
+.reading-questions input[type="text"], .reading-questions input:not([type]) { width: min(100%, 360px); min-height: 36px; box-sizing: border-box; padding: 4px 8px; }
+.reading-choices { display: grid; gap: 4px; }
+.reading-results { padding-left: 1.6em; display: grid; gap: 14px; }
+.reading-miss { padding-bottom: 10px; border-bottom: 1px solid var(--border); }
