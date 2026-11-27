@@ -4,6 +4,9 @@ import { band } from "./format";
 import { createMock, getMock, startMockModule } from "./mockApi";
 import type { MockReport, ModuleKey, ModuleStatus } from "./mockApi";
 import { ModuleNav } from "./ModuleNav";
+import { getListening, startListening } from "./listeningApi";
+import type { ListeningAttempt } from "./listeningTypes";
+import { ListeningSit } from "./ListeningSit";
 import { ReadingSit } from "./ReadingSit";
 import { getReading, startReading } from "./readingApi";
 import type { ReadingAttempt } from "./readingTypes";
@@ -33,6 +36,7 @@ type View =
   | { kind: "failed"; message: string }
   | { kind: "intro" }
   | { kind: "overview"; report: MockReport }
+  | { kind: "listening"; report: MockReport; attempt: ListeningAttempt }
   | { kind: "reading"; report: MockReport; attempt: ReadingAttempt }
   | { kind: "writing"; report: MockReport; attempt: WritingModuleAttempt };
 
@@ -54,7 +58,7 @@ export interface FullMockProps {
   autosaveMs?: number;
 }
 
-/** The full mock: Reading, then Writing, one combined result. The modules are the standalone ones. */
+/** The full mock: Listening, Reading, then Writing, one combined result. The modules are the standalone ones. */
 export function FullMock({ pollMs = POLL_MS, autosaveMs }: FullMockProps) {
   const [view, setView] = useState<View>({ kind: "loading" });
   const [busy, setBusy] = useState(false);
@@ -140,7 +144,11 @@ export function FullMock({ pollMs = POLL_MS, autosaveMs }: FullMockProps) {
       }
       const attemptId = status?.attempt_id;
       if (!attemptId) throw new Error("This module could not be started.");
-      if (key === "reading") {
+      if (key === "listening") {
+        let attempt = await getListening(attemptId);
+        if (attempt.status === "created") attempt = await startListening(attemptId);
+        if (attempt.status === "in_progress") return setView({ kind: "listening", report: current, attempt });
+      } else if (key === "reading") {
         let attempt = await getReading(attemptId);
         if (attempt.status === "created") attempt = await startReading(attemptId);
         if (attempt.status === "in_progress") return setView({ kind: "reading", report: current, attempt });
@@ -162,7 +170,7 @@ export function FullMock({ pollMs = POLL_MS, autosaveMs }: FullMockProps) {
     run(async () => {
       const report = await createMock();
       remember(report.id);
-      await openModule(report, "reading");
+      await openModule(report, "listening");
     });
 
   const another = () => {
@@ -194,12 +202,15 @@ export function FullMock({ pollMs = POLL_MS, autosaveMs }: FullMockProps) {
       )}
       {view.kind === "intro" && (
         <section className="ielts-ready" aria-label="Full mock">
-          <h2>Full mock: Reading, then Writing</h2>
+          <h2>Full mock: Listening, Reading, then Writing</h2>
           <ul className="ielts-rules">
-            <li>You sit the modules in order: Reading (60 minutes), then Writing (60 minutes).</li>
             <li>
-              Each skill gets its own band, and the program combines them into one overall band. Listening
-              and Speaking are not part of the mock yet, so the overall band is partial.
+              You sit the modules in order: Listening (30 minutes, with sound on), Reading (60 minutes),
+              then Writing (60 minutes).
+            </li>
+            <li>
+              Each skill gets its own band, and the program combines them into one overall band. Speaking
+              is not part of the mock yet, so the overall band is partial.
             </li>
             <li>When you finish, the coach can tell you which skill to practise next.</li>
           </ul>
@@ -209,6 +220,14 @@ export function FullMock({ pollMs = POLL_MS, autosaveMs }: FullMockProps) {
             </button>
           </div>
         </section>
+      )}
+      {view.kind === "listening" && (
+        <ListeningSit
+          key={view.attempt.id}
+          attempt={view.attempt}
+          autosaveMs={autosaveMs}
+          onSubmitted={() => void run(() => refresh(view.report.id))}
+        />
       )}
       {view.kind === "reading" && (
         <ReadingSit

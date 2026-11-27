@@ -152,6 +152,16 @@ Without Docker: run the gateway (`uv run uvicorn services.gateway.src.gateway.ma
 
 To calibrate against your own scores: `uv run python -m evals exam-set build-blind-pool`, fill `ielts-local/blind/scores.csv`, then `import-blind-scores` and the `ielts_writing` eval below (ADR-0014).
 
+## IELTS Listening mock
+
+A 30-minute General Training Listening mock at `/ielts-mock?module=listening`: four recordings (section 1 to 4), 40 questions, one audio player per recording, a server-side clock, autosave, and a report with the raw score, a mock band, the score by question type, the evidence line for each miss and the transcripts. It shares the attempt store (module `ielts_listening`) and is marked in code like Reading, with no model call at attempt time.
+
+- The scripts are original (`services/gateway/src/gateway/ielts/data/ielts_listening.json`); no IELTS or Cambridge material is copied. The recordings are made **once, at build time**, with Gemini text-to-speech and committed as small mp3 files (`.../ielts/data/listening_audio/`, about 2 MB). A learner's attempt never calls text-to-speech: the gateway serves the stored files (`GET /ielts/listening/audio/{section}`, 409 until the attempt has started).
+- To change a script and rebuild only the recordings that changed: `GEMINI_API_KEY=... uv run python -m scripts.build_listening_audio` (needs `ffmpeg`; `--check` verifies the files match the scripts with no network, `--force` rebuilds all).
+- The band comes from the raw score of 40 through the anchors IDP publishes for General Training Listening (https://ielts.idp.com/bangladesh/results/scores/listening), with half bands interpolated. The 30 minutes follow https://ielts.org/take-a-test/test-types/ielts-general-training-test/ielts-general-training-format-listening (computer-delivered, no extra transfer time is modelled).
+- The keys are author-written (tier `author_key`), not human-checked, and the report says so.
+- API: `POST /ielts/listening/attempts`, `GET /ielts/listening/attempts/{id}`, `POST .../start`, `PUT .../draft`, `POST .../submit`, `GET .../report`, `GET /ielts/listening/info`.
+
 ## IELTS Reading mock
 
 A 60-minute General Training Reading mock at `/ielts-mock?module=reading` (the Writing and Reading links at the top of the page switch between modules). The clock is server-side and shares the Writing attempt store (module `ielts_reading`). It serves the committed golden passages and is marked in code, with no model call: answers are matched after normalisation and the report shows the raw score, a mock band, the score by question type and, for each miss, your answer, the key and the evidence sentence. Three limits are stated in the UI and the report:
@@ -171,14 +181,14 @@ A General Training Writing module at `/ielts-mock?module=writing-module`: Task 1
 - The letter prompts are original (`services/gateway/src/gateway/ielts/data/ielts_letter_prompts.jsonl`). The Task 1 band descriptors were not independently checked against the official descriptor PDF, so Task 1 scores are mock scores, and each letter report is labelled "Uncalibrated estimate" because no letter has been checked against a labelled set.
 - The coach reads a bounded digest of both reports at `/?attempt=<id>`. The practice re-mark tool (`mark_revision`) still re-marks a Task 2 attempt only.
 
-## IELTS full mock (Reading, then Writing)
+## IELTS full mock (Listening, Reading, then Writing)
 
-A full mock at `/ielts-mock?module=mock` ("Full mock" in the module links). "Start full mock" creates a mock record, then you sit Reading and then Writing. The modules are the standalone Reading and Writing modules; the mock only links their attempts, so nothing is stored twice and the standalone pages keep working.
+A full mock at `/ielts-mock?module=mock` ("Full mock" in the module links). "Start full mock" creates a mock record, then you sit Listening, then Reading, then Writing. The modules are the standalone Listening, Reading and Writing modules; the mock only links their attempts, so nothing is stored twice and the standalone pages keep working.
 
-- Each skill shows its own band. Listening and Speaking show "Not assessed", so the overall band is marked partial.
-- Overall band = the mean of the assessed skill bands, rounded to the nearest half band by one shared `round_half_band` (a .25 rounds up to the next half, a .75 up to the next whole band). Example: Reading 6.0 and Writing 6.5 give 6.25, so 6.5. Rule: https://ielts.org/take-a-test/your-results/ielts-scoring-in-detail.
+- Each skill shows its own band. Speaking shows "Not assessed", so the overall band is marked partial.
+- Overall band = the mean of the assessed skill bands, rounded to the nearest half band by one shared `round_half_band` (a .25 rounds up to the next half, a .75 up to the next whole band). Example: Listening 7.0, Reading 6.0 and Writing 6.5 give 6.5. Rule: https://ielts.org/take-a-test/your-results/ielts-scoring-in-detail.
 - The report names the next module to sit, and a Writing module whose marking failed has a "Retry marking" button. The coach reads a bounded digest of the whole mock at `/?attempt=<mock id>&subject=mock` and recommends which skill to practise next.
-- API: `POST /ielts/mock`, `GET /ielts/mock`, `GET /ielts/mock/{id}`, `POST /ielts/mock/{id}/modules/{reading|writing}/attempt`. Reading must be started before Writing.
+- API: `POST /ielts/mock`, `GET /ielts/mock`, `GET /ielts/mock/{id}`, `POST /ielts/mock/{id}/modules/{listening|reading|writing}/attempt`. The modules are started in order: Listening, Reading, Writing (a mock made before Listening existed may skip Listening).
 
 ## Evals
 

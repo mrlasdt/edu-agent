@@ -1,11 +1,11 @@
 """
 HTTP API for the full IELTS mock (`/ielts/mock/...`, JSON).
 
-A mock is a parent record over the Reading and Writing attempts. This API only creates the
-parent, creates each module's attempt in order and reports the combined result; the module itself
-is sat through the existing module APIs (`/ielts/reading/attempts/...`,
-`/ielts/writing/attempts/...`) with the attempt id the mock reports. The overall band is worked
-out in code (see `ielts/mock.py`).
+A mock is a parent record over the Listening, Reading and Writing attempts. This API only creates
+the parent, creates each module's attempt in order and reports the combined result; the module
+itself is sat through the existing module APIs (`/ielts/listening/attempts/...`,
+`/ielts/reading/attempts/...`, `/ielts/writing/attempts/...`) with the attempt id the mock
+reports. The overall band is worked out in code (see `ielts/mock.py`).
 """
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from services.gateway.src.gateway.ielts.mock import (
     load_mock,
 )
 from services.gateway.src.gateway.ielts_api import _limit, get_ledger, get_store
+from services.gateway.src.gateway.ielts_listening_api import create_attempt as create_listening
 from services.gateway.src.gateway.ielts_reading_api import create_attempt as create_reading
 from services.gateway.src.gateway.ielts_store import AttemptStore, MockNotFoundError
 from services.gateway.src.gateway.ielts_writing_api import (
@@ -67,9 +68,11 @@ def start_module(mock_id: str, key: str, store: Store, ledger: SpendLedger) -> M
     why_not = can_start(loaded, key)
     if why_not:
         raise HTTPException(409, why_not)
-    attempt = (
-        create_reading(store) if key == "reading"
-        else create_writing(CreateModuleAttempt(), store, ledger)
-    )
-    store.link_mock_attempt(mock_id, key, attempt.id)
+    if key == "listening":
+        attempt_id = create_listening(store).id
+    elif key == "reading":
+        attempt_id = create_reading(store).id
+    else:
+        attempt_id = create_writing(CreateModuleAttempt(), store, ledger).id
+    store.link_mock_attempt(mock_id, key, attempt_id)
     return build_report(_loaded(store, mock_id))

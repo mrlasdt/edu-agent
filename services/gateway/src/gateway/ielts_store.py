@@ -19,13 +19,16 @@ from pathlib import Path
 MODULE_WRITING_T2 = "ielts_writing_t2"
 MODULE_READING = "ielts_reading"
 MODULE_WRITING = "ielts_writing"  # Task 1 letter + Task 2 essay on one 60 minute clock
+MODULE_LISTENING = "ielts_listening"
 ALLOWED_S = 40 * 60  # Writing Task 2
 READING_ALLOWED_S = 60 * 60  # General Training Reading (source in ielts/reading.py)
 WRITING_ALLOWED_S = 60 * 60  # GT Writing, Task 1 + Task 2 (source in ielts/scoring.py)
+LISTENING_ALLOWED_S = 30 * 60  # Listening (source in ielts/listening.py)
 ALLOWED_S_BY_MODULE = {
     MODULE_WRITING_T2: ALLOWED_S,
     MODULE_READING: READING_ALLOWED_S,
     MODULE_WRITING: WRITING_ALLOWED_S,
+    MODULE_LISTENING: LISTENING_ALLOWED_S,
 }
 GRACE_S = 30  # network and clock slack before a submission counts as late
 DRAFT_MAX_CHARS = 20_000
@@ -60,10 +63,15 @@ CREATE TABLE IF NOT EXISTS mocks (
     id TEXT PRIMARY KEY,
     created_at REAL NOT NULL,
     reading_attempt_id TEXT,
-    writing_attempt_id TEXT
+    writing_attempt_id TEXT,
+    listening_attempt_id TEXT
 )
 """
-MOCK_ATTEMPT_COLUMNS = {"reading": "reading_attempt_id", "writing": "writing_attempt_id"}
+MOCK_ATTEMPT_COLUMNS = {
+    "listening": "listening_attempt_id",
+    "reading": "reading_attempt_id",
+    "writing": "writing_attempt_id",
+}
 
 
 class AttemptNotFoundError(LookupError):
@@ -107,7 +115,7 @@ class Attempt:
 class Mock:
     id: str
     created_at: float
-    attempt_ids: dict[str, str | None]  # module key ("reading", "writing") -> attempt id
+    attempt_ids: dict[str, str | None]  # module key ("listening", ...) -> attempt id
 
 
 def _mock_row(r: sqlite3.Row) -> Mock:
@@ -137,6 +145,11 @@ class AttemptStore:
         with self._connect() as db:
             db.execute(_SCHEMA)
             db.execute(_MOCK_SCHEMA)
+            # A database made before Listening existed has no column for its link.
+            have = {row["name"] for row in db.execute("PRAGMA table_info(mocks)")}
+            for column in MOCK_ATTEMPT_COLUMNS.values():
+                if column not in have:
+                    db.execute(f"ALTER TABLE mocks ADD COLUMN {column} TEXT")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:

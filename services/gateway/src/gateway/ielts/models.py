@@ -170,6 +170,36 @@ class ReadingReport(BaseModel):
     disclaimer: str = DISCLAIMER
 
 
+class SectionTranscript(BaseModel):
+    """What was said in one Listening recording, shown only after the paper is submitted."""
+
+    id: str
+    title: str
+    lines: list[str]
+
+
+class ListeningReport(BaseModel):
+    """Listening marked in code. `questions[].passage` is the title of the recording."""
+
+    status: Literal["graded"] = "graded"
+    module: Literal["ielts_listening"] = "ielts_listening"
+    set_id: str
+    raw: int
+    total: int
+    scaled_40: int
+    band: float
+    timing: Timing
+    by_type: list[TypeScore]
+    questions: list[QuestionResult]
+    transcripts: list[SectionTranscript]
+    band_note: str
+    set_note: str
+    keys_note: str
+    band_source_url: str
+    timing_source_url: str
+    disclaimer: str = DISCLAIMER
+
+
 class WritingModuleReport(BaseModel):
     """
     The Writing module: a Task 1 letter and a Task 2 essay marked separately, then one band.

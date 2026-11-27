@@ -156,12 +156,14 @@ def is_correct(question: Question, answer: str) -> bool:
     return bool(given) and given == normalise(question.key)
 
 
-def band_for(raw: int, total: int) -> tuple[int, float]:
+def band_for(
+    raw: int, total: int, table: tuple[tuple[float, int], ...] = BAND_TABLE
+) -> tuple[int, float]:
     """(the raw score scaled to the 40-mark table, the band it earns)."""
     scaled = 0 if total <= 0 else min(
         BAND_TABLE_BASIS, int(raw * BAND_TABLE_BASIS / total + 0.5)
     )
-    for band, lowest in BAND_TABLE:
+    for band, lowest in table:
         if scaled >= lowest:
             return scaled, band
     return scaled, 0.0
