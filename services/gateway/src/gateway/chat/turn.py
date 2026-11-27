@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from services.gateway.src.gateway.agent_client import AgentClient
 from services.gateway.src.gateway.guardrails.rate_limit import RateLimiter
-from services.gateway.src.gateway.ielts_coach import COACH_PAIR
+from services.gateway.src.gateway.ielts_coach import COACH_MODULES
 from services.gateway.src.gateway.ielts_store import AttemptStore
 from services.gateway.src.gateway.orchestrator import Orchestrator
 from shared.src.shared.models import Message, Mode, Session
@@ -57,4 +57,4 @@ class ChatTurn:
 
 
 def is_coach(turn: ChatTurn) -> bool:
-    return (turn.req.test_type, turn.req.section) == COACH_PAIR
+    return (turn.req.test_type, turn.req.section) in COACH_MODULES

@@ -98,6 +98,27 @@ describe("App IELTS Writing coach", () => {
     });
   });
 
+  it("routes the Reading coach to ielts/reading from the picker and from a result link", async () => {
+    const fetchMock = stubGateway();
+    const user = userEvent.setup();
+    const first = render(<App />);
+    await user.click(screen.getByRole("button", { name: "IELTS Reading" }));
+    expect(screen.getByRole("heading", { name: "Edu Agent: IELTS Reading coach" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /solve|tutor/i })).not.toBeInTheDocument();
+    await send(user, "why did I miss the matching headings?");
+    expect(lastRequest(fetchMock)).toMatchObject({ test_type: "ielts", section: "reading", mode: "tutor" });
+    first.unmount();
+
+    window.history.replaceState({}, "", "/?attempt=r1&subject=reading");
+    render(<App />);
+    await send(user, "what did I miss?");
+    expect(lastRequest(fetchMock)).toMatchObject({
+      test_type: "ielts",
+      section: "reading",
+      attempt_id: "r1",
+    });
+  });
+
   it("still sends GRE turns as gre/<subject>", async () => {
     const fetchMock = stubGateway();
     const user = await openQuant();

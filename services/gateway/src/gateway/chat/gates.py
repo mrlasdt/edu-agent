@@ -12,12 +12,7 @@ from services.gateway.src.gateway.guardrails.input import (
 )
 from services.gateway.src.gateway.guardrails.stream import INPUT_PII_NOTICE
 from services.gateway.src.gateway.guardrails.verdict import Verdict
-from services.gateway.src.gateway.ielts_coach import (
-    NO_REPORT_NOTICE,
-    SOLVE_MODE_NOTICE,
-    UNKNOWN_ATTEMPT_NOTICE,
-    find_report,
-)
+from services.gateway.src.gateway.ielts_coach import find_report, notices_for
 from services.gateway.src.gateway.orchestrator import ClarificationTurn, RouteResult
 from services.gateway.src.gateway.orchestrator.enrich import check_completeness
 from shared.src.shared.models import Mode
@@ -74,16 +69,17 @@ async def route(turn: ChatTurn) -> Verdict:
 
 
 async def ielts_report(turn: ChatTurn) -> Verdict:
-    """The IELTS Writing coach's turn needs a graded report: find it and keep its digest for the
-    agent. Free (a local lookup), so it runs before the gates that call a model. Every other
-    turn passes."""
+    """An IELTS coach's turn needs a graded report: find it and keep its digest for the agent.
+    Free (a local lookup), so it runs before the gates that call a model. Every other turn
+    passes."""
     if not is_coach(turn):
         return Verdict.allow()
+    notices = notices_for(turn.req.section)
     if turn.req.mode == Mode.solve:  # "reveal the worked artifact" has no IELTS meaning
-        return Verdict.stop(Outcome.clarification_requested, SOLVE_MODE_NOTICE)
-    found = find_report(turn.attempts(), turn.req.attempt_id)
+        return Verdict.stop(Outcome.clarification_requested, notices.solve_mode)
+    found = find_report(turn.attempts(), turn.req.attempt_id, turn.req.section)
     if found is None:
-        notice = UNKNOWN_ATTEMPT_NOTICE if turn.req.attempt_id else NO_REPORT_NOTICE
+        notice = notices.unknown_attempt if turn.req.attempt_id else notices.no_report
         return Verdict.stop(Outcome.clarification_requested, notice)
     turn.report_digest = found.digest
     turn.attempt_id = found.attempt_id

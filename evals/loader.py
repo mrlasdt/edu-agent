@@ -4,7 +4,7 @@ import random
 from pathlib import Path
 from typing import Any
 
-from evals.exam_set import ielts_writing_prompts
+from evals.exam_set import ielts_reading, ielts_writing_prompts
 from evals.exam_set.local_store import local_dir, read_items
 from evals.exam_set.schema import ExamItem
 from shared.src.shared.jsonl import read_jsonl
@@ -31,8 +31,9 @@ def sample_golden_set(
     return rng.sample(items, min(k, len(items)))
 
 
-# Committed IELTS/SAT families (original or CC BY items only; ielts_writing_prompts lives in
-# the product tree, see family_path). The GRE files above are untouched.
+# Committed IELTS/SAT families (original or CC BY items only; ielts_reading and
+# ielts_writing_prompts live in the product tree, see family_path). The GRE files above are
+# untouched.
 EXAM_FAMILIES = (
     "sat_math", "ielts_reading", "ielts_writing_prompts", "ielts_writing_adversarial",
 )
@@ -42,6 +43,8 @@ def family_path(family: str) -> Path:
     """Where a committed exam family's JSONL lives (the writing prompts belong to the product)."""
     if family == ielts_writing_prompts.FILE_NAME.removesuffix(".jsonl"):
         return ielts_writing_prompts.PATH
+    if family == ielts_reading.FILE_NAME.removesuffix(".jsonl"):
+        return ielts_reading.PATH
     return _GOLDEN_DIR / f"{family}.jsonl"
 
 

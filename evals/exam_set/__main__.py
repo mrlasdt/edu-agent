@@ -80,8 +80,7 @@ def main(argv: list[str] | None = None) -> int:
         count, digest = write_items(GOLDEN_DIR / sat_math.FILE_NAME, sat_math.generate_all())
         print(json.dumps({"file": sat_math.FILE_NAME, "items": count, "sha256": digest}))
     elif args.cmd == "generate-reading":
-        count, digest = write_items(GOLDEN_DIR / ielts_reading.FILE_NAME,
-                                    ielts_reading.generate_all())
+        count, digest = write_items(ielts_reading.PATH, ielts_reading.generate_all())
         print(json.dumps({"file": ielts_reading.FILE_NAME, "items": count, "sha256": digest}))
     elif args.cmd == "generate-writing":
         count, digest = write_items(ielts_writing_prompts.PATH,

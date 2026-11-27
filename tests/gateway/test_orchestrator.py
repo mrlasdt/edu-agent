@@ -76,5 +76,5 @@ def test_clarification_for_unsupported_section_mentions_availability():
     result = orchestrator.process(session, "Help me")
     assert isinstance(result, ClarificationTurn)
     # Should tell the candidate what IS available
-    assert "Currently available: gre/aw, gre/quant, ielts/writing." in result.prompt
+    assert "Currently available: gre/aw, gre/quant, ielts/reading, ielts/writing." in result.prompt
     assert result.reason == "agent_not_registered"

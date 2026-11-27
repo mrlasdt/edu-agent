@@ -13,11 +13,16 @@ Regenerate the committed file with `python -m evals exam-set generate-reading`.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from evals.exam_set.schema import Design, ExamItem, LabelProvenance, LabelTier, Source
 
 FILE_NAME = "ielts_reading.jsonl"
+# The product serves these items, so the file lives in the gateway data dir (its Docker image
+# has no evals/ tree); evals reads it from there.
+PATH = (Path(__file__).resolve().parents[2]
+        / "services/gateway/src/gateway/ielts/data" / FILE_NAME)
 WORD_LIMIT = 2
 
 

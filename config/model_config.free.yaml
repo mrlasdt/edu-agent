@@ -102,3 +102,8 @@ roles:
   ielts_coach:
     <<: *ielts
     temperature: 0.4
+
+  # The IELTS Reading coach in /chat (ielts/reading): same model as the Writing coach.
+  ielts_reading_coach:
+    <<: *ielts
+    temperature: 0.4
