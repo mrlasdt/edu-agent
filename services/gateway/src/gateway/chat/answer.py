@@ -47,6 +47,7 @@ async def answer(turn: ChatTurn) -> AsyncGenerator[bytes, None]:
         personal_style_enabled=req.personal_style_enabled,
         report_digest=turn.report_digest,
         attempt_id=turn.attempt_id,
+        math_tools=turn.session.math_tools,
         trace_id=turn.trace_id,
     )
     meta: dict[str, Any] = {}

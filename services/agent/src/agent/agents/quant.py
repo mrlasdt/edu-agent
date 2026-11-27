@@ -13,6 +13,7 @@ from services.agent.src.agent.capabilities.verify_math import VerifyMath, Verify
 from services.agent.src.agent.context import ContextBudget
 from services.agent.src.agent.prompting import build_messages, collect_stream, token_stream
 from services.agent.src.agent.settings import get_settings
+from services.agent.src.agent.skills.calculator_check import CalcCheck, calculator_check
 from services.agent.src.agent.solve_checks import SolveChecks
 from services.agent.src.agent.tools.math_tools import MATH_TOOL_SPECS, MathTools
 from services.agent.src.agent.tools.notes_tools import NOTES_TOOL_SPECS, NotesTools
@@ -58,6 +59,9 @@ class QuantTurn(Turn):
     """A Quant turn: what every turn keeps, plus the tools, notes section and folded history."""
 
     tools: ToolTurn | None = None
+    # this turn offers the math tools (the session's switch, else the setting)
+    math_tools: bool = False
+    calc_check: CalcCheck | None = None  # solve mode with the math tools: answer vs tool results
     just_in_time: bool = False  # the tutor looks notes up itself instead of being handed them
     context_section: str = ""  # stands in for the history turns that were folded away
     notes_section: str = ""  # the prompt section that teaches the notes tool
@@ -116,16 +120,23 @@ class QuantAgent(BaseAgent[QuantTurn]):
         if mode not in RETRIEVAL_MODES:
             raise ValueError(f"retrieval_mode {mode!r} is not one of {', '.join(RETRIEVAL_MODES)}")
         self._just_in_time = mode == "just_in_time"
+        # The default for a turn whose session does not say (the `Calculator` switch).
         self._math_tools_enabled = (
             get_settings().math_tools_enabled if math_tools_enabled is None else math_tools_enabled
         )
         self._math_tools = math_tools
         self._verify_math = verify_math or VerifyMath()
 
-    def _tool_turn(self, session: Session, just_in_time: bool) -> ToolTurn | None:
+    def _math_on(self, session: Session) -> bool:
+        """The session's own choice of the math tools, else the MATH_TOOLS_ENABLED setting."""
+        return self._math_tools_enabled if session.math_tools is None else session.math_tools
+
+    def _tool_turn(
+        self, session: Session, just_in_time: bool, math: bool
+    ) -> ToolTurn | None:
         """The tools this turn offers (math, notes or both); None means the plain streamed call."""
         sets: list[tuple[list[dict[str, Any]], Any]] = []
-        if self._math_tools_enabled:
+        if math:
             sets.append((MATH_TOOL_SPECS, (self._math_tools or MathTools()).call))
         notes: NotesTools | None = None
         if just_in_time:
@@ -137,7 +148,7 @@ class QuantAgent(BaseAgent[QuantTurn]):
             sets.append((NOTES_TOOL_SPECS, notes.call))
         if not sets:
             return None
-        return ToolTurn(ToolBox(*sets), math=self._math_tools_enabled, notes=notes)
+        return ToolTurn(ToolBox(*sets), math=math, notes=notes)
 
     # ── the turn ──────────────────────────────────────────────────────────────
 
@@ -145,10 +156,11 @@ class QuantAgent(BaseAgent[QuantTurn]):
         mode = session.mode.value
         # Just-in-time notes are the tutor's: solve mode keeps the up-front search.
         just_in_time = self._just_in_time and session.mode == Mode.tutor
-        prompt_agent = _TOOLS_AGENT if self._math_tools_enabled else _AGENT
+        math = self._math_on(session)
+        prompt_agent = _TOOLS_AGENT if math else _AGENT
         version = self._model_config.prompt_version(prompt_agent, mode)
         # The turn record names the prompt that ran; the tools prompt is its own versioned file.
-        reported = f"math_tools-{version}" if self._math_tools_enabled else version
+        reported = f"math_tools-{version}" if math else version
         notes_section = ""
         if just_in_time:
             notes_version = self._model_config.prompt_version(_NOTES_AGENT, mode)
@@ -159,7 +171,8 @@ class QuantAgent(BaseAgent[QuantTurn]):
             TurnMeter(trace_id, "agent", _AGENT, mode, reported),
             session.mode, version,
             build_llm_metadata(trace_id=trace_id, prompt_version=reported),
-            tools=self._tool_turn(session, just_in_time),
+            tools=self._tool_turn(session, just_in_time, math),
+            math_tools=math,
             just_in_time=just_in_time,
             notes_section=notes_section,
         )
@@ -177,10 +190,19 @@ class QuantAgent(BaseAgent[QuantTurn]):
     def close_turn(self, turn: QuantTurn) -> None:
         if turn.tools is not None:
             turn.tools.annotate(turn.meter)
+        if turn.calc_check is not None:
+            turn.meter.annotate(calc_check=turn.calc_check.public())
+
+    def _calc_check(self, turn: QuantTurn, answer: str | None) -> CalcCheck | None:
+        """The calculator check of the answer the learner is about to get; solve mode only, since a
+        tutor turn has no final answer to check and must not weigh in on one."""
+        if turn.tools is None or not turn.math_tools:
+            return None
+        return calculator_check(answer, turn.tools.calls)
 
     def _system_prompt(self, turn: QuantTurn) -> str:
         """The mode's prompt, from the math-tools prompt set when the tools are on."""
-        agent = _TOOLS_AGENT if self._math_tools_enabled else _AGENT
+        agent = _TOOLS_AGENT if turn.math_tools else _AGENT
         return read_prompt(agent, turn.mode.value, turn.version) + turn.context_section
 
     async def _attempt(
@@ -233,6 +255,7 @@ class QuantAgent(BaseAgent[QuantTurn]):
             tokens, full_text = await self._attempt(turn, messages)
             prev_answer = self.extract_final_answer(full_text)
             if await checks.passes(full_text, prev_answer or ""):
+                turn.calc_check = self._calc_check(turn, prev_answer)
                 for token in tokens:
                     yield Token(text=token)
                 yield checks.report()
@@ -246,6 +269,7 @@ class QuantAgent(BaseAgent[QuantTurn]):
         )
         prev_answer = self.extract_final_answer(full_text)
         passed = await checks.passes(full_text, prev_answer or "")
+        turn.calc_check = self._calc_check(turn, prev_answer)
         for token in tokens:
             yield Token(text=token)
         yield checks.report()

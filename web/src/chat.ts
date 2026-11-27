@@ -1,5 +1,5 @@
-import { ApiError, request } from "./request";
-import type { IndependentCheck, Message, Mode, Subject } from "./types";
+import { ApiError, request, requestJson } from "./request";
+import type { IndependentCheck, Message, Mode, Subject, TurnView } from "./types";
 
 export interface ChatTurn {
   candidateId: string;
@@ -9,6 +9,8 @@ export interface ChatTurn {
   history: Message[];
   // The IELTS coaches only: the graded mock attempt to coach from; absent means the latest one.
   attemptId?: string;
+  // Quant only: the Calculator switch. Absent means the server's own setting.
+  mathTools?: boolean;
 }
 
 // The gateway routes on (test_type, section); the picker's subjects map onto them.
@@ -112,6 +114,7 @@ export async function* streamChat(
       mode: turn.mode,
       history: toHistoryPayload(turn.history),
       ...(turn.attemptId ? { attempt_id: turn.attemptId } : {}),
+      ...(turn.mathTools === undefined ? {} : { math_tools: turn.mathTools }),
     },
   });
   if (!res.body) throw new ApiError(res.status, "The server sent no reply");
@@ -148,4 +151,31 @@ export type Vote = "up" | "down";
 /** Send a thumbs up or down for the reply of the turn `traceId` names. */
 export async function sendFeedback(traceId: string, vote: Vote): Promise<void> {
   await request("/feedback", { method: "POST", json: { trace_id: traceId, vote } });
+}
+
+export const TURN_FETCH_ATTEMPTS = 3;
+export const TURN_FETCH_GAP_MS = 500;
+
+/**
+ * The record of the turn `traceId` names, for the "Show working" panel. The gateway writes it
+ * after the reply stream closes, so the first ask can come too early (404): it asks up to
+ * three times, half a second apart, then gives up with `null`. `reveal` asks for the tool results
+ * a tutor-mode turn hides; the gateway, not this app, decides whether they are shown.
+ */
+export async function fetchTurn(
+  traceId: string,
+  options: { reveal?: boolean; gapMs?: number; signal?: AbortSignal } = {}
+): Promise<TurnView | null> {
+  const { reveal = false, gapMs = TURN_FETCH_GAP_MS, signal } = options;
+  const path = `/turns/${encodeURIComponent(traceId)}${reveal ? "?reveal=1" : ""}`;
+  for (let attempt = 1; attempt <= TURN_FETCH_ATTEMPTS; attempt++) {
+    try {
+      return await requestJson<TurnView>(path, { signal });
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      if (attempt === TURN_FETCH_ATTEMPTS) return null;
+      await new Promise((resolve) => setTimeout(resolve, gapMs));
+    }
+  }
+  return null;
 }

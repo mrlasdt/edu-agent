@@ -151,6 +151,7 @@ async def generate(req: GenerateRequest, request: Request) -> StreamingResponse 
         personal_style_enabled=req.personal_style_enabled,
         report_digest=req.report_digest,
         attempt_id=req.attempt_id,
+        math_tools=req.math_tools,
     )
 
     items = agent.run(session, req.message, trace_id=req.trace_id)
