@@ -12,7 +12,7 @@ What it covers today, by exam:
 | IELTS Reading | Chat coach (`ielts/reading`, tutor only) that explains your marked Reading mock (missed question types, the evidence sentence); the 60-minute mock is at `/ielts-mock?module=reading`, marked in code with no model call | 41 golden items (the mock scales the score to 40) |
 | SAT Math | None | 33 golden items from 11 solver-verified templates |
 
-Only `gre/quant`, `gre/aw`, `ielts/writing` and `ielts/reading` are registered agents (`services/agent/src/agent/bootstrap.py`, with the pair list in `shared/src/shared/catalog.py`); any other `test_type` and `section` sent to `/chat` gets a "not set up yet" reply.
+Only `gre/quant`, `gre/aw`, `ielts/writing`, `ielts/reading` and `ielts/mock` are registered agents (`services/agent/src/agent/bootstrap.py`, with the pair list in `shared/src/shared/catalog.py`); any other `test_type` and `section` sent to `/chat` gets a "not set up yet" reply.
 
 ## Goals and scope
 
@@ -170,6 +170,15 @@ A General Training Writing module at `/ielts-mock?module=writing-module`: Task 1
 - If only one task can be marked, the report says there is no combined band and shows the task that was marked.
 - The letter prompts are original (`services/gateway/src/gateway/ielts/data/ielts_letter_prompts.jsonl`). The Task 1 band descriptors were not independently checked against the official descriptor PDF, so Task 1 scores are mock scores, and each letter report is labelled "Uncalibrated estimate" because no letter has been checked against a labelled set.
 - The coach reads a bounded digest of both reports at `/?attempt=<id>`. The practice re-mark tool (`mark_revision`) still re-marks a Task 2 attempt only.
+
+## IELTS full mock (Reading, then Writing)
+
+A full mock at `/ielts-mock?module=mock` ("Full mock" in the module links). "Start full mock" creates a mock record, then you sit Reading and then Writing. The modules are the standalone Reading and Writing modules; the mock only links their attempts, so nothing is stored twice and the standalone pages keep working.
+
+- Each skill shows its own band. Listening and Speaking show "Not assessed", so the overall band is marked partial.
+- Overall band = the mean of the assessed skill bands, rounded to the nearest half band by one shared `round_half_band` (a .25 rounds up to the next half, a .75 up to the next whole band). Example: Reading 6.0 and Writing 6.5 give 6.25, so 6.5. Rule: https://ielts.org/take-a-test/your-results/ielts-scoring-in-detail.
+- The report names the next module to sit, and a Writing module whose marking failed has a "Retry marking" button. The coach reads a bounded digest of the whole mock at `/?attempt=<mock id>&subject=mock` and recommends which skill to practise next.
+- API: `POST /ielts/mock`, `GET /ielts/mock`, `GET /ielts/mock/{id}`, `POST /ielts/mock/{id}/modules/{reading|writing}/attempt`. Reading must be started before Writing.
 
 ## Evals
 

@@ -15,6 +15,7 @@ export interface ChatTurn {
 export function chatTarget(subject: Subject): { test_type: string; section: string } {
   if (subject === "ielts_writing") return { test_type: "ielts", section: "writing" };
   if (subject === "ielts_reading") return { test_type: "ielts", section: "reading" };
+  if (subject === "ielts_mock") return { test_type: "ielts", section: "mock" };
   return { test_type: "gre", section: subject };
 }
 

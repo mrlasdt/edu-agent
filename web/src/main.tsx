@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { FullMock } from "./ielts/FullMock";
 import { IeltsMock } from "./ielts/IeltsMock";
 import { ReadingMock } from "./ielts/ReadingMock";
 import { WritingModule } from "./ielts/WritingModule";
@@ -12,7 +13,9 @@ const isIeltsMock = window.location.pathname.replace(/\/+$/, "") === "/ielts-moc
 
 const mockModule = new URLSearchParams(window.location.search).get("module");
 const mock =
-  mockModule === "reading" ? (
+  mockModule === "mock" ? (
+    <FullMock />
+  ) : mockModule === "reading" ? (
     <ReadingMock />
   ) : mockModule === "writing-module" ? (
     <WritingModule />

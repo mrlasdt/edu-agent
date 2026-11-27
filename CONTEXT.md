@@ -109,7 +109,7 @@ A plugin registry inside the Agent service. Agents register by `(test_type, sect
 _Avoid_: Agent factory, agent map, agent pool
 
 **Test type**:
-The standardised test a Candidate is preparing for. A first-class field on session state and corpus document metadata from v1. The chat serves `gre` and, for the Writing and Reading coaches only, `ielts`; `ielts` also exists for the mocks and corpus metadata, and `sat` for the eval set. Determines which agents, prompts, corpus documents, and golden set items apply to a session.
+The standardised test a Candidate is preparing for. A first-class field on session state and corpus document metadata from v1. The chat serves `gre` and, for the IELTS Writing, Reading and full-mock coaches only, `ielts`; `ielts` also exists for the mocks and corpus metadata, and `sat` for the eval set. Determines which agents, prompts, corpus documents, and golden set items apply to a session.
 _Avoid_: Exam type, test, product type
 
 **Clarification turn**:

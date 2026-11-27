@@ -12,21 +12,28 @@ const SUBJECT_TITLE: Record<Subject, string> = {
   aw: "GRE AW",
   ielts_writing: "IELTS Writing coach",
   ielts_reading: "IELTS Reading coach",
+  ielts_mock: "IELTS full mock coach",
 };
 
-const isCoach = (subject: Subject) => subject === "ielts_writing" || subject === "ielts_reading";
+const isCoach = (subject: Subject) =>
+  subject === "ielts_writing" || subject === "ielts_reading" || subject === "ielts_mock";
 
 // A mock report's "Discuss" link opens the coach on that attempt: /?attempt=<id>, plus
-// &subject=reading for a Reading attempt (Writing is the default).
+// &subject=reading for a Reading attempt or &subject=mock for a full mock (Writing is the default).
 function attemptFromUrl(): string | undefined {
   return new URLSearchParams(window.location.search).get("attempt") || undefined;
 }
 
+const SUBJECT_FROM_URL: Record<string, Subject> = {
+  reading: "ielts_reading",
+  mock: "ielts_mock",
+};
+
 export function App() {
   const attemptId = attemptFromUrl();
-  const fromUrl = new URLSearchParams(window.location.search).get("subject") === "reading";
+  const urlSubject = new URLSearchParams(window.location.search).get("subject") ?? "";
   const [subject, setSubject] = useState<Subject | null>(
-    attemptId ? (fromUrl ? "ielts_reading" : "ielts_writing") : null
+    attemptId ? (SUBJECT_FROM_URL[urlSubject] ?? "ielts_writing") : null
   );
   if (!subject) {
     return (
@@ -90,7 +97,9 @@ function Chat({ subject, attemptId }: { subject: Subject; attemptId?: string }) 
               ? "Ask about your report, e.g. what should I fix first?"
               : subject === "ielts_reading"
                 ? "Ask about your result, e.g. why did I miss the matching headings?"
-                : "Ask a question"
+                : subject === "ielts_mock"
+                  ? "Ask about your mock, e.g. which skill should I practise next?"
+                  : "Ask a question"
           }
           disabled={busy}
         />
