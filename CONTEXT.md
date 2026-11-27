@@ -175,7 +175,7 @@ The IELTS band (0 to 9 in half bands) the mock gives a response, per criterion a
 _Avoid_: Estimated band, predicted band, IELTS score, official band
 
 **AI spend cap**:
-The owner's limit on paid model spend by the IELTS mock and the evals (5 USD), counted in one ledger (`.eval-ledger/ledger.jsonl`) they share. The GRE tutor's `/chat` is not capped; its cost is recorded per turn instead (`shared/src/shared/turn_meter.py`). Every call is checked against it before it is made; once it is used up the mock refuses new attempts and markings with a message saying why.
+The owner's limit on paid model spend by the IELTS mock, the Writing coach's practice re-mark in `/chat` (`POST /ielts/remark`, marked by the gateway's grader) and the evals (5 USD), counted in one ledger (`.eval-ledger/ledger.jsonl`) they share. The GRE tutor's `/chat` is not capped; its cost is recorded per turn instead (`shared/src/shared/turn_meter.py`). Every call is checked against it before it is made; once it is used up the mock refuses new attempts and markings with a message saying why.
 _Avoid_: Budget (that is the eval harness's per-run projection), quota
 
 **Calibration gate**:
