@@ -39,7 +39,14 @@ TOOL = {
 CHECK = {"verdict": "agrees", "answer": "-8%", "tool_value": "0.92", "tool": "math_evaluate"}
 
 
-def write_turn(log: TurnLog, trace_id: str, mode: str, *, gateway: bool = True) -> None:
+def write_turn(
+    log: TurnLog,
+    trace_id: str,
+    mode: str,
+    *,
+    gateway: bool = True,
+    tools: list[dict[str, Any]] | None = None,
+) -> None:
     base: dict[str, Any] = {"trace_id": trace_id, "ts": 1.0, "mode": mode, "total_ms": 500.0}
     log.append(
         {
@@ -52,7 +59,7 @@ def write_turn(log: TurnLog, trace_id: str, mode: str, *, gateway: bool = True) 
             "cost_usd": 0.002,
             "calls": [CALL, CALL],
             "math_tools": True,
-            "tool_calls": [TOOL],
+            "tool_calls": tools if tools is not None else [TOOL],
             "calc_check": CHECK,
         }
     )
@@ -106,6 +113,16 @@ def test_tutor_mode_hides_tool_results_until_reveal(turn_log):
     shown = client.get("/turns/t-tutor?reveal=1").json()
     assert shown["tools_hidden"] is False
     assert shown["tool_calls"][0]["result"] == TOOL["result"]
+
+
+def test_a_notes_search_is_not_a_calculator_call(turn_log):
+    notes = {**TOOL, "name": "notes_search", "arguments": '{"concept":"quadratics"}'}
+    write_turn(turn_log, "t-notes", "tutor", tools=[notes])
+
+    body = client.get("/turns/t-notes").json()
+    assert body["tool_calls"] == []
+    assert body["tools_hidden"] is False
+    assert "notes_search" not in client.get("/turns/t-notes?reveal=1").text
 
 
 def test_an_unknown_mode_is_treated_like_tutor(turn_log):

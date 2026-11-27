@@ -21,6 +21,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from shared.src.shared import turn_meter
+from shared.src.shared.math_tool_specs import TOOL_NAMES
 from shared.src.shared.turn_merge import merge_turns
 
 router = APIRouter()
@@ -64,7 +65,9 @@ def get_turn(trace_id: str, reveal: int = 0) -> JSONResponse:
 
     (turn,) = merge_turns(records)
     hidden = turn["mode"] != SOLVE and not reveal
-    tool_calls = (agent or {}).get("tool_calls") or []
+    tool_calls = [
+        c for c in (agent or {}).get("tool_calls") or [] if c.get("name") in TOOL_NAMES
+    ]
     calc_check = None if hidden else (agent or {}).get("calc_check")
 
     body = {
