@@ -61,6 +61,12 @@ def _confidence(outcome: GradeOutcome) -> str:
     return "high" if n >= 3 and outcome.spread <= 0.5 else "medium"
 
 
+LETTER_CALIBRATION = Calibration(
+    status="uncalibrated", label="Uncalibrated estimate",
+    note="No Task 1 letters have been checked against a labelled set yet.",
+)
+
+
 def _estimated_band(outcome: GradeOutcome, calibration: Calibration) -> EstimatedBand:
     overall = outcome.overall
     overalls = outcome.sample_overalls
@@ -190,7 +196,9 @@ async def mark_essay(
         )
     return Report(
         status="graded", task=task, word_count=outcome.checks.word_count, timing=timing,
-        estimated_band=_estimated_band(outcome, calibration or load_calibration()),
+        estimated_band=_estimated_band(
+            outcome, calibration or (LETTER_CALIBRATION if task == "T1" else load_calibration())
+        ),
         criteria=criteria, error_spans=errors, task_checks=_task_checks(outcome, feedback),
         top_priorities=top_priorities(criteria) if feedback else [], flags=outcome.flags,
         feedback_status=_feedback_status(feedback),  # type: ignore[arg-type]

@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from services.gateway.src.gateway import ielts_api
 from services.gateway.src.gateway.ielts import llm
 from services.gateway.src.gateway.ielts.digest import build_digest
+from services.gateway.src.gateway.ielts.gate import load_calibration
 from services.gateway.src.gateway.ielts.marking import mark_essay
 from services.gateway.src.gateway.ielts.prompts import load_letter_prompts
 from services.gateway.src.gateway.ielts.report_checks import check_report
@@ -174,6 +175,8 @@ async def test_a_letter_is_marked_on_task_achievement_with_the_letter_checks():
     assert report.criteria[0].name == "Task Achievement"
     assert report.estimated_band is not None and report.estimated_band.overall == 6.0
     assert check_report(report, LETTER) == []
+    assert report.estimated_band.calibration.status == "uncalibrated"
+    assert "Task 1" in report.estimated_band.calibration.note
     checks = {t.check: t.passed for t in report.task_checks}
     assert checks["at least 150 words"] is True
     assert checks["covers every bullet point of the task"] is True
@@ -199,6 +202,8 @@ async def test_task_2_is_marked_exactly_as_before():
         "p", ESSAY, completer=TaskAware((6, 6, 6, 6), (7, 7, 7, 7)), samples=1, trace_id="t"
     )
     assert report.task == "T2" and [c.id for c in report.criteria][0] == "TR"
+    assert report.estimated_band is not None
+    assert report.estimated_band.calibration == load_calibration()
 
 
 # ── the API ──────────────────────────────────────────────────────────────────
