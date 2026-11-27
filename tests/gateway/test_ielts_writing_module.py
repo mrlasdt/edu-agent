@@ -324,4 +324,16 @@ def test_the_writing_coach_reads_a_graded_module_with_both_tasks(
         assert "Combined Writing band (mock): 6.5" in found.digest
         assert "Task 1 (letter)" in found.digest and "Task 2" in found.digest
         assert LETTER not in found.digest and len(found.digest) <= 8_000
+        assert "Re-marking a revised essay is not available" in found.digest
     assert find_report(store, attempt_id, "reading") is None
+
+
+def test_re_marking_a_module_attempt_says_it_is_not_available_not_not_found(client: TestClient):
+    attempt_id = new_attempt(client)
+    client.post(f"/ielts/writing/attempts/{attempt_id}/start")
+    both = {"t1": LETTER, "t2": ESSAY_FULL}
+    client.post(f"/ielts/writing/attempts/{attempt_id}/submit", json=both)
+    response = client.post("/ielts/remark", json={"attempt_id": attempt_id, "essay": ESSAY_FULL})
+    assert response.status_code == 409
+    assert "standalone Writing Task 2" in response.json()["detail"]
+    assert "not found" not in response.json()["detail"]

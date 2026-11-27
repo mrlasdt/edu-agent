@@ -78,7 +78,7 @@ def _criterion_lines(c: CriterionReport, essay: str, quotes: int, actions: int) 
         lines.append(f"    action: {line(action.do, 250)} (why: {line(action.why, 250)})")
     quoted = _verified_quotes(c, essay, quotes)
     if quoted:
-        lines.append("    quotes from the essay:")
+        lines.append("    quotes from the response:")
         lines.extend(quoted)
     return lines
 
@@ -88,7 +88,7 @@ def _body(report: Report, essay: str, prompt: str, quotes: int, actions: int, sp
     assert band is not None
     lines = [
         f"Question the candidate answered: {line(prompt, 500)}",
-        f"Essay length: {report.word_count} words."
+        f"Response length: {report.word_count} words."
         + (
             f" Time used: {report.timing.used_s // 60} of {report.timing.allowed_s // 60} minutes"
             + (", submitted late." if report.timing.late else ".")
@@ -150,6 +150,13 @@ def build_digest(
     return wrap(DIGEST_TITLES[report.task], body)
 
 
+# What the module digest tells the coach, and what POST /ielts/remark answers for a module attempt.
+MODULE_REMARK_UNAVAILABLE = (
+    "Re-marking a revised essay is not available for a Writing module attempt: re-mark covers a "
+    "standalone Writing Task 2 mock only. Do not offer it; point the learner to /ielts-mock to "
+    "sit a standalone Task 2."
+)
+
 # Two task digests and the band line must fit the one digest the agent service accepts.
 MODULE_TASK_BODY_CHARS = 3_600
 assert 2 * (MODULE_TASK_BODY_CHARS + 200) + 200 <= MAX_REPORT_DIGEST_CHARS
@@ -174,4 +181,4 @@ def build_module_digest(
         if report.writing_band is not None else
         "Combined Writing band: not given, because only one task could be marked."
     )
-    return "\n\n".join([line(band, 300), *parts])
+    return "\n\n".join([line(band, 300), MODULE_REMARK_UNAVAILABLE, *parts])
