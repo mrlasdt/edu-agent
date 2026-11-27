@@ -273,7 +273,7 @@ Docker Compose (`infra/docker-compose.yml`) is the one supported way to run the 
 
 ## Not built yet
 
-- Tutoring chat for SAT Math, IELTS Reading and the other IELTS sections (only golden sets exist), and SAT Reading and Writing.
+- Tutoring chat for SAT Math, IELTS Listening and Speaking, and SAT Reading and Writing (SAT Math has only a golden set).
 - Login and learner identity: school and candidate corpus tiers cannot be written, and the IELTS mock is single-user.
 - Web UI beyond the chat shell: no sources panel, preferences, upload or conversation persistence (components exist but are not wired); math is typeset lightly, no LaTeX.
 - Most agent metadata is dropped on the way to the UI. The Solve-mode independent check (ADR-0015) covers numeric answers only: quantitative comparisons and other non-numeric answers show "not checkable", and "agrees" does not show the problem was read correctly. It costs one extra short model call per solve turn, and how often a real model writes a faithful equation is measured only by a live run (the offline `wrong_but_verified` uses each item's own expression).
