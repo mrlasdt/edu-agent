@@ -9,7 +9,8 @@ whether the answer it then wrote down is one of their results.
   agrees    every value in the final answer is a value a successful tool call returned
             (a percent `p%` also matches the factor `1 + p/100` and the fraction `p/100`)
   differs   tool results exist, the answer has values, and none of them is a tool result
-  none      nothing to compare: no successful tool call, no extractable answer, or only some of
+  none      nothing to compare: no successful tool call, no extractable answer, an answer that is
+            not only numbers (an expression like "(x-4)(x+1)"), or only some of
             the answer's values match (an answer that mixes checked and unchecked values is not
             called either way)
 
@@ -114,6 +115,16 @@ def _answer_values(answer: str) -> list[_Value]:
     return values
 
 
+def _is_numeric_only(answer: str) -> bool:
+    """True when the answer is only numbers, percents, fractions and plain unit words, so that
+    comparing its numbers with tool values judges the whole answer. "(x-4)(x+1)" or "2x + 3" are
+    not: their numbers are pieces of an expression, not values."""
+    if re.search(r"\d[A-Za-z]|[A-Za-z]\d", answer):
+        return False
+    rest = _NUMBER.sub(" ", answer)
+    return re.fullmatch(r"[\s,;.$€£%]*(?:[A-Za-z]{2,}[\s,;.$€£%]*)*", rest) is not None
+
+
 def _verdict_letter(answer: str) -> str | None:
     for pattern, letter in _VERDICT_WORDS:
         if pattern.search(answer):
@@ -175,6 +186,9 @@ def calculator_check(final_answer: str | None, tool_calls: Iterable[_Call]) -> C
         if any(v in ("A", "B", "C", "D") for v in verdicts):
             return CalcCheck(DIFFERS, letter, verdicts[-1], "math_compare")
         return CalcCheck(NONE)  # "undetermined": the tool did not decide
+
+    if not _is_numeric_only(final_answer):
+        return CalcCheck(NONE)
 
     values = _answer_values(final_answer)
     available = [

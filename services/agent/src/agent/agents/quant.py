@@ -198,7 +198,7 @@ class QuantAgent(BaseAgent[QuantTurn]):
         tutor turn has no final answer to check and must not weigh in on one."""
         if turn.tools is None or not turn.math_tools:
             return None
-        return calculator_check(answer, turn.tools.calls)
+        return calculator_check(answer, turn.tools.last_attempt_calls)
 
     def _system_prompt(self, turn: QuantTurn) -> str:
         """The mode's prompt, from the math-tools prompt set when the tools are on."""

@@ -232,6 +232,18 @@ def test_the_log_skips_a_torn_line(turn_log):
     assert [r["trace_id"] for r in turn_log.read()] == ["t1"]
 
 
+def test_the_log_returns_only_the_records_of_one_trace_in_order(turn_log):
+    turn_log.append({"trace_id": "t1", "source": "agent"})
+    turn_log.append({"trace_id": "t10", "source": "agent"})
+    turn_log.append({"trace_id": "t1", "source": "gateway"})
+    turn_log.append({"trace_id": "t2", "note": '"trace_id":"t1"'})
+    with turn_log.path.open("a") as fh:
+        fh.write('{"trace_id":"t1","sour')
+    assert [r["source"] for r in turn_log.for_trace("t1")] == ["agent", "gateway"]
+    assert turn_log.for_trace("") == []
+    assert turn_log.for_trace("nope") == []
+
+
 def test_records_written_before_the_version_key_was_dropped_still_load(turn_log):
     """Old lines carry `"v": 1`; nothing reads it, so they load and report like any other."""
     legacy = {"v": 1, "ts": 1.0, "trace_id": "t1", "source": "agent", "agent": "quant_agent",

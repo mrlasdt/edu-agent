@@ -91,6 +91,9 @@ def test_a_positive_percent_is_not_the_factor_of_a_fall() -> None:
         ("0.92", [Call("notes_search", {"value": "0.92"})]),  # only math tools count
         ("0.92", [Call("math_evaluate", None)]),
         ("1", [evaluate("x + 1")]),  # symbolic results have no number to compare
+        ("(x-4)(x+1)", [solve("-1", "4")]),  # an expression, not values: its numbers are pieces
+        ("2x + 3", [evaluate("3")]),
+        ("x = 4", [solve("-1", "4")]),
     ],
 )
 def test_nothing_to_compare_is_none(answer, calls) -> None:

@@ -56,7 +56,7 @@ def get_turn(trace_id: str, reveal: int = 0) -> JSONResponse:
     log = turn_meter.default_turn_log()
     if log is None:
         return JSONResponse(status_code=503, content={"detail": "turn log is switched off"})
-    records = [r for r in log.read() if r.get("trace_id") == trace_id]
+    records = log.for_trace(trace_id)
     gateway = next((r for r in records if r.get("source") == "gateway"), None)
     agent = next((r for r in records if r.get("source") == "agent"), None)
     if gateway is None:

@@ -32,6 +32,7 @@ class ToolTurn:
         self._math = math
         self.notes = notes
         self.calls: list[ToolCallRecord] = []
+        self.last_attempt_calls: list[ToolCallRecord] = []
         self.rounds = 0
         self.stop_reason = ANSWERED
 
@@ -53,7 +54,8 @@ class ToolTurn:
             temperature=temperature,
             **(obs_meta or {}),
         )
-        self.calls += [replace(c, round=c.round + self.rounds) for c in outcome.calls]
+        self.last_attempt_calls = [replace(c, round=c.round + self.rounds) for c in outcome.calls]
+        self.calls += self.last_attempt_calls
         self.rounds += outcome.rounds
         if self.stop_reason == ANSWERED:  # a turn keeps the first reason it was stopped for
             self.stop_reason = outcome.stop_reason

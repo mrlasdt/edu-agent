@@ -68,12 +68,13 @@ class TurnLog:
                 records.append(value)
         return records
 
-    def last_with_trace(self, trace_id: str) -> dict[str, Any] | None:
-        """The newest well-formed record carrying `trace_id`, or None. Scans line by line."""
+    def for_trace(self, trace_id: str) -> list[dict[str, Any]]:
+        """Every well-formed record carrying `trace_id`, oldest first. Scans line by line and
+        parses only the lines that mention the id."""
         if not trace_id or not self.path.exists():
-            return None
+            return []
         needle = f'"trace_id":{json.dumps(trace_id)}'
-        found: dict[str, Any] | None = None
+        found: list[dict[str, Any]] = []
         with self.path.open(encoding="utf-8") as fh:
             for line in fh:
                 if needle not in line:
@@ -83,8 +84,13 @@ class TurnLog:
                 except ValueError:
                     continue
                 if isinstance(value, dict) and value.get("trace_id") == trace_id:
-                    found = value
+                    found.append(value)
         return found
+
+    def last_with_trace(self, trace_id: str) -> dict[str, Any] | None:
+        """The newest well-formed record carrying `trace_id`, or None."""
+        found = self.for_trace(trace_id)
+        return found[-1] if found else None
 
 
 def default_turn_log() -> TurnLog | None:

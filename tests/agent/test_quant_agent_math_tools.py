@@ -461,3 +461,25 @@ async def test_a_solve_turn_without_the_tools_has_no_calculator_check(turn_log) 
         await collect_session(a, session_with(Mode.solve, False), "A price rises 15%...")
     (record,) = turn_log.read()
     assert "calc_check" not in record
+
+
+async def test_the_check_ignores_tool_results_of_an_attempt_that_failed(turn_log) -> None:
+    model = Model(
+        tool_reply(), text_reply("**Answer: 1**"),  # attempt 1 computes 0.92, then fails
+        text_reply("**Answer: -8%**"),               # attempt 2 answers without computing
+    )
+    a = agent(FakeMath(PERCENT_RESULT))
+    with (
+        patch("litellm.acompletion", new=model),
+        patch.object(
+            a, "verify_well_formed", new_callable=AsyncMock,
+            side_effect=[
+                VerifyMathResult(verified=False, computed=""),
+                VerifyMathResult(verified=True, computed="-8"),
+            ],
+        ),
+    ):
+        await collect_session(a, session_with(Mode.solve, True), "A price rises 15%...")
+    (record,) = turn_log.read()
+    assert len(record["tool_calls"]) == 1  # the failed attempt's call is still on the record
+    assert record["calc_check"]["verdict"] == "none"
