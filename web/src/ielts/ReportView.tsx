@@ -9,6 +9,8 @@ interface Props {
   onAnother: () => void;
   // The attempt this report belongs to: when given, the footer links to the chat coach on it.
   attemptId?: string;
+  // One task inside a combined report: no footer, and the text is called a letter for Task 1.
+  embedded?: boolean;
 }
 
 const CONFIDENCE_TEXT = {
@@ -83,7 +85,7 @@ function CriterionCard({ c }: { c: CriterionReport }) {
           <strong>To reach {band(next)}.</strong> {c.to_reach_next_band}
         </p>
       )}
-      {c.evidence.length > 0 && <p className="ielts-sub">From your essay</p>}
+      {c.evidence.length > 0 && <p className="ielts-sub">From your writing</p>}
       {c.evidence.length > 0 && (
         <ul className="ielts-evidence" aria-label={`Evidence for ${c.name}`}>
           {c.evidence.map((e, i) => (
@@ -130,14 +132,15 @@ function CriterionCard({ c }: { c: CriterionReport }) {
   );
 }
 
-export function ReportView({ report, essay, onAnother, attemptId }: Props) {
+export function ReportView({ report, essay, onAnother, attemptId, embedded = false }: Props) {
   const flags = report.flags.filter((f) => f.severity !== "info");
   const est = report.estimated_band;
+  const noun = report.task === "T1" ? "letter" : "essay";
 
   return (
-    <article className="ielts-report" aria-label="Report">
+    <article className="ielts-report" aria-label={embedded ? `Task ${report.task.slice(1)} report` : "Report"}>
       {est ? (
-        <section className="ielts-hero" aria-label="Mock score">
+        <section className="ielts-hero" aria-label={embedded ? `Task ${report.task.slice(1)} mock score` : "Mock score"}>
           <p className="ielts-eyebrow">Mock score</p>
           <p className="ielts-hero-band" aria-label={`Mock overall score ${band(est.overall)}`}>
             {band(est.overall)}
@@ -154,7 +157,7 @@ export function ReportView({ report, essay, onAnother, attemptId }: Props) {
         </section>
       ) : (
         <section className="ielts-hero" aria-label="Not marked">
-          <h2>This response could not be given a band</h2>
+          <h2>This {noun} could not be given a band</h2>
           <p>{report.ungraded_reason}</p>
           <p className="ielts-disclaimer">{DISCLAIMER}</p>
         </section>
@@ -193,7 +196,7 @@ export function ReportView({ report, essay, onAnother, attemptId }: Props) {
         <p className="ielts-flags" role="note">
           {report.feedback_status === "unavailable"
             ? "The written feedback was unavailable this time, so only the bands are shown."
-            : "Some of the written feedback could not be checked against your essay, so it is incomplete."}
+            : `Some of the written feedback could not be checked against your ${noun}, so it is incomplete.`}
         </p>
       )}
 
@@ -240,13 +243,13 @@ export function ReportView({ report, essay, onAnother, attemptId }: Props) {
       )}
 
       {report.error_spans.length > 0 && (
-        <section aria-label="Your essay, marked">
-          <h2>Your essay, marked</h2>
+        <section aria-label={`Your ${noun}, marked`}>
+          <h2>Your {noun}, marked</h2>
           <p className="ielts-essay">
             <Segments essay={essay} spans={report.error_spans} />
           </p>
           <table className="ielts-errors">
-            <caption className="ielts-sr">Errors found in your essay</caption>
+            <caption className="ielts-sr">Errors found in your {noun}</caption>
             <thead>
               <tr>
                 <th scope="col">You wrote</th>
@@ -271,6 +274,7 @@ export function ReportView({ report, essay, onAnother, attemptId }: Props) {
         </section>
       )}
 
+      {!embedded && (
       <footer className="ielts-report-foot">
         <p className="ielts-hint">
           An IELTS mock. It is good for spotting patterns and tracking change across attempts; it
@@ -285,6 +289,7 @@ export function ReportView({ report, essay, onAnother, attemptId }: Props) {
           Write another essay
         </button>
       </footer>
+      )}
     </article>
   );
 }

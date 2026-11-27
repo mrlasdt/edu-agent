@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+TaskId = Literal["T1", "T2"]
 DISCLAIMER = "Mock score: an estimate, not an official IELTS result."
 
 
@@ -107,7 +108,7 @@ class ModelInfo(BaseModel):
 
 class Report(BaseModel):
     status: Literal["graded", "ungraded"]
-    task: Literal["T2"] = "T2"
+    task: TaskId = "T2"
     word_count: int
     timing: Timing | None = None
     estimated_band: EstimatedBand | None = None
@@ -166,4 +167,22 @@ class ReadingReport(BaseModel):
     keys_note: str
     band_source_url: str
     timing_source_url: str
+    disclaimer: str = DISCLAIMER
+
+
+class WritingModuleReport(BaseModel):
+    """
+    The Writing module: a Task 1 letter and a Task 2 essay marked separately, then one band.
+    `writing_band` is only set when both tasks were marked; otherwise the status is `partial`
+    and the band is withheld (a missing task cannot be averaged in).
+    """
+
+    status: Literal["graded", "partial"]
+    module: Literal["ielts_writing"] = "ielts_writing"
+    t1: Report
+    t2: Report
+    writing_band: float | None = None
+    weights_note: str
+    weights_source_urls: list[str]
+    timing: Timing
     disclaimer: str = DISCLAIMER

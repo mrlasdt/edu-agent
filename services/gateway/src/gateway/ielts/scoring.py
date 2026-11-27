@@ -14,8 +14,29 @@ from dataclasses import dataclass
 
 from shared.src.shared.stats import round_half_band
 
-CRITERIA: tuple[str, ...] = ("TR", "CC", "LR", "GRA")
+# Public IELTS Writing format and scoring pages (ielts.org): the four criteria are weighted
+# equally within a task, Task 1 is marked on Task Achievement and Task 2 on Task Response, and
+# "Task 2 contributes twice as much as Task 1 to the Writing score".
+#   https://ielts.org/take-a-test/test-types/ielts-general-training-test/ielts-general-training-format-writing
+#   https://ielts.org/take-a-test/your-results/ielts-scoring-in-detail
+TASK_SOURCE_URLS = (
+    "https://ielts.org/take-a-test/test-types/ielts-general-training-test/"
+    "ielts-general-training-format-writing",
+    "https://ielts.org/take-a-test/your-results/ielts-scoring-in-detail",
+)
+TASK_WEIGHTS_NOTE = (
+    "Writing band = (Task 1 band + 2 x Task 2 band) / 3, rounded to the nearest half band: "
+    "IELTS states that Task 2 contributes twice as much as Task 1. Each task band is a mock "
+    "estimate, so the combined band is one too."
+)
+TASK_WEIGHTS: dict[str, int] = {"T1": 1, "T2": 2}
+CRITERIA_BY_TASK: dict[str, tuple[str, ...]] = {
+    "T1": ("TA", "CC", "LR", "GRA"),
+    "T2": ("TR", "CC", "LR", "GRA"),
+}
+CRITERIA: tuple[str, ...] = CRITERIA_BY_TASK["T2"]  # the Task 2 default used across the mock
 CRITERION_NAMES = {
+    "TA": "Task Achievement",
     "TR": "Task Response",
     "CC": "Coherence and Cohesion",
     "LR": "Lexical Resource",
@@ -44,8 +65,17 @@ def snap_band(value: float) -> float:
 
 def round_overall(criteria: dict[str, float]) -> float:
     """Mean of the four criteria rounded to the nearest half band (a quarter rounds up)."""
-    mean = sum(criteria[c] for c in CRITERIA) / len(CRITERIA)
+    mean = sum(criteria.values()) / len(criteria)
     return round_half_band(mean)
+
+
+def writing_band(task_bands: dict[str, float]) -> float:
+    """
+    The combined Writing band: the task bands weighted 1 (Task 1) to 2 (Task 2), rounded to the
+    nearest half band. Eg Task 1 6.0 and Task 2 7.0 give (6 + 2 x 7) / 3 = 6.67, so 6.5.
+    """
+    total = sum(TASK_WEIGHTS[t] for t in task_bands)
+    return round_half_band(sum(b * TASK_WEIGHTS[t] for t, b in task_bands.items()) / total)
 
 
 def median_band(values: Sequence[float]) -> float:
@@ -66,11 +96,11 @@ def extract_json(text: str) -> dict[str, object]:
     return raw
 
 
-def parse_sample(text: str) -> GradeSample:
+def parse_sample(text: str, task: str = "T2") -> GradeSample:
     """Pull the four criterion bands (and the model's flags) out of a grader reply."""
     raw = extract_json(text)
     bands: dict[str, float] = {}
-    for crit in CRITERIA:
+    for crit in CRITERIA_BY_TASK[task]:
         try:
             bands[crit] = snap_band(float(raw[crit]))  # type: ignore[arg-type]
         except (KeyError, TypeError, ValueError) as exc:
@@ -83,5 +113,5 @@ def parse_sample(text: str) -> GradeSample:
     )
 
 
-def parse_grade(text: str) -> dict[str, float]:
-    return parse_sample(text).bands
+def parse_grade(text: str, task: str = "T2") -> dict[str, float]:
+    return parse_sample(text, task).bands

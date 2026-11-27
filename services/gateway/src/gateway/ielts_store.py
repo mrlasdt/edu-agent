@@ -18,9 +18,15 @@ from pathlib import Path
 
 MODULE_WRITING_T2 = "ielts_writing_t2"
 MODULE_READING = "ielts_reading"
+MODULE_WRITING = "ielts_writing"  # Task 1 letter + Task 2 essay on one 60 minute clock
 ALLOWED_S = 40 * 60  # Writing Task 2
 READING_ALLOWED_S = 60 * 60  # General Training Reading (source in ielts/reading.py)
-ALLOWED_S_BY_MODULE = {MODULE_WRITING_T2: ALLOWED_S, MODULE_READING: READING_ALLOWED_S}
+WRITING_ALLOWED_S = 60 * 60  # GT Writing, Task 1 + Task 2 (source in ielts/scoring.py)
+ALLOWED_S_BY_MODULE = {
+    MODULE_WRITING_T2: ALLOWED_S,
+    MODULE_READING: READING_ALLOWED_S,
+    MODULE_WRITING: WRITING_ALLOWED_S,
+}
 GRACE_S = 30  # network and clock slack before a submission counts as late
 DRAFT_MAX_CHARS = 20_000
 

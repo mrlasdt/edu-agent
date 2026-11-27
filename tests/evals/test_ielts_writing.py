@@ -399,6 +399,17 @@ async def test_adversarial_suite_holds_even_when_the_model_scores_everything_a_9
     assert report.max_band_given is not None and report.max_band_given < 9
 
 
+async def test_letter_adversarial_suite_holds_when_the_model_scores_everything_a_9():
+    items = load_exam_items(exam="ielts", skill="writing_t1")
+    cases = [i for i in items if i.task_type == "adversarial_response"]
+    assert len(cases) >= 6 and all(i.prompt == adversarial.LETTER_PROMPT for i in cases)
+    report = await ielts_writing.run_ielts_adversarial(
+        cases, ielts_writing.OfflineCompleter(), samples=1
+    )
+    assert report.n_cases == len(cases) and report.failed_cases == []
+    assert report.max_band_given is not None and report.max_band_given < 9
+
+
 async def test_report_suite_runs_the_mechanical_checks_on_a_full_offline_report():
     long_essay = " ".join(["Schools should teach cooking and budgeting to every student."] * 30)
     items = [essay_item(f"r{i}", 6.0) for i in range(2)]

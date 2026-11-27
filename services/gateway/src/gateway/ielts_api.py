@@ -25,6 +25,7 @@ from services.gateway.src.gateway.ielts.prompts import WritingPrompt, load_promp
 from services.gateway.src.gateway.ielts_store import (
     ALLOWED_S,
     DRAFT_MAX_CHARS,
+    MODULE_WRITING,
     MODULE_WRITING_T2,
     Attempt,
     AttemptNotFoundError,
@@ -41,6 +42,11 @@ from shared.src.shared.budget import (
 )
 
 _log = logging.getLogger(__name__)
+
+MODULE_REMARK_REFUSAL = (
+    "Re-marking covers a standalone Writing Task 2 mock only, so a Writing module attempt cannot "
+    "be re-marked. Sit a standalone Task 2 at /ielts-mock to practise one."
+)
 
 router = APIRouter(prefix="/ielts", tags=["ielts"])
 
@@ -368,8 +374,15 @@ async def remark_essay(
     marking and the same spend cap and rate limit as a mock, but untimed and stored nowhere. The
     comparison is with the graded attempt the learner is being coached from. Refusals carry a
     `detail` the learner can read: 402 the cap is used up, 429 too many requests, 502 the model
-    is unavailable, 409 the attempt has no graded report, 422 nothing to mark.
+    is unavailable, 409 the attempt has no graded report or is a Writing module attempt (re-mark
+    covers a standalone Task 2 only), 422 nothing to mark.
     """
+    try:
+        module = store.get(body.attempt_id).module
+    except AttemptNotFoundError:
+        raise HTTPException(404, "attempt not found") from None
+    if module == MODULE_WRITING:
+        raise HTTPException(409, MODULE_REMARK_REFUSAL)
     attempt = _load(store, body.attempt_id)
     previous_report = (
         Report.model_validate_json(attempt.report_json) if attempt.report_json else None

@@ -1,5 +1,6 @@
 """
-Mark one Writing Task 2 response end to end: checks, sampled grading, feedback, report.
+Mark one Writing response (Task 1 letter or Task 2 essay) end to end: checks, sampled grading,
+feedback, report.
 
 Two outcomes are final and returned as an `ungraded` report (the response cannot be marked);
 a model outage raises `GradingError` and a budget stop `BudgetExceededError`, at any stage, so
@@ -12,7 +13,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from services.gateway.src.gateway.ielts import llm
-from services.gateway.src.gateway.ielts.checks import check_essay
+from services.gateway.src.gateway.ielts.checks import TASK_RULES, check_essay
 from services.gateway.src.gateway.ielts.feedback import Feedback, generate_feedback
 from services.gateway.src.gateway.ielts.gate import load_calibration
 from services.gateway.src.gateway.ielts.grading import (
@@ -31,9 +32,14 @@ from services.gateway.src.gateway.ielts.models import (
     Priority,
     Report,
     TaskCheck,
+    TaskId,
     Timing,
 )
-from services.gateway.src.gateway.ielts.scoring import CRITERIA, CRITERION_NAMES, MAX_ESTIMATED_BAND
+from services.gateway.src.gateway.ielts.scoring import (
+    CRITERIA_BY_TASK,
+    CRITERION_NAMES,
+    MAX_ESTIMATED_BAND,
+)
 from shared.src.shared.budget import BudgetExceededError
 
 LOW_CONFIDENCE_FLAGS = frozenset(
@@ -50,9 +56,15 @@ def _confidence(outcome: GradeOutcome) -> str:
     n = len(outcome.samples)
     if n < 2 or outcome.spread > 1.0 or any(f.code in LOW_CONFIDENCE_FLAGS for f in outcome.flags):
         return "low"
-    if any(outcome.caps.get(c, 9.0) < outcome.median[c] for c in CRITERIA):
+    if any(outcome.caps.get(c, 9.0) < outcome.median[c] for c in CRITERIA_BY_TASK[outcome.task]):
         return "low"  # a rule overrode the marking passes, so their agreement says little
     return "high" if n >= 3 and outcome.spread <= 0.5 else "medium"
+
+
+LETTER_CALIBRATION = Calibration(
+    status="uncalibrated", label="Uncalibrated estimate",
+    note="No Task 1 letters have been checked against a labelled set yet.",
+)
 
 
 def _estimated_band(outcome: GradeOutcome, calibration: Calibration) -> EstimatedBand:
@@ -69,7 +81,7 @@ def _estimated_band(outcome: GradeOutcome, calibration: Calibration) -> Estimate
 def _criteria(outcome: GradeOutcome, feedback: Feedback | None) -> list[CriterionReport]:
     errors = feedback.errors if feedback else []
     out: list[CriterionReport] = []
-    for crit in CRITERIA:
+    for crit in CRITERIA_BY_TASK[outcome.task]:
         fb = feedback.criteria.get(crit) if feedback else None
         table = Counter(e.type for e in errors if e.type in ERROR_GROUPS.get(crit, ()))
         out.append(CriterionReport(
@@ -87,7 +99,7 @@ def _criteria(outcome: GradeOutcome, feedback: Feedback | None) -> list[Criterio
 
 
 def top_priorities(criteria: list[CriterionReport]) -> list[Priority]:
-    """The three lowest-banded criteria, each with its first action (ties keep TR, CC, LR, GRA)."""
+    """The three lowest-banded criteria, each with its first action (ties keep the order)."""
     lowest = sorted(criteria, key=lambda c: c.band)[:3]
     priorities: list[Priority] = []
     for c in lowest:
@@ -104,6 +116,17 @@ def top_priorities(criteria: list[CriterionReport]) -> list[Priority]:
 def _task_checks(outcome: GradeOutcome, feedback: Feedback | None) -> list[TaskCheck]:
     checks = outcome.checks
     model: dict[str, bool | None] = feedback.checks if feedback else {}
+    if outcome.task == "T1":
+        return [
+            TaskCheck(check="at least 150 words", passed=checks.word_count >= 150),
+            TaskCheck(check="uses the key words of the task", passed=not checks.has(
+                "possibly_off_topic")),
+            TaskCheck(check="covers every bullet point of the task",
+                      passed=model.get("covers_every_bullet")),
+            TaskCheck(check="tone fits the reader", passed=model.get("tone_fits_reader")),
+            TaskCheck(check="clear opening and closing",
+                      passed=model.get("clear_opening_and_closing")),
+        ]
     return [
         TaskCheck(check="at least 250 words", passed=checks.word_count >= 250),
         TaskCheck(check="four or more paragraphs", passed=checks.paragraph_count >= 4),
@@ -126,10 +149,10 @@ def _feedback_status(feedback: Feedback | None) -> str:
 
 
 def ungraded_report(
-    essay_words: int, flags: list[Flag], reason: str, timing: Timing | None
+    essay_words: int, flags: list[Flag], reason: str, timing: Timing | None, task: TaskId = "T2"
 ) -> Report:
     return Report(
-        status="ungraded", word_count=essay_words, timing=timing, flags=flags,
+        status="ungraded", task=task, word_count=essay_words, timing=timing, flags=flags,
         ungraded_reason=reason,
     )
 
@@ -137,21 +160,23 @@ def ungraded_report(
 async def mark_essay(
     prompt: str, essay: str, *, completer: llm.Completer, timing: Timing | None = None,
     previous: Mapping[str, Any] | None = None, samples: int = 3, trace_id: str = "",
-    calibration: Calibration | None = None,
+    calibration: Calibration | None = None, task: TaskId = "T2",
 ) -> Report:
     """`previous` is the earlier graded attempt: {"overall": float, "criteria": {id: band}}."""
+    assert task in TASK_RULES
     try:
         outcome = await grade_essay(
-            prompt, essay, completer=completer, samples=samples, trace_id=trace_id
+            prompt, essay, completer=completer, samples=samples, trace_id=trace_id, task=task
         )
     except EssayNotMarkableError as exc:
-        checks = check_essay(prompt, essay)
-        return ungraded_report(checks.word_count, checks.flags, exc.reason, timing)
+        checks = check_essay(prompt, essay, task)
+        return ungraded_report(checks.word_count, checks.flags, exc.reason, timing, task)
 
     notes = [f.message for f in outcome.flags if f.severity != "info"]
     try:
         feedback: Feedback | None = await generate_feedback(
-            prompt, essay, outcome.criteria, notes, completer=completer, trace_id=trace_id
+            prompt, essay, outcome.criteria, notes, completer=completer, trace_id=trace_id,
+            task=task,
         )
     except BudgetExceededError:
         raise
@@ -166,19 +191,21 @@ async def mark_essay(
             overall_delta=outcome.overall - float(previous["overall"]),
             criteria_deltas={
                 c: outcome.criteria[c] - float(previous["criteria"][c])
-                for c in CRITERIA if c in previous["criteria"]
+                for c in CRITERIA_BY_TASK[task] if c in previous["criteria"]
             },
         )
     return Report(
-        status="graded", word_count=outcome.checks.word_count, timing=timing,
-        estimated_band=_estimated_band(outcome, calibration or load_calibration()),
+        status="graded", task=task, word_count=outcome.checks.word_count, timing=timing,
+        estimated_band=_estimated_band(
+            outcome, calibration or (LETTER_CALIBRATION if task == "T1" else load_calibration())
+        ),
         criteria=criteria, error_spans=errors, task_checks=_task_checks(outcome, feedback),
         top_priorities=top_priorities(criteria) if feedback else [], flags=outcome.flags,
         feedback_status=_feedback_status(feedback),  # type: ignore[arg-type]
         vs_previous_attempt=delta,
         prompt_versions=ModelInfo(
             grader_models=[llm.role_model(llm.GRADER_ROLE)],
-            grader_prompt=llm.prompt_version(llm.GRADER_ROLE),
-            feedback_prompt=llm.prompt_version(llm.FEEDBACK_ROLE),
+            grader_prompt=llm.prompt_version(llm.GRADER_ROLE, task),
+            feedback_prompt=llm.prompt_version(llm.FEEDBACK_ROLE, task),
         ),
     )

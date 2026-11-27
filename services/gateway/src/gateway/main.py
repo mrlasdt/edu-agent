@@ -23,6 +23,7 @@ from services.gateway.src.gateway.ielts_api import (
 )
 from services.gateway.src.gateway.ielts_api import router as ielts_router
 from services.gateway.src.gateway.ielts_reading_api import router as ielts_reading_router
+from services.gateway.src.gateway.ielts_writing_api import router as ielts_writing_router
 from services.gateway.src.gateway.limits import chat_limiter, feedback_limiter, ielts_limiter
 from services.gateway.src.gateway.orchestrator import Orchestrator
 from shared.src.shared.feedback import default_capture_log
@@ -51,6 +52,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="Gateway Service", lifespan=_lifespan)
 app.include_router(ielts_router)
 app.include_router(ielts_reading_router)
+app.include_router(ielts_writing_router)
 app.include_router(feedback_router)
 
 setup_observability()

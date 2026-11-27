@@ -4,13 +4,22 @@ import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { IeltsMock } from "./ielts/IeltsMock";
 import { ReadingMock } from "./ielts/ReadingMock";
+import { WritingModule } from "./ielts/WritingModule";
 import "./styles.css";
 
-// Two pages and no router: the mocks live at /ielts-mock (Writing, or Reading with ?module=reading), everything else is the tutor.
+// Two pages and no router: the mocks live at /ielts-mock (Writing, or Reading with ?module=reading, the letter + essay module with ?module=writing-module), everything else is the tutor.
 const isIeltsMock = window.location.pathname.replace(/\/+$/, "") === "/ielts-mock";
 
-const isReading = new URLSearchParams(window.location.search).get("module") === "reading";
-const page = !isIeltsMock ? <App /> : isReading ? <ReadingMock /> : <IeltsMock />;
+const mockModule = new URLSearchParams(window.location.search).get("module");
+const mock =
+  mockModule === "reading" ? (
+    <ReadingMock />
+  ) : mockModule === "writing-module" ? (
+    <WritingModule />
+  ) : (
+    <IeltsMock />
+  );
+const page = isIeltsMock ? mock : <App />;
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

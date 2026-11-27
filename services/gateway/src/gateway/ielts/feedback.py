@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from services.gateway.src.gateway.ielts import llm
-from services.gateway.src.gateway.ielts.checks import paragraph_spans
+from services.gateway.src.gateway.ielts.checks import TASK_RULES, paragraph_spans
 from services.gateway.src.gateway.ielts.models import (
     Action,
     ErrorSpan,
@@ -21,7 +21,7 @@ from services.gateway.src.gateway.ielts.models import (
     ParagraphRole,
 )
 from services.gateway.src.gateway.ielts.scoring import (
-    CRITERIA,
+    CRITERIA_BY_TASK,
     GradeParseError,
     extract_json,
 )
@@ -45,6 +45,11 @@ _NOT_AN_ERROR = re.compile(
     r"\b(?:informal|colloquial|conversational|register|stylistic|style)\b", re.I,
 )
 _STYLE_TYPES = frozenset({"word_form", "collocation", "other"})
+# The yes/no checks the feedback model answers for each task (see prompts/ielts_feedback).
+CHECK_KEYS = {
+    "T2": ("addresses_all_parts", "position_in_introduction", "position_in_conclusion"),
+    "T1": ("covers_every_bullet", "tone_fits_reader", "clear_opening_and_closing"),
+}
 
 
 @dataclass
@@ -150,15 +155,16 @@ def numbered_essay(essay: str) -> str:
 
 
 def feedback_request(
-    prompt: str, essay: str, bands: dict[str, float], system: str, notes: list[str]
+    prompt: str, essay: str, bands: dict[str, float], system: str, notes: list[str],
+    task: str = "T2",
 ) -> list[dict[str, str]]:
     marker = hashlib.sha256(essay.encode()).hexdigest()[:8]
-    scores = ", ".join(f"{c} {bands[c]:g}" for c in CRITERIA)
+    scores = ", ".join(f"{c} {bands[c]:g}" for c in CRITERIA_BY_TASK[task])
     extra = ("\nChecks run in code: " + " ".join(notes) + "\n") if notes else ""
     user = (
         f"Decided bands: {scores}.{extra}\n"
         f"Task prompt (data):\n<<<PROMPT {marker}>>>\n{prompt}\n<<<END PROMPT {marker}>>>\n\n"
-        f"Candidate essay (data), split into numbered paragraphs:\n"
+        f"Candidate {TASK_RULES[task].label} (data), split into numbered paragraphs:\n"
         f"<<<ESSAY {marker}>>>\n{numbered_essay(essay)}\n<<<END ESSAY {marker}>>>"
     )
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
@@ -168,14 +174,14 @@ def _text(value: Any, limit: int = 500) -> str:
     return " ".join(str(value or "").split())[:limit]
 
 
-def build_feedback(raw: dict[str, Any], essay: str) -> Feedback:
+def build_feedback(raw: dict[str, Any], essay: str, task: str = "T2") -> Feedback:
     """Validate a parsed model reply against the essay; unverifiable parts are dropped."""
     dropped = 0
     criteria: dict[str, CriterionFeedback] = {}
     raw_criteria = raw.get("criteria")
     if not isinstance(raw_criteria, dict):
         raise GradeParseError("feedback reply has no 'criteria' object")
-    for crit in CRITERIA:
+    for crit in CRITERIA_BY_TASK[task]:
         item = raw_criteria.get(crit)
         if not isinstance(item, dict):
             criteria[crit] = CriterionFeedback()
@@ -252,19 +258,19 @@ def build_feedback(raw: dict[str, Any], essay: str) -> Feedback:
         raw_checks = raw["checks"]
     checks = {
         key: raw_checks[key] if isinstance(raw_checks.get(key), bool) else None
-        for key in ("addresses_all_parts", "position_in_introduction", "position_in_conclusion")
+        for key in CHECK_KEYS[task]
     }
     return Feedback(criteria=criteria, errors=errors, checks=checks, unverifiable=dropped)
 
 
 async def generate_feedback(
     prompt: str, essay: str, bands: dict[str, float], notes: list[str], *,
-    completer: llm.Completer, trace_id: str = "",
+    completer: llm.Completer, trace_id: str = "", task: str = "T2",
 ) -> Feedback:
     """Ask the feedback model; one retry when the reply is unusable or has no verified quote."""
-    version = llm.prompt_version(llm.FEEDBACK_ROLE)
-    system = read_prompt("ielts_feedback", "writing_t2", version)
-    messages = feedback_request(prompt, essay, bands, system, notes)
+    version = llm.prompt_version(llm.FEEDBACK_ROLE, task)
+    system = read_prompt("ielts_feedback", f"writing_{task.lower()}", version)
+    messages = feedback_request(prompt, essay, bands, system, notes, task)
     temperature = llm.role_temperature(llm.FEEDBACK_ROLE)
     best: Feedback | None = None
     last: Exception | None = None
@@ -274,13 +280,13 @@ async def generate_feedback(
                 llm.FEEDBACK_ROLE, messages, temperature=temperature,
                 max_tokens=FEEDBACK_MAX_TOKENS, trace_id=trace_id, prompt_version=version,
             )
-            candidate = build_feedback(extract_json(text), essay)
+            candidate = build_feedback(extract_json(text), essay, task)
         except (GradeParseError, llm.ModelUnavailableError) as exc:
             last = exc
             continue
         if best is None or _evidence_count(candidate) > _evidence_count(best):
             best = candidate
-        if all(candidate.criteria[c].evidence for c in CRITERIA):
+        if all(candidate.criteria[c].evidence for c in CRITERIA_BY_TASK[task]):
             return candidate
     if best is not None:
         return best

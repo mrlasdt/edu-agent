@@ -11,7 +11,7 @@ export interface Budget {
 export const DISCLAIMER = "Mock score: an estimate, not an official IELTS result.";
 export const ESSAY_MINIMUM_WORDS = 250;
 
-export type CriterionId = "TR" | "CC" | "LR" | "GRA";
+export type CriterionId = "TA" | "TR" | "CC" | "LR" | "GRA";
 
 export interface WritingPrompt {
   id: string;
@@ -139,7 +139,7 @@ export interface PreviousAttempt {
 
 export interface Report {
   status: "graded" | "ungraded";
-  task: "T2";
+  task: "T1" | "T2";
   word_count: number;
   timing: Timing | null;
   estimated_band: EstimatedBand | null;

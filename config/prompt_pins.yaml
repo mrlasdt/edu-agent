@@ -33,8 +33,10 @@ ielts_reading_coach:
 # IELTS mock (prompts/<agent>/writing_t2/<version>.md)
 ielts_grader:
   writing_t2: v1
+  writing_t1: v1  # the General Training letter (Task Achievement in place of Task Response)
 ielts_feedback:
   writing_t2: v2  # v1 plus: both spelling conventions are correct; style is not an error
+  writing_t1: v1
 # The AW judge's rubric (prompts/aw_judge/rubric/<version>.md)
 aw_judge:
   rubric: v1

@@ -163,7 +163,7 @@ _Avoid_: Truncation, memory
 ## IELTS mock
 
 **IELTS mock**:
-A timed practice attempt shaped like part of the IELTS exam, for the General Training variant (Task 2 is the same for both variants). Always called a "mock", never an official IELTS test or result. Writing Task 2 (ADR-0014) and Reading (marked in code, no model call) exist so far.
+A timed practice attempt shaped like part of the IELTS exam, for the General Training variant (Task 2 is the same for both variants). Always called a "mock", never an official IELTS test or result. Writing Task 2 (ADR-0014), the Writing module (a Task 1 letter plus Task 2 on one 60-minute clock, one combined band weighting Task 2 twice as much) and Reading (marked in code, no model call) exist so far.
 _Avoid_: IELTS test, official mock, IELTS simulator, IELTS-style
 
 **Attempt**:
