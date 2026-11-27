@@ -55,7 +55,7 @@ async def test_the_digest_rides_the_learners_turn_not_the_system_prompt():
     messages = llm.await_args.kwargs["messages"]
     system, last = messages[0], messages[-1]
     assert system["role"] == "system" and DIGEST not in system["content"]
-    assert system["content"] == read_prompt("ielts_coach", "tutor", "v1")
+    assert system["content"] == read_prompt("ielts_coach", "tutor", "v2")
     assert last["role"] == "user"
     assert last["content"].startswith("what do I fix first?")
     assert DIGEST in last["content"]
@@ -86,7 +86,7 @@ async def test_the_turn_is_costed_like_a_gre_turn(turn_log):
     record = turn_log.last_with_trace("t-cost")
     assert record is not None
     assert record["agent"] == "ielts_coach" and record["source"] == "agent"
-    assert record["prompt_version"] == "v1"
+    assert record["prompt_version"] == "v2"
     assert record["llm_calls"] == 1
 
 

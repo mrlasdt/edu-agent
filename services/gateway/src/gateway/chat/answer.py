@@ -46,6 +46,7 @@ async def answer(turn: ChatTurn) -> AsyncGenerator[bytes, None]:
         history=[HistoryItem(role=m.role, content=m.content) for m in turn.history],
         personal_style_enabled=req.personal_style_enabled,
         report_digest=turn.report_digest,
+        attempt_id=turn.attempt_id,
         trace_id=turn.trace_id,
     )
     meta: dict[str, Any] = {}

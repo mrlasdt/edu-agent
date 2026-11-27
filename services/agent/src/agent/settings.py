@@ -10,6 +10,9 @@ from shared.src.shared.config import LangfuseSettings, LlmSettings, TurnLogSetti
 class AgentSettings(LlmSettings, TurnLogSettings, LangfuseSettings):
     corpus_service_url: str = "http://localhost:8001"
     math_verifier_url: str = "http://localhost:8090"
+    # The gateway, which holds the IELTS grader, the attempt store and the spend ledger: the
+    # IELTS coach's `mark_revision` tool asks it to re-mark an essay.
+    gateway_service_url: str = "http://localhost:8000"
     # Math tools for the Quant agent (math_evaluate, math_solve, math_compare): the model
     # computes with sympy instead of in its head. Off by default: a tool turn is not streamed and
     # costs more tokens (README, "Math tools"). true = the tool loop.

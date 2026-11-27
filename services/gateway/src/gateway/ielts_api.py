@@ -11,7 +11,7 @@ import json
 import logging
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -199,6 +199,16 @@ def _limit() -> None:
         raise HTTPException(429, message)
 
 
+def _previous_of(report: Report | None) -> dict[str, Any] | None:
+    """A graded report as `mark_essay`'s `previous` argument: what a new mark is compared with."""
+    if report is None or report.estimated_band is None:
+        return None
+    return {
+        "overall": report.estimated_band.overall,
+        "criteria": {c.id: c.band for c in report.criteria},
+    }
+
+
 async def grade_attempt(
     attempt_id: str, store: AttemptStore, completer: Completer, ledger: Ledger | None = None,
 ) -> None:
@@ -220,11 +230,7 @@ async def grade_attempt(
         )
         report = await mark_essay(
             attempt.prompt_text, attempt.essay, completer=completer, timing=timing,
-            previous=(
-                {"overall": prev_report.estimated_band.overall,
-                 "criteria": {c.id: c.band for c in prev_report.criteria}}
-                if prev_report and prev_report.estimated_band else None
-            ),
+            previous=_previous_of(prev_report),
             samples=get_settings().ielts_grader_samples, trace_id=attempt_id,
         )
         store.finish(attempt_id, report.model_dump_json(), graded=report.status == "graded")
@@ -316,6 +322,87 @@ def regrade_attempt(
         raise HTTPException(409, f"attempt is {attempt.status}; nothing to retry")
     background.add_task(grade_attempt, attempt_id, store, completer, ledger)
     return _view(attempt, store)
+
+
+PRACTICE_LABEL = "Practice re-mark (untimed, not saved as a mock attempt)"
+
+
+class RemarkRequest(BaseModel):
+    attempt_id: str = Field(max_length=64)  # the graded attempt the revision is compared with
+    essay: str = Field(max_length=DRAFT_MAX_CHARS)
+
+
+class CriterionRemark(BaseModel):
+    id: str
+    name: str
+    band: float
+    delta: float | None  # against the same criterion of the attempt; None when it has no band
+
+
+class RemarkOut(BaseModel):
+    """A practice re-mark: nothing about it is stored, and it is not a mock attempt."""
+
+    status: str  # "graded" or "ungraded"
+    label: str = PRACTICE_LABEL
+    ungraded_reason: str | None = None
+    word_count: int
+    overall: float | None = None
+    range: tuple[float, float] | None = None
+    confidence: str | None = None
+    overall_delta: float | None = None
+    criteria: list[CriterionRemark] = []
+    disclaimer: str = DISCLAIMER
+
+
+@router.post("/remark")
+async def remark_essay(
+    body: RemarkRequest, store: Store, completer: Marker, ledger: SpendLedger
+) -> RemarkOut:
+    """
+    Practice re-mark of a revised essay for the /chat coach (its `mark_revision` tool calls this;
+    the agent service cannot reach the grader, the attempt store or the spend ledger). Same
+    marking and the same spend cap and rate limit as a mock, but untimed and stored nowhere. The
+    comparison is with the graded attempt the learner is being coached from. Refusals carry a
+    `detail` the learner can read: 402 the cap is used up, 429 too many requests, 502 the model
+    is unavailable, 409 the attempt has no graded report, 422 nothing to mark.
+    """
+    attempt = _load(store, body.attempt_id)
+    previous_report = (
+        Report.model_validate_json(attempt.report_json) if attempt.report_json else None
+    )
+    previous = _previous_of(previous_report)
+    if previous is None:
+        raise HTTPException(409, "that attempt has no graded report to compare with")
+    if not body.essay.strip():
+        raise HTTPException(422, "there is no essay text to mark")
+    _require_budget(ledger)
+    _limit()
+    try:
+        report = await mark_essay(
+            attempt.prompt_text, body.essay, completer=completer, previous=previous,
+            samples=get_settings().ielts_grader_samples, trace_id=f"remark-{attempt.id}",
+        )
+    except BudgetExceededError:  # the cap was hit mid-marking
+        raise HTTPException(402, cap_message(ledger)) from None
+    except GradingError as exc:
+        raise HTTPException(502, exc.reason) from None
+    band, delta = report.estimated_band, report.vs_previous_attempt
+    if report.status != "graded" or band is None:
+        return RemarkOut(
+            status="ungraded", word_count=report.word_count,
+            ungraded_reason=report.ungraded_reason,
+        )
+    return RemarkOut(
+        status="graded", word_count=report.word_count, overall=band.overall, range=band.range,
+        confidence=band.confidence, overall_delta=delta.overall_delta if delta else None,
+        criteria=[
+            CriterionRemark(
+                id=c.id, name=c.name, band=c.band,
+                delta=delta.criteria_deltas.get(c.id) if delta else None,
+            )
+            for c in report.criteria
+        ],
+    )
 
 
 @router.get("/attempts/{attempt_id}/report")

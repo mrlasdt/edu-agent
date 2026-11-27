@@ -53,6 +53,7 @@ class ChatTurn:
     agent: AgentClient
     attempts: Callable[[], AttemptStore]  # read only by the IELTS coach's turns
     report_digest: str = ""  # the coach's graded report, set by `ielts_report`
+    attempt_id: str = ""  # the attempt that report is of, set by `ielts_report`
 
 
 def is_coach(turn: ChatTurn) -> bool:
