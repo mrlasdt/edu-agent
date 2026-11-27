@@ -236,6 +236,31 @@ def test_a_writing_attempt_is_not_a_reading_attempt(client, store):
     assert client.get("/ielts/reading/attempts").json() == []
 
 
+def test_a_reading_attempt_is_unknown_to_the_writing_routes_and_never_reaches_the_grader(
+    client, store
+):
+    async def grader(*args, **kwargs):
+        raise AssertionError("the Writing grader must not run on a Reading attempt")
+
+    app.dependency_overrides[ielts_api.get_completer] = lambda: grader
+    try:
+        attempt_id = sit(client, all_correct())["id"]
+        before = store.get(attempt_id)
+        refused = [
+            client.get(f"/ielts/attempts/{attempt_id}"),
+            client.post(f"/ielts/attempts/{attempt_id}/start"),
+            client.put(f"/ielts/attempts/{attempt_id}/draft", json={"text": "x"}),
+            client.post(f"/ielts/attempts/{attempt_id}/submit", json={"text": "x"}),
+            client.post(f"/ielts/attempts/{attempt_id}/regrade"),
+            client.get(f"/ielts/attempts/{attempt_id}/report"),
+            client.post("/ielts/remark", json={"attempt_id": attempt_id, "essay": "x"}),
+        ]
+    finally:
+        app.dependency_overrides.pop(ielts_api.get_completer, None)
+    assert [r.status_code for r in refused] == [404] * len(refused)
+    assert store.get(attempt_id) == before
+
+
 # the /chat coach
 
 

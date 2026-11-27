@@ -128,10 +128,7 @@ def _view(attempt: Attempt, store: AttemptStore) -> ReadingAttemptOut:
 
 
 def _load_reading(store: AttemptStore, attempt_id: str) -> Attempt:
-    attempt = _load(store, attempt_id)
-    if attempt.module != MODULE_READING:
-        raise HTTPException(404, "attempt not found")
-    return attempt
+    return _load(store, attempt_id, MODULE_READING)
 
 
 def _encode(answers: dict[str, str]) -> str:
