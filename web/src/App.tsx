@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { CalculatorSwitch } from "./components/CalculatorSwitch";
 import { MessageBubble } from "./components/MessageBubble";
 import { ModeSwitch } from "./components/ModeSwitch";
 import { SubjectPicker } from "./components/SubjectPicker";
@@ -48,7 +49,15 @@ export function App() {
 function Chat({ subject, attemptId }: { subject: Subject; attemptId?: string }) {
   const [mode, setMode] = useState<Mode>("tutor");
   const [draft, setDraft] = useState("");
-  const { messages, busy, canRegenerate, send, regenerate, stop, rate } = useChat(subject, mode, attemptId);
+  // Quant only: the math tools are the agent's calculator. Off until the learner turns it on.
+  const [calculator, setCalculator] = useState(false);
+  const mathTools = subject === "quant" ? calculator : undefined;
+  const { messages, busy, canRegenerate, send, regenerate, stop, rate } = useChat(
+    subject,
+    mode,
+    attemptId,
+    mathTools
+  );
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -66,10 +75,15 @@ function Chat({ subject, attemptId }: { subject: Subject; attemptId?: string }) 
         <h1>Edu Agent: {SUBJECT_TITLE[subject]}</h1>
         {/* The coach has one mode: it never writes the essay, so there is no solve mode to switch to. */}
         {!isCoach(subject) && (
-          <ModeSwitch
-            mode={mode}
-            onToggle={() => setMode((m) => (m === "tutor" ? "solve" : "tutor"))}
-          />
+          <div className="header-actions">
+            {subject === "quant" && (
+              <CalculatorSwitch on={calculator} onToggle={() => setCalculator((c) => !c)} />
+            )}
+            <ModeSwitch
+              mode={mode}
+              onToggle={() => setMode((m) => (m === "tutor" ? "solve" : "tutor"))}
+            />
+          </div>
         )}
       </header>
       <section className="messages" aria-label="Conversation" aria-live="polite">

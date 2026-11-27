@@ -65,4 +65,6 @@ class GenerateRequest(BaseModel):
     # IELTS Writing coach only: the attempt that digest came from, so a re-mark is compared with
     # it. Empty for every other agent.
     attempt_id: str = Field(default="", max_length=64)
+    # Per-request override of the agent's MATH_TOOLS_ENABLED setting; None = use the setting.
+    math_tools: bool | None = None
     trace_id: str = ""

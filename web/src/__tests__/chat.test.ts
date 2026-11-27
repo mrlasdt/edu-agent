@@ -154,3 +154,24 @@ describe("toHistoryPayload", () => {
     ]);
   });
 });
+
+describe("math_tools request field", () => {
+  async function bodyOf(mathTools: boolean | undefined) {
+    respondWith("ok");
+    for await (const _ of streamChat({ ...turn, mathTools })) void _;
+    const fetchMock = vi.mocked(fetch);
+    return JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body));
+  }
+
+  it("sends the switch when it is set", async () => {
+    expect((await bodyOf(true)).math_tools).toBe(true);
+  });
+
+  it("sends false when the switch is off", async () => {
+    expect((await bodyOf(false)).math_tools).toBe(false);
+  });
+
+  it("sends nothing when there is no switch, so the server's setting applies", async () => {
+    expect("math_tools" in (await bodyOf(undefined))).toBe(false);
+  });
+});

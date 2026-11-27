@@ -334,3 +334,152 @@ def test_the_agent_service_prints_its_tool_call_lines() -> None:
 
     assert logging.getLogger("services.agent").getEffectiveLevel() == logging.INFO
 
+
+
+# ── 7. the per-chat Calculator switch and the calculator check ───────────────
+
+
+class StreamModel:
+    """The tools-off path: one streamed call that says `text`."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.requests: list[dict[str, Any]] = []
+
+    async def __call__(self, **kwargs: Any) -> Any:
+        self.requests.append(kwargs)
+
+        async def stream() -> Any:
+            yield SimpleNamespace(
+                choices=[SimpleNamespace(delta=SimpleNamespace(content=self.text))]
+            )
+
+        return stream()
+
+
+def session_with(mode: Mode, math_tools: bool | None) -> Session:
+    return Session(
+        candidate_id="c1", test_type="gre", section="quant", mode=mode, math_tools=math_tools
+    )
+
+
+async def collect_session(
+    a: QuantAgent, s: Session, text: str, trace_id: str = "t1"
+) -> list[Event]:
+    with patch.object(a, "_retrieve", new_callable=AsyncMock, return_value=[]):
+        return [item async for item in a.run(s, text, trace_id=trace_id)]
+
+
+async def test_the_session_switch_turns_the_tools_on_over_a_setting_that_is_off(turn_log) -> None:
+    model = Model(tool_reply(), text_reply("What does a 20% fall do?"))
+    with patch("litellm.acompletion", new=model):
+        await collect_session(
+            agent(FakeMath(PERCENT_RESULT), enabled=False),
+            session_with(Mode.tutor, True), "A price rises 15%...",
+        )
+    assert model.requests[0]["tools"] == MATH_TOOL_SPECS
+    (record,) = turn_log.read()
+    assert record["math_tools"] is True and record["prompt_version"].startswith("math_tools-")
+
+
+async def test_the_session_switch_turns_the_tools_off_over_a_setting_that_is_on(turn_log) -> None:
+    model = StreamModel("What does a 20% fall do?")
+    with patch("litellm.acompletion", new=model):
+        await collect_session(
+            agent(FakeMath(PERCENT_RESULT), enabled=True),
+            session_with(Mode.tutor, False), "A price rises 15%...",
+        )
+    assert "tools" not in model.requests[0]
+    (record,) = turn_log.read()
+    assert "math_tools" not in record and "tool_calls" not in record
+    assert not record["prompt_version"].startswith("math_tools-")
+
+
+async def test_a_session_without_a_choice_uses_the_setting(turn_log) -> None:
+    model = Model(tool_reply(), text_reply("Go on."))
+    with patch("litellm.acompletion", new=model):
+        await collect_session(
+            agent(FakeMath(PERCENT_RESULT), enabled=True),
+            session_with(Mode.tutor, None), "A price rises 15%...",
+        )
+    assert model.requests[0]["tools"] == MATH_TOOL_SPECS
+
+
+async def solve_with_tool(final: str, turn_log, enabled: bool = True):
+    model = Model(tool_reply(), text_reply(final))
+    a = agent(FakeMath(PERCENT_RESULT), enabled=enabled)
+    with (
+        patch("litellm.acompletion", new=model),
+        patch.object(
+            a, "verify_well_formed", new_callable=AsyncMock,
+            return_value=VerifyMathResult(verified=True, computed="-8"),
+        ),
+    ):
+        await collect_session(a, session_with(Mode.solve, enabled), "A price rises 15%...")
+    (record,) = turn_log.read()
+    return record
+
+
+async def test_the_record_carries_the_calculator_check_with_the_matched_pair(turn_log) -> None:
+    record = await solve_with_tool("Net factor 0.92.\n**Answer: -8%**", turn_log)
+    assert record["calc_check"] == {
+        "verdict": "agrees", "answer": "-8%", "tool_value": "0.92", "tool": "math_evaluate",
+    }
+
+
+async def test_a_wrong_answer_is_recorded_as_differs_and_is_not_retried(turn_log) -> None:
+    record = await solve_with_tool("**Answer: -5%**", turn_log)
+    assert record["calc_check"]["verdict"] == "differs"
+    # tool round + answer + the independent check's formalize call; a retry would add more
+    assert record["llm_calls"] == 3
+
+
+async def test_the_full_tool_result_never_reaches_the_log(turn_log) -> None:
+    record = await solve_with_tool("**Answer: -8%**", turn_log)
+    assert all("data" not in call for call in record["tool_calls"])
+
+
+async def test_a_tutor_turn_has_no_calculator_check(turn_log) -> None:
+    model = Model(tool_reply(), text_reply("What does a 20% fall do?"))
+    with patch("litellm.acompletion", new=model):
+        await collect_session(
+            agent(FakeMath(PERCENT_RESULT)), session_with(Mode.tutor, True), "A price rises 15%..."
+        )
+    (record,) = turn_log.read()
+    assert "calc_check" not in record
+
+
+async def test_a_solve_turn_without_the_tools_has_no_calculator_check(turn_log) -> None:
+    a = agent(FakeMath(PERCENT_RESULT), enabled=False)
+    with (
+        patch("litellm.acompletion", new=StreamModel("**Answer: -8%**")),
+        patch.object(
+            a, "verify_well_formed", new_callable=AsyncMock,
+            return_value=VerifyMathResult(verified=True, computed="-8"),
+        ),
+    ):
+        await collect_session(a, session_with(Mode.solve, False), "A price rises 15%...")
+    (record,) = turn_log.read()
+    assert "calc_check" not in record
+
+
+async def test_the_check_ignores_tool_results_of_an_attempt_that_failed(turn_log) -> None:
+    model = Model(
+        tool_reply(), text_reply("**Answer: 1**"),  # attempt 1 computes 0.92, then fails
+        text_reply("**Answer: -8%**"),               # attempt 2 answers without computing
+    )
+    a = agent(FakeMath(PERCENT_RESULT))
+    with (
+        patch("litellm.acompletion", new=model),
+        patch.object(
+            a, "verify_well_formed", new_callable=AsyncMock,
+            side_effect=[
+                VerifyMathResult(verified=False, computed=""),
+                VerifyMathResult(verified=True, computed="-8"),
+            ],
+        ),
+    ):
+        await collect_session(a, session_with(Mode.solve, True), "A price rises 15%...")
+    (record,) = turn_log.read()
+    assert len(record["tool_calls"]) == 1  # the failed attempt's call is still on the record
+    assert record["calc_check"]["verdict"] == "none"

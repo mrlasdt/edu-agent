@@ -10,7 +10,7 @@ export interface ChatState {
 
 export type ChatAction =
   /** A new agent reply begins; `shown` is the conversation up to and including the question. */
-  | { type: "turn_started"; shown: Message[]; replyId: string }
+  | { type: "turn_started"; shown: Message[]; replyId: string; calculator?: boolean }
   | { type: "event"; replyId: string; event: ChatEvent }
   | { type: "turn_ended"; replyId: string; stopped: boolean }
   | { type: "turn_failed"; replyId: string; stopped: boolean; error: string }
@@ -34,7 +34,13 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return {
         messages: [
           ...action.shown,
-          { id: action.replyId, role: "agent", content: "", status: "thinking" },
+          {
+            id: action.replyId,
+            role: "agent",
+            content: "",
+            status: "thinking",
+            ...(action.calculator ? { calculator: true } : {}),
+          },
         ],
       };
     case "event":
@@ -73,7 +79,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
  * The conversation with the agent: its messages, whether a reply is running, and the actions on it.
  * One reducer owns every change, so a reply's status is the only record of whether it is still running.
  */
-export function useChat(subject: Subject, mode: Mode, attemptId?: string) {
+export function useChat(subject: Subject, mode: Mode, attemptId?: string, mathTools?: boolean) {
   const [state, dispatch] = useReducer(chatReducer, initialChat);
   const [candidateId] = useState(newId); // lazy: runs once, not on every render
   const nextId = useRef(0);
@@ -89,10 +95,10 @@ export function useChat(subject: Subject, mode: Mode, attemptId?: string) {
     const replyId = `m${nextId.current++}`;
     const controller = new AbortController();
     abortRef.current = controller;
-    dispatch({ type: "turn_started", shown, replyId });
+    dispatch({ type: "turn_started", shown, replyId, calculator: mathTools });
     try {
       for await (const event of streamChat(
-        { candidateId, subject, mode, message: text, history, attemptId },
+        { candidateId, subject, mode, message: text, history, attemptId, mathTools },
         controller.signal
       )) {
         dispatch({ type: "event", replyId, event });

@@ -72,9 +72,13 @@ class ToolCallRecord:
     ms: float
     result: str  # the tool's JSON result, shortened
     round: int
+    # The tool's full structured result, for the calculator check. Never logged or traced:
+    # `result` above is the shortened text the log keeps.
+    data: dict[str, Any] | None = None
 
     def public(self) -> dict[str, Any]:
-        return asdict(self)
+        """The record as the turn log and the trace hold it: everything but `data`."""
+        return {k: v for k, v in asdict(self).items() if k != "data"}
 
 
 @dataclass
@@ -169,6 +173,7 @@ async def _run_one(
         ms=round((time.perf_counter() - start) * 1000, 1),
         result=_shorten(message["content"], _TRACE_RESULT_CHARS),
         round=round_no,
+        data=result,
     )
     return message, record
 

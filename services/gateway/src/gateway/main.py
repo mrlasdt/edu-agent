@@ -27,6 +27,7 @@ from services.gateway.src.gateway.ielts_reading_api import router as ielts_readi
 from services.gateway.src.gateway.ielts_writing_api import router as ielts_writing_router
 from services.gateway.src.gateway.limits import chat_limiter, feedback_limiter, ielts_limiter
 from services.gateway.src.gateway.orchestrator import Orchestrator
+from services.gateway.src.gateway.turns_api import router as turns_router
 from shared.src.shared.feedback import default_capture_log
 from shared.src.shared.models import Message, Session
 from shared.src.shared.observability import setup_observability
@@ -56,6 +57,7 @@ app.include_router(ielts_mock_router)
 app.include_router(ielts_reading_router)
 app.include_router(ielts_writing_router)
 app.include_router(feedback_router)
+app.include_router(turns_router)
 
 setup_observability()
 
@@ -113,6 +115,7 @@ async def chat(
         mode=req.mode,
         history=history,
         personal_style_enabled=req.personal_style_enabled,
+        math_tools=req.math_tools,
     )
 
     # Measures the gateway's share of the turn (guardrails and their model calls, outcome, time

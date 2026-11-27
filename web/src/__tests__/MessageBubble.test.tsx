@@ -263,3 +263,10 @@ describe("MessageBubble — status lines", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });
+
+describe("MessageBubble - calculator wait", () => {
+  it("says it is working with the calculator while a tool turn is pending", () => {
+    render(<MessageBubble message={{ ...baseMsg, content: "", status: "thinking", calculator: true }} />);
+    expect(screen.getByRole("status")).toHaveTextContent("working with the calculator...");
+  });
+});

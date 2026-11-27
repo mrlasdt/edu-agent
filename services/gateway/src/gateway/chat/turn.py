@@ -33,6 +33,8 @@ class ChatRequest(BaseModel):
     personal_style_enabled: bool = False
     # IELTS Writing coach only: the graded attempt to coach from; absent means the latest one.
     attempt_id: str | None = Field(default=None, max_length=64)
+    # Quant only: the "Calculator" switch. None = the agent's MATH_TOOLS_ENABLED setting.
+    math_tools: bool | None = None
 
 
 @dataclass

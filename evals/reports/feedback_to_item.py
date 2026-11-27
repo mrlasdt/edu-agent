@@ -26,7 +26,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from evals.reports.turn_report import merge_turns
 from shared.src.shared.config import (
     DEFAULT_FEEDBACK_LOG_PATH,
     DEFAULT_TURN_LOG_PATH,
@@ -34,6 +33,7 @@ from shared.src.shared.config import (
     get_feedback_settings,
 )
 from shared.src.shared.feedback import latest_votes
+from shared.src.shared.turn_merge import merge_turns
 from shared.src.shared.turn_meter import TurnLog
 
 DEFAULT_OUT = ".turn-log/draft-items.jsonl"

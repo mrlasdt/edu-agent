@@ -11,6 +11,7 @@ export default defineConfig({
     proxy: {
       "/chat": gateway,
       "/feedback": gateway,
+      "/turns": gateway,
       "/ielts/": gateway, // trailing slash: the page itself is /ielts-mock
     },
   },

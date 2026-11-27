@@ -1,6 +1,7 @@
 import type { IndependentCheck, Message, ReplyStatus } from "../types";
 import { ESSAY_DISCLAIMER } from "../types";
 import { renderMarkdown } from "../markdown";
+import { ShowWorking } from "./ShowWorking";
 
 interface Props {
   message: Message;
@@ -69,8 +70,10 @@ const STATUS_TEXT: Record<Exclude<ReplyStatus, "streaming" | "failed">, string> 
   empty: "No response received",
 };
 
-function statusLine({ status, error }: Message): string | undefined {
+function statusLine({ status, error, calculator }: Message): string | undefined {
   if (!status || status === "streaming") return undefined;
+  // A tool turn is not streamed: the reply lands all at once, so say what the wait is.
+  if (status === "thinking" && calculator) return "working with the calculator...";
   return status === "failed" ? (error ?? "Something went wrong") : STATUS_TEXT[status];
 }
 
@@ -98,6 +101,9 @@ export function MessageBubble({ message, onCitationClick, onFeedback, onRegenera
         </p>
       )}
       {message.independentCheck && <IndependentCheckNote check={message.independentCheck} />}
+      {isAgent && message.traceId && message.content && message.status !== "streaming" && (
+        <ShowWorking traceId={message.traceId} />
+      )}
       {isAgent && onRegenerate && (
         <div className="message-actions">
           <button type="button" className="regenerate-btn" onClick={onRegenerate}>
