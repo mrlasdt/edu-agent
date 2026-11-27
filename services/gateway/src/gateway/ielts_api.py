@@ -17,7 +17,6 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from services.gateway.src.gateway.ielts.checks import words
-from services.gateway.src.gateway.ielts.digest import MODULE_REMARK_UNAVAILABLE
 from services.gateway.src.gateway.ielts.grading import GradingError
 from services.gateway.src.gateway.ielts.llm import Completer, LiteLLMCompleter
 from services.gateway.src.gateway.ielts.marking import mark_essay
@@ -43,6 +42,11 @@ from shared.src.shared.budget import (
 )
 
 _log = logging.getLogger(__name__)
+
+MODULE_REMARK_REFUSAL = (
+    "Re-marking covers a standalone Writing Task 2 mock only, so a Writing module attempt cannot "
+    "be re-marked. Sit a standalone Task 2 at /ielts-mock to practise one."
+)
 
 router = APIRouter(prefix="/ielts", tags=["ielts"])
 
@@ -378,7 +382,7 @@ async def remark_essay(
     except AttemptNotFoundError:
         raise HTTPException(404, "attempt not found") from None
     if module == MODULE_WRITING:
-        raise HTTPException(409, MODULE_REMARK_UNAVAILABLE)
+        raise HTTPException(409, MODULE_REMARK_REFUSAL)
     attempt = _load(store, body.attempt_id)
     previous_report = (
         Report.model_validate_json(attempt.report_json) if attempt.report_json else None

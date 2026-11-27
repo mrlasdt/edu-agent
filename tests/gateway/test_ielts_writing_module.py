@@ -335,5 +335,5 @@ def test_re_marking_a_module_attempt_says_it_is_not_available_not_not_found(clie
     client.post(f"/ielts/writing/attempts/{attempt_id}/submit", json=both)
     response = client.post("/ielts/remark", json={"attempt_id": attempt_id, "essay": ESSAY_FULL})
     assert response.status_code == 409
-    assert "standalone Writing Task 2" in response.json()["detail"]
-    assert "not found" not in response.json()["detail"]
+    assert response.json()["detail"] == ielts_api.MODULE_REMARK_REFUSAL
+    assert "Do not offer it" not in response.json()["detail"]
