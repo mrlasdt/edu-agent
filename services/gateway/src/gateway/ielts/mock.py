@@ -2,12 +2,12 @@
 The full IELTS mock: an ordered list of modules and one combined result, worked out in code.
 
 A mock is a parent record (`ielts_store.Mock`) that links the attempts of its modules; the
-modules are the same Reading and Writing attempts the standalone pages use. Nothing here is
-stored: the status and band of each module are read from its attempt every time, so the mock can
-never disagree with the module page.
+modules are the same Listening, Reading and Writing attempts the standalone pages use. Nothing
+here is stored: the status and band of each module are read from its attempt every time, so the
+mock can never disagree with the module page.
 
-Only Reading and Writing can be sat so far. Listening and Speaking are listed as "not assessed"
-and the overall band is marked partial for as long as any skill is missing.
+Listening, Reading and Writing can be sat so far. Speaking is listed as "not assessed" and the
+overall band is marked partial for as long as any skill is missing.
 """
 from __future__ import annotations
 
@@ -16,8 +16,14 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from services.gateway.src.gateway.ielts.models import DISCLAIMER, ReadingReport, WritingModuleReport
+from services.gateway.src.gateway.ielts.models import (
+    DISCLAIMER,
+    ListeningReport,
+    ReadingReport,
+    WritingModuleReport,
+)
 from services.gateway.src.gateway.ielts_store import (
+    MODULE_LISTENING,
     MODULE_READING,
     MODULE_WRITING,
     Attempt,
@@ -35,7 +41,7 @@ SCORING_SOURCE_URL = "https://ielts.org/take-a-test/your-results/ielts-scoring-i
 
 ModuleKey = Literal["listening", "reading", "writing", "speaking"]
 ModuleState = Literal[
-    "not_assessed",  # not part of this mock yet (Listening, Speaking)
+    "not_assessed",  # not part of this mock yet (Speaking)
     "not_started",  # no attempt yet
     "in_progress",  # created or sitting
     "marking",
@@ -46,13 +52,15 @@ ModuleState = Literal[
 
 # The order the mock is sat in. `sittable` is False for a module that has no test yet.
 MODULES: tuple[tuple[ModuleKey, str, bool], ...] = (
-    ("listening", "Listening", False),
+    ("listening", "Listening", True),
     ("reading", "Reading", True),
     ("writing", "Writing", True),
     ("speaking", "Speaking", False),
 )
 SITTABLE_ORDER: tuple[ModuleKey, ...] = tuple(key for key, _, sittable in MODULES if sittable)
-ATTEMPT_MODULE = {"reading": MODULE_READING, "writing": MODULE_WRITING}
+ATTEMPT_MODULE = {
+    "listening": MODULE_LISTENING, "reading": MODULE_READING, "writing": MODULE_WRITING,
+}
 LABELS: dict[str, str] = {key: label for key, label, _ in MODULES}
 # An attempt in one of these has been sat: the next module may start.
 PAST_SITTING = ("submitted", "grading", "graded", "ungraded")
@@ -93,6 +101,7 @@ class LoadedMock:
 
     mock: Mock
     attempts: dict[str, Attempt | None]
+    listening: ListeningReport | None
     reading: ReadingReport | None
     writing: WritingModuleReport | None
 
@@ -104,10 +113,15 @@ def load_mock(store: AttemptStore, mock: Mock) -> LoadedMock:
             attempts[key] = store.get(attempt_id) if attempt_id else None
         except AttemptNotFoundError:
             attempts[key] = None
+    listening = attempts.get("listening")
     reading, writing = attempts.get("reading"), attempts.get("writing")
     return LoadedMock(
         mock=mock,
         attempts=attempts,
+        listening=(
+            ListeningReport.model_validate_json(listening.report_json)
+            if listening and listening.report_json else None
+        ),
         reading=(
             ReadingReport.model_validate_json(reading.report_json)
             if reading and reading.report_json else None
@@ -136,6 +150,8 @@ def _state_of(attempt: Attempt | None, band: float | None, has_report: bool) -> 
 def _detail(key: str, state: ModuleState, loaded: LoadedMock, retryable: bool) -> str:
     if state == "not_assessed":
         return "Not assessed: this module is not part of the mock yet."
+    if state == "graded" and key == "listening" and loaded.listening:
+        return f"{loaded.listening.raw} of {loaded.listening.total} correct"
     if state == "graded" and key == "reading" and loaded.reading:
         return f"{loaded.reading.raw} of {loaded.reading.total} correct"
     if state == "graded" and key == "writing":
@@ -158,11 +174,14 @@ def module_statuses(loaded: LoadedMock) -> list[ModuleStatus]:
             continue
         attempt = loaded.attempts.get(key)
         band = (
-            loaded.reading.band if key == "reading" and loaded.reading
+            loaded.listening.band if key == "listening" and loaded.listening
+            else loaded.reading.band if key == "reading" and loaded.reading
             else loaded.writing.writing_band if key == "writing" and loaded.writing
             else None
         )
-        has_report = loaded.reading is not None if key == "reading" else loaded.writing is not None
+        has_report = {
+            "listening": loaded.listening, "reading": loaded.reading, "writing": loaded.writing,
+        }[key] is not None
         state = _state_of(attempt, band, has_report)
         retryable = bool(key == "writing" and state == "ungraded" and attempt and attempt.retryable)
         out.append(ModuleStatus(
@@ -266,13 +285,25 @@ def build_report(loaded: LoadedMock) -> MockReport:
 
 
 def can_start(loaded: LoadedMock, key: str) -> str | None:
-    """None when the module may start; otherwise why not. Modules are sat in order."""
+    """
+    None when the module may start; otherwise why not. Modules are sat in order.
+
+    A mock begun before a module joined the mock (Reading and Writing were sat before Listening
+    existed) may still start that module: an earlier module that was never created is skipped when
+    a later module already has an attempt, since the order was already broken by the older rules.
+    """
     if key not in SITTABLE_ORDER:
         return f"{LABELS.get(key, key)} is not part of the mock yet."
     if loaded.attempts.get(key) is not None:
         return f"{LABELS[key]} already has an attempt in this mock."
-    for earlier in SITTABLE_ORDER[: SITTABLE_ORDER.index(key)]:
+    position = SITTABLE_ORDER.index(key)
+    for index, earlier in enumerate(SITTABLE_ORDER[:position]):
         attempt = loaded.attempts.get(earlier)
-        if attempt is None or attempt.status not in PAST_SITTING:
+        if attempt is None:
+            later = SITTABLE_ORDER[index + 1:]
+            if any(loaded.attempts.get(k) is not None for k in later):
+                continue  # an older mock that never had this module
+            return f"Finish {LABELS[earlier]} first: the mock is sat in order."
+        if attempt.status not in PAST_SITTING:
             return f"Finish {LABELS[earlier]} first: the mock is sat in order."
     return None

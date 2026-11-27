@@ -6,14 +6,21 @@ import type { MockReport, ModuleStatus } from "../mockApi";
 
 const api = vi.hoisted(() => ({ createMock: vi.fn(), getMock: vi.fn(), startMockModule: vi.fn() }));
 const reading = vi.hoisted(() => ({ getReading: vi.fn(), startReading: vi.fn() }));
+const listening = vi.hoisted(() => ({ getListening: vi.fn(), startListening: vi.fn() }));
 const writing = vi.hoisted(() => ({ getWritingModule: vi.fn(),
   startWritingModule: vi.fn(),
   regradeWritingModule: vi.fn(),
 }));
 vi.mock("../mockApi", () => api);
 vi.mock("../readingApi", () => reading);
+vi.mock("../listeningApi", () => listening);
 vi.mock("../writingModuleApi", () => writing);
 // The sit screens have their own tests: here each is a button that "submits".
+vi.mock("../ListeningSit", () => ({
+  ListeningSit: ({ onSubmitted }: { onSubmitted: (a: unknown) => void }) => (
+    <button onClick={() => onSubmitted({})}>Submit listening</button>
+  ),
+}));
 vi.mock("../ReadingSit", () => ({
   ReadingSit: ({ onSubmitted }: { onSubmitted: (a: unknown) => void }) => (
     <button onClick={() => onSubmitted({})}>Submit reading</button>
@@ -27,24 +34,25 @@ vi.mock("../WritingModuleSit", () => ({
 
 const status = (key: ModuleStatus["key"], over: Partial<ModuleStatus> = {}): ModuleStatus => ({
   key, label: key[0].toUpperCase() + key.slice(1), state: "not_started", band: null, attempt_id: null,
-  sittable: key === "reading" || key === "writing", retryable: false, detail: "", ...over,
+  sittable: key !== "speaking", retryable: false, detail: "", ...over,
 });
 
 const mock = (over: {
+  listening?: Partial<ModuleStatus>;
   reading?: Partial<ModuleStatus>;
   writing?: Partial<ModuleStatus>;
   report?: Partial<MockReport>;
 } = {}): MockReport => ({
   id: "m1", created_at: 1,
   modules: [
-    status("listening", { state: "not_assessed", sittable: false }),
+    status("listening", over.listening),
     status("reading", over.reading),
     status("writing", over.writing),
     status("speaking", { state: "not_assessed", sittable: false }),
   ],
   overall: null, partial: true, overall_note: "No skill has a band yet, so there is no overall band.",
   overall_source_url: "https://ielts.org/take-a-test/your-results/ielts-scoring-in-detail",
-  next_module: { key: "reading", label: "Reading", reason: "Sit Reading next: it is the next module." },
+  next_module: { key: "listening", label: "Listening", reason: "Sit Listening next: it is the next module." },
   disclaimer: "Mock score: an estimate, not an official IELTS result.",
   ...over.report,
 });
@@ -53,20 +61,20 @@ const settle = () => act(async () => {});
 
 beforeEach(() => {
   window.localStorage.clear();
-  Object.values({ ...api, ...reading, ...writing }).forEach((f) => f.mockReset());
+  Object.values({ ...api, ...listening, ...reading, ...writing }).forEach((f) => f.mockReset());
 });
 afterEach(() => window.localStorage.clear());
 
 describe("FullMock", () => {
-  it("starts a full mock straight into Reading, then lists the skills", async () => {
-    const started = mock({ reading: { attempt_id: "r1", state: "in_progress" } });
+  it("starts a full mock straight into Listening, then lists the skills", async () => {
+    const started = mock({ listening: { attempt_id: "l1", state: "in_progress" } });
     api.createMock.mockResolvedValue(mock());
     api.startMockModule.mockResolvedValue(started);
-    reading.getReading.mockResolvedValue({ id: "r1", status: "created" });
-    reading.startReading.mockResolvedValue({ id: "r1", status: "in_progress" });
+    listening.getListening.mockResolvedValue({ id: "l1", status: "created" });
+    listening.startListening.mockResolvedValue({ id: "l1", status: "in_progress" });
     const done = mock({
-      reading: { attempt_id: "r1", state: "graded", band: 6.0, detail: "20 of 40 correct" },
-      report: { overall: 6.0, next_module: { key: "writing", label: "Writing", reason: "Sit Writing next." } },
+      listening: { attempt_id: "l1", state: "graded", band: 7.0, detail: "30 of 40 correct" },
+      report: { overall: 7.0, next_module: { key: "reading", label: "Reading", reason: "Sit Reading next." } },
     });
     api.getMock.mockResolvedValue(done);
 
@@ -74,18 +82,46 @@ describe("FullMock", () => {
     await settle();
     await userEvent.click(screen.getByRole("button", { name: "Start full mock" }));
     await settle();
-    expect(api.startMockModule).toHaveBeenCalledWith("m1", "reading");
-    expect(reading.startReading).toHaveBeenCalledWith("r1");
+    expect(api.startMockModule).toHaveBeenCalledWith("m1", "listening");
+    expect(listening.startListening).toHaveBeenCalledWith("l1");
 
-    await userEvent.click(screen.getByRole("button", { name: "Submit reading" }));
+    await userEvent.click(screen.getByRole("button", { name: "Submit listening" }));
     await settle();
     const skills = screen.getByRole("list", { name: "Skill bands" });
-    expect(skills).toHaveTextContent("Reading");
-    expect(skills).toHaveTextContent("6.0");
-    expect(screen.getAllByText("Not assessed").length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByRole("button", { name: "Start Writing" })).toBeEnabled();
-    expect(screen.getByText("Next: Writing")).toBeInTheDocument();
+    expect(skills).toHaveTextContent("Listening");
+    expect(skills).toHaveTextContent("7.0");
+    expect(skills).toHaveTextContent("30 of 40 correct");
+    expect(screen.getAllByText("Not assessed").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("button", { name: "Start Reading" })).toBeEnabled();
+    expect(screen.getByText("Next: Reading")).toBeInTheDocument();
     expect(window.localStorage.getItem("ielts.fullmock.id")).toBe("m1");
+  });
+
+  it("opens Reading from the overview and returns to the overview when it is submitted", async () => {
+    window.localStorage.setItem("ielts.fullmock.id", "m1");
+    const before = mock({ listening: { attempt_id: "l1", state: "graded", band: 7.0 } });
+    const after = mock({
+      listening: { attempt_id: "l1", state: "graded", band: 7.0 },
+      reading: { attempt_id: "r1", state: "graded", band: 6.0 },
+      report: { overall: 6.5, next_module: { key: "writing", label: "Writing", reason: "Sit Writing next." } },
+    });
+    api.getMock.mockResolvedValueOnce(before).mockResolvedValue(after);
+    api.startMockModule.mockResolvedValue(
+      mock({
+        listening: { attempt_id: "l1", state: "graded", band: 7.0 },
+        reading: { attempt_id: "r1", state: "in_progress" },
+      })
+    );
+    reading.getReading.mockResolvedValue({ id: "r1", status: "created" });
+    reading.startReading.mockResolvedValue({ id: "r1", status: "in_progress" });
+    render(<FullMock />);
+    await settle();
+    await userEvent.click(screen.getByRole("button", { name: "Start Reading" }));
+    await settle();
+    expect(api.startMockModule).toHaveBeenCalledWith("m1", "reading");
+    await userEvent.click(screen.getByRole("button", { name: "Submit reading" }));
+    await settle();
+    expect(screen.getByLabelText("Mock overall band 6.5")).toBeInTheDocument();
   });
 
   it("shows the partial overall with the explanation, the source and the coach link", async () => {
@@ -96,7 +132,7 @@ describe("FullMock", () => {
         writing: { attempt_id: "w1", state: "graded", band: 6.5 },
         report: {
           overall: 6.5, partial: true,
-          overall_note: "Partial overall: Listening and Speaking not assessed, so this is the mean of 2 of 4 skills.",
+          overall_note: "Partial overall: Speaking not assessed, so this is the mean of 3 of 4 skills.",
           next_module: { key: "reading", label: "Reading", reason: "Reading is your lowest assessed skill." },
         },
       })
@@ -105,7 +141,7 @@ describe("FullMock", () => {
     await settle();
     expect(screen.getByText("Partial overall band (mock score)")).toBeInTheDocument();
     expect(screen.getByLabelText("Mock overall band 6.5")).toBeInTheDocument();
-    expect(screen.getByText(/Listening and Speaking not assessed/)).toBeInTheDocument();
+    expect(screen.getByText(/Speaking not assessed/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "ielts.org" })).toHaveAttribute(
       "href", "https://ielts.org/take-a-test/your-results/ielts-scoring-in-detail"
     );

@@ -1,0 +1,39 @@
+{
+  "model": "gemini-2.5-flash-preview-tts",
+  "sections": {
+    "s1": {
+      "file": "s1.mp3",
+      "sha256": "3f1c1e72109d1a258d95cda6040bd3b98b8545ecad93a25c9f72a33c409d89d3",
+      "duration_s": 137.5,
+      "voices": {
+        "Megan": "Kore",
+        "Tom": "Puck"
+      }
+    },
+    "s2": {
+      "file": "s2.mp3",
+      "sha256": "4a04a2dd22ecabed44e2cfc2b1beed8a7a8bf285bb5fae74475a744e5e99448b",
+      "duration_s": 142.9,
+      "voices": {
+        "Ruth": "Leda"
+      }
+    },
+    "s3": {
+      "file": "s3.mp3",
+      "sha256": "a4153c3a7795a32964ed6920a1deb1a927ed0e83274b954338e41f6c33e0289c",
+      "duration_s": 146.1,
+      "voices": {
+        "Maya": "Zephyr",
+        "Okafor": "Charon"
+      }
+    },
+    "s4": {
+      "file": "s4.mp3",
+      "sha256": "d51df34cd38e6473ed6fa654562afdf71bc670b005a6f152ac71c7c66a562dba",
+      "duration_s": 112.1,
+      "voices": {
+        "Lecturer": "Orus"
+      }
+    }
+  }
+}

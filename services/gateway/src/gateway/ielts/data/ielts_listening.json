@@ -1,0 +1,407 @@
+{
+  "provenance": {
+    "tier": "author_key",
+    "date": "2026-11-27",
+    "note": "Scripts, questions and keys written by an AI agent for this repository; not checked by a human. The audio is text-to-speech made once from the scripts by scripts/build_listening_audio.py."
+  },
+  "style": "Read this as a clear, calm British English recording for an English listening test, at an unhurried pace, with no extra words, no introduction and no sound effects.",
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Booking a pottery course",
+      "context": "You will hear a telephone call between a receptionist at an arts centre and a man who wants to book a course.",
+      "speakers": [
+        {"name": "Megan", "voice": "Kore"},
+        {"name": "Tom", "voice": "Puck"}
+      ],
+      "transcript": [
+        "Megan: Harbourside Arts Centre, Megan speaking. How can I help?",
+        "Tom: Hello. I saw a poster for your weekend pottery course and I'd like to book a place, if there are any left.",
+        "Megan: There are, yes. We have two places left on the beginners' course. Could I take a few details? First, what's your surname?",
+        "Tom: It's Whitcombe. That's W-H-I-T-C-O-M-B-E.",
+        "Megan: Thank you, Mr Whitcombe. And what's your address?",
+        "Tom: I live at forty-two Lantern Road, in the north of the city.",
+        "Megan: Lantern Road. Got it. Now, you should know that the beginners' course runs on Saturdays.",
+        "Tom: Oh, I was hoping for a Sunday. Sundays suit me better.",
+        "Megan: I'm afraid Sundays are only for the advanced group, so it would have to be Saturday morning.",
+        "Tom: That's fine, I can change my plans. How long does the course last?",
+        "Megan: It's six weeks altogether, and each session is three hours.",
+        "Tom: And what does it cost?",
+        "Megan: The usual price is ninety-five pounds, but we give a discount to anyone who joins the centre as a member. Joining is free, so you would pay eighty-five pounds in the end.",
+        "Tom: Then I'll certainly do that.",
+        "Megan: Good. The price includes the clay and the use of the kilns, but you'll need to bring an apron, because the work gets messy. Some people bring an old shirt instead, but an apron is much better.",
+        "Tom: Right. Thanks for the tip.",
+        "Megan: And will you be coming by car? The centre's own car park is small and it's usually full at weekends.",
+        "Tom: I can take the bus instead. Or is there somewhere else I could leave the car?",
+        "Megan: There's a larger car park on Mill Street, about five minutes' walk away. It's much cheaper than the one on Harbour Road.",
+        "Tom: Perfect. I'll use that one.",
+        "Megan: Could I ask where you heard about us?",
+        "Tom: I noticed the poster in the public library, near the entrance. I never saw the advert in the newspaper.",
+        "Megan: Oh good, we put those posters up last month. Perhaps I can also ask why you'd like to take the course?",
+        "Tom: Well, my sister is getting married in the spring, and I'd like to make a set of bowls for her as a wedding present. Of course it will be good to meet some new people too, but that's not why I'm doing it.",
+        "Megan: What a lovely idea. Now, about payment. You can pay by card over the phone, if you like.",
+        "Tom: I'm at work and I haven't got my card with me. Could I pay another time?",
+        "Megan: Of course. You can pay at the first session, by card or in cash, but we can't accept cheques.",
+        "Tom: That's great, thank you.",
+        "Megan: Then you're all booked in. We'll send you a confirmation by email. See you on the first Saturday, Mr Whitcombe!",
+        "Tom: Thanks very much. Goodbye."
+      ],
+      "questions": [
+        {
+          "id": "ielts_listening_s1_q01", "task_type": "form_completion",
+          "instruction": "Complete the booking form. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "Surname: ___", "key": "Whitcombe", "accept": [],
+          "evidence": "It's Whitcombe. That's W-H-I-T-C-O-M-B-E."
+        },
+        {
+          "id": "ielts_listening_s1_q02", "task_type": "form_completion",
+          "instruction": "Complete the booking form. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "Address: 42 ___ Road", "key": "Lantern", "accept": [],
+          "evidence": "I live at forty-two Lantern Road, in the north of the city."
+        },
+        {
+          "id": "ielts_listening_s1_q03", "task_type": "form_completion",
+          "instruction": "Complete the booking form. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "Day of the course: ___", "key": "Saturday", "accept": ["Saturdays"],
+          "evidence": "I'm afraid Sundays are only for the advanced group, so it would have to be Saturday morning."
+        },
+        {
+          "id": "ielts_listening_s1_q04", "task_type": "form_completion",
+          "instruction": "Complete the booking form. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "Length of course: ___ weeks", "key": "6", "accept": ["six"],
+          "evidence": "It's six weeks altogether, and each session is three hours."
+        },
+        {
+          "id": "ielts_listening_s1_q05", "task_type": "form_completion",
+          "instruction": "Complete the booking form. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "Price for a member: £___", "key": "85", "accept": ["eighty five"],
+          "evidence": "Joining is free, so you would pay eighty-five pounds in the end."
+        },
+        {
+          "id": "ielts_listening_s1_q06", "task_type": "form_completion",
+          "instruction": "Complete the booking form. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "Student must bring: an ___", "key": "apron", "accept": [],
+          "evidence": "you'll need to bring an apron, because the work gets messy."
+        },
+        {
+          "id": "ielts_listening_s1_q07", "task_type": "form_completion",
+          "instruction": "Complete the booking form. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "Recommended car park: ___ Street", "key": "Mill", "accept": [],
+          "evidence": "There's a larger car park on Mill Street, about five minutes' walk away."
+        },
+        {
+          "id": "ielts_listening_s1_q08", "task_type": "form_completion",
+          "instruction": "Complete the booking form. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "Saw the poster in the: ___", "key": "library", "accept": ["public library"],
+          "evidence": "I noticed the poster in the public library, near the entrance."
+        },
+        {
+          "id": "ielts_listening_s1_q09", "task_type": "multiple_choice",
+          "instruction": "Choose the correct letter, A, B or C.",
+          "prompt": "Why does Tom want to take the course?",
+          "choices": {"A": "to make a present for his sister", "B": "to meet new people", "C": "to prepare for a degree in art"},
+          "key": "A", "accept": [],
+          "evidence": "my sister is getting married in the spring, and I'd like to make a set of bowls for her as a wedding present."
+        },
+        {
+          "id": "ielts_listening_s1_q10", "task_type": "multiple_choice",
+          "instruction": "Choose the correct letter, A, B or C.",
+          "prompt": "How will Tom pay?",
+          "choices": {"A": "by card over the phone today", "B": "at the first session", "C": "by sending a cheque"},
+          "key": "B", "accept": [],
+          "evidence": "You can pay at the first session, by card or in cash, but we can't accept cheques."
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "title": "Welcome to the volunteer team",
+      "context": "You will hear the manager of a wildlife park welcoming new volunteers.",
+      "speakers": [
+        {"name": "Ruth", "voice": "Leda"}
+      ],
+      "transcript": [
+        "Good morning, everyone, and welcome to Riverside Wildlife Park. My name is Ruth Callahan, and I manage the volunteer team. Thank you for coming out on such a wet Saturday. I'll talk for a few minutes about how the park works, and then we'll go outside.",
+        "First, timings. The park opens to the public at ten o'clock, and in the past we asked volunteers to be here by half past eight. This year we've made it easier: please arrive at nine, which gives you time to collect your jacket and your radio and to hear the day's instructions.",
+        "Most of you will have noticed the car park, which has been made larger, and the new cafe by the main gate. But the change that matters most to the animals and to visitors is the boardwalk beside the river. It lets people watch the otters without walking on the bank, which was wearing away.",
+        "You will also see that the duck pond now has a fence around it. People sometimes think this is to stop small children falling in, but the real reason is the nesting season. Last spring, dogs frightened several of the birds away from their nests, so the fence keeps them out until the chicks have hatched.",
+        "If you find an injured animal, please do not try to pick it up, however kind that seems. Stay where you are, keep other visitors away, and call a ranger on your radio straight away. Rangers have training in handling wildlife, and an animal in pain can bite.",
+        "Now, lunch. In some parks volunteers are given a free meal, but we can't manage that. Instead, each volunteer receives a voucher worth six pounds, which you can spend at the cafe. There is also a fridge in the staff room if you would rather bring your own sandwiches.",
+        "Now let me describe where you will be working. At the duck pond, the main job is feeding and cleaning, and you will need waterproof boots for that. The orchard comes next. There, the job this season is planting: forty young apple trees are waiting in the shed. In the reptile house, you won't look after the animals, because the keepers do that. Instead, you will give short talks to visitors, about five minutes each, and you will be given notes to help you. Over at the children's farm, the fences and benches are in poor shape, so the work there is repainting them. Finally, at the main entrance, you will sell tickets alongside one of the permanent staff. We did think about asking someone to count the visitors, but a machine does that now.",
+        "Right. Are there any questions before we go out? If not, please grab a coffee and meet me at the main gate in ten minutes."
+      ],
+      "questions": [
+        {
+          "id": "ielts_listening_s2_q11", "task_type": "multiple_choice",
+          "instruction": "Choose the correct letter, A, B or C.",
+          "prompt": "What time must volunteers arrive?",
+          "choices": {"A": "half past eight", "B": "nine o'clock", "C": "ten o'clock"},
+          "key": "B", "accept": [],
+          "evidence": "This year we've made it easier: please arrive at nine"
+        },
+        {
+          "id": "ielts_listening_s2_q12", "task_type": "multiple_choice",
+          "instruction": "Choose the correct letter, A, B or C.",
+          "prompt": "Which change does the manager say matters most?",
+          "choices": {"A": "a larger car park", "B": "a new cafe", "C": "a boardwalk beside the river"},
+          "key": "C", "accept": [],
+          "evidence": "the change that matters most to the animals and to visitors is the boardwalk beside the river."
+        },
+        {
+          "id": "ielts_listening_s2_q13", "task_type": "multiple_choice",
+          "instruction": "Choose the correct letter, A, B or C.",
+          "prompt": "Why is there a fence around the duck pond?",
+          "choices": {"A": "to keep small children safe", "B": "to protect nesting birds", "C": "to stop litter"},
+          "key": "B", "accept": [],
+          "evidence": "the real reason is the nesting season."
+        },
+        {
+          "id": "ielts_listening_s2_q14", "task_type": "multiple_choice",
+          "instruction": "Choose the correct letter, A, B or C.",
+          "prompt": "What should a volunteer do on finding an injured animal?",
+          "choices": {"A": "move it somewhere quiet", "B": "ask a visitor for help", "C": "call a ranger"},
+          "key": "C", "accept": [],
+          "evidence": "call a ranger on your radio straight away."
+        },
+        {
+          "id": "ielts_listening_s2_q15", "task_type": "multiple_choice",
+          "instruction": "Choose the correct letter, A, B or C.",
+          "prompt": "What will volunteers be given for lunch?",
+          "choices": {"A": "a free meal", "B": "a voucher for the cafe", "C": "a sandwich from the staff room"},
+          "key": "B", "accept": [],
+          "evidence": "each volunteer receives a voucher worth six pounds, which you can spend at the cafe."
+        },
+        {
+          "id": "ielts_listening_s2_q16", "task_type": "matching",
+          "instruction": "What job will volunteers do in each area? Choose the correct letter, A to F.",
+          "prompt": "The duck pond",
+          "choices": {"A": "feeding and cleaning", "B": "counting visitors", "C": "planting trees", "D": "repainting", "E": "giving talks", "F": "selling tickets"},
+          "key": "A", "accept": [],
+          "evidence": "At the duck pond, the main job is feeding and cleaning"
+        },
+        {
+          "id": "ielts_listening_s2_q17", "task_type": "matching",
+          "instruction": "What job will volunteers do in each area? Choose the correct letter, A to F.",
+          "prompt": "The orchard",
+          "choices": {"A": "feeding and cleaning", "B": "counting visitors", "C": "planting trees", "D": "repainting", "E": "giving talks", "F": "selling tickets"},
+          "key": "C", "accept": [],
+          "evidence": "There, the job this season is planting: forty young apple trees are waiting in the shed."
+        },
+        {
+          "id": "ielts_listening_s2_q18", "task_type": "matching",
+          "instruction": "What job will volunteers do in each area? Choose the correct letter, A to F.",
+          "prompt": "The reptile house",
+          "choices": {"A": "feeding and cleaning", "B": "counting visitors", "C": "planting trees", "D": "repainting", "E": "giving talks", "F": "selling tickets"},
+          "key": "E", "accept": [],
+          "evidence": "Instead, you will give short talks to visitors, about five minutes each"
+        },
+        {
+          "id": "ielts_listening_s2_q19", "task_type": "matching",
+          "instruction": "What job will volunteers do in each area? Choose the correct letter, A to F.",
+          "prompt": "The children's farm",
+          "choices": {"A": "feeding and cleaning", "B": "counting visitors", "C": "planting trees", "D": "repainting", "E": "giving talks", "F": "selling tickets"},
+          "key": "D", "accept": [],
+          "evidence": "the fences and benches are in poor shape, so the work there is repainting them."
+        },
+        {
+          "id": "ielts_listening_s2_q20", "task_type": "matching",
+          "instruction": "What job will volunteers do in each area? Choose the correct letter, A to F.",
+          "prompt": "The main entrance",
+          "choices": {"A": "feeding and cleaning", "B": "counting visitors", "C": "planting trees", "D": "repainting", "E": "giving talks", "F": "selling tickets"},
+          "key": "F", "accept": [],
+          "evidence": "at the main entrance, you will sell tickets alongside one of the permanent staff."
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "title": "A tutorial about a research project",
+      "context": "You will hear a student, Maya, talking to her tutor about a research project on food waste in school canteens.",
+      "speakers": [
+        {"name": "Maya", "voice": "Zephyr"},
+        {"name": "Okafor", "voice": "Charon"}
+      ],
+      "transcript": [
+        "Okafor: Come in, Maya, and sit down. How is the project going?",
+        "Maya: Quite well, thanks, though I wanted to talk through a few things. As you know, it's about food waste in school canteens.",
+        "Okafor: Yes. Remind me what made you choose that topic?",
+        "Maya: It comes from my own school. We threw away a huge amount of food there, and nobody seemed to notice. I did think about writing about supermarkets, as you suggested, but I wanted something I had actually seen.",
+        "Okafor: A good reason. And you've changed your method, I think?",
+        "Maya: Yes. At first I planned to give questionnaires to the pupils, asking how much food they leave. But then I realised people don't remember accurately, and they might not be honest. So I persuaded five canteens to let me weigh the leftovers after lunch for a week.",
+        "Okafor: That sounds much more reliable. Did the schools cooperate?",
+        "Maya: Mostly. Five schools agreed, which is more than I expected, although one of them would only let me weigh on three days, so I will have to leave that one out of the weekly totals.",
+        "Okafor: Sensible. Now, how are you going to present the figures?",
+        "Maya: I was going to show the total weight thrown away at each school in a bar chart.",
+        "Okafor: Hmm. The schools are different sizes, so totals would mislead. It would be fairer to show the weight of waste for each pupil.",
+        "Maya: Of course. That's easy to calculate. I'll change it tonight.",
+        "Okafor: What have you found so far? Anything surprising?",
+        "Maya: The biggest surprise was bread. I expected vegetables to be the most wasted, but it was actually bread, especially at the schools that put it on the tables for free.",
+        "Okafor: Interesting. Do you have any idea why?",
+        "Maya: Partly it's because it's put out before anyone has ordered, so a lot of it is never eaten.",
+        "Okafor: Right. Now, your conclusions. What do you plan to suggest?",
+        "Maya: I thought of recommending smaller portions, but the canteen managers said children complain if the portions are smaller. So I'm going to suggest that bread is only brought out when someone asks for it.",
+        "Okafor: That's a practical suggestion. Well, I think you're in good shape. Let's go through the practical things. The final report mustn't be longer than three thousand words, so keep an eye on that.",
+        "Maya: And when is the first draft due?",
+        "Okafor: I would like to see it by Wednesday of next week. I know the official deadline is much later, but I can only read it that week.",
+        "Maya: Fine. Should I include anything else?",
+        "Okafor: Yes. Add a short section on the limitations of the study, because you only looked at five schools.",
+        "Maya: And for the presentation?",
+        "Okafor: Each student gets ten minutes, and you must bring a poster rather than slides, because the projector in the seminar room is broken.",
+        "Maya: Understood. Thank you very much.",
+        "Okafor: Good luck, Maya."
+      ],
+      "questions": [
+        {
+          "id": "ielts_listening_s3_q21", "task_type": "multiple_choice",
+          "instruction": "Choose the correct letter, A, B or C.",
+          "prompt": "Why did Maya choose her topic?",
+          "choices": {"A": "She noticed the problem at her own school.", "B": "Her tutor suggested it.", "C": "She saw a documentary about it."},
+          "key": "A", "accept": [],
+          "evidence": "It comes from my own school. We threw away a huge amount of food there, and nobody seemed to notice."
+        },
+        {
+          "id": "ielts_listening_s3_q22", "task_type": "multiple_choice",
+          "instruction": "Choose the correct letter, A, B or C.",
+          "prompt": "How did Maya collect her data in the end?",
+          "choices": {"A": "She gave questionnaires to pupils.", "B": "She weighed the food that was left.", "C": "She interviewed the cooks."},
+          "key": "B", "accept": [],
+          "evidence": "So I persuaded five canteens to let me weigh the leftovers after lunch for a week."
+        },
+        {
+          "id": "ielts_listening_s3_q23", "task_type": "multiple_choice",
+          "instruction": "Choose the correct letter, A, B or C.",
+          "prompt": "What problem did Maya have with one school?",
+          "choices": {"A": "It refused to take part.", "B": "It allowed her to weigh on only three days.", "C": "Its canteen staff were unhelpful."},
+          "key": "B", "accept": [],
+          "evidence": "one of them would only let me weigh on three days"
+        },
+        {
+          "id": "ielts_listening_s3_q24", "task_type": "multiple_choice",
+          "instruction": "Choose the correct letter, A, B or C.",
+          "prompt": "What does the tutor advise about the bar chart?",
+          "choices": {"A": "Show the weight of waste for each pupil.", "B": "Show the total weight at each school.", "C": "Show the percentage of food served."},
+          "key": "A", "accept": [],
+          "evidence": "It would be fairer to show the weight of waste for each pupil."
+        },
+        {
+          "id": "ielts_listening_s3_q25", "task_type": "multiple_choice",
+          "instruction": "Choose the correct letter, A, B or C.",
+          "prompt": "Which food did Maya find was wasted most?",
+          "choices": {"A": "vegetables", "B": "bread", "C": "fruit"},
+          "key": "B", "accept": [],
+          "evidence": "I expected vegetables to be the most wasted, but it was actually bread"
+        },
+        {
+          "id": "ielts_listening_s3_q26", "task_type": "multiple_choice",
+          "instruction": "Choose the correct letter, A, B or C.",
+          "prompt": "What will Maya recommend to the schools?",
+          "choices": {"A": "serving smaller portions", "B": "bringing bread out only on request", "C": "offering fewer choices"},
+          "key": "B", "accept": [],
+          "evidence": "I'm going to suggest that bread is only brought out when someone asks for it."
+        },
+        {
+          "id": "ielts_listening_s3_q27", "task_type": "sentence_completion",
+          "instruction": "Complete the sentences. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "The final report must not be longer than ___ words.", "key": "3000", "accept": ["three thousand", "3 000"],
+          "evidence": "The final report mustn't be longer than three thousand words"
+        },
+        {
+          "id": "ielts_listening_s3_q28", "task_type": "sentence_completion",
+          "instruction": "Complete the sentences. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "The tutor wants to see the first draft by ___ of next week.", "key": "Wednesday", "accept": [],
+          "evidence": "I would like to see it by Wednesday of next week."
+        },
+        {
+          "id": "ielts_listening_s3_q29", "task_type": "sentence_completion",
+          "instruction": "Complete the sentences. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "Maya should add a short section on the ___ of the study.", "key": "limitations", "accept": [],
+          "evidence": "Add a short section on the limitations of the study"
+        },
+        {
+          "id": "ielts_listening_s3_q30", "task_type": "sentence_completion",
+          "instruction": "Complete the sentences. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "For the presentation, Maya must bring a ___ instead of slides.", "key": "poster", "accept": [],
+          "evidence": "you must bring a poster rather than slides"
+        }
+      ]
+    },
+    {
+      "id": "s4",
+      "title": "The urban heat island",
+      "context": "You will hear part of a university lecture about why cities are warmer than the countryside.",
+      "speakers": [
+        {"name": "Lecturer", "voice": "Orus"}
+      ],
+      "transcript": [
+        "Good afternoon. Today I'm going to talk about a phenomenon that affects most large cities, known as the urban heat island.",
+        "The basic idea is simple: a city is usually warmer than the countryside around it. The difference is small in the middle of the day, but on a calm, clear night the centre of a city can be as much as five degrees warmer. And the gap is greatest a few hours after sunset, when the countryside cools quickly but the city goes on giving out the heat it has stored.",
+        "So what causes it? There are four main reasons. The first is the surfaces. Roads covered in asphalt, and dark roofs, absorb a great deal of heat during the day. The second is the shape of the buildings. Tall buildings close together block the wind, so the warm air is not carried away. The third is the lack of vegetation. Plants release water into the air, and that has a cooling effect, but a city has far fewer plants than the countryside. And the fourth is waste heat: the heat that comes from air conditioning, from traffic and from factories.",
+        "Why does this matter? Mainly for health. On very hot days, the people most at risk are the elderly, particularly those who live alone, because their bodies cope less well with heat, and nights that stay warm give them no chance to recover.",
+        "What can be done? Many cities are now acting on three fronts. Planting trees along the streets provides shade, which keeps pavements and buildings cooler. Painting roofs in light colours helps too, because they reflect sunlight instead of absorbing it. And before any of this, planners need to know where the hottest districts are. They now map temperatures using satellite images, which shows them exactly where to plant first.",
+        "In the next lecture we will look at how these ideas were tested in practice. Thank you."
+      ],
+      "questions": [
+        {
+          "id": "ielts_listening_s4_q31", "task_type": "note_completion",
+          "instruction": "Complete the notes. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "On a calm, clear night a city centre can be up to ___ degrees warmer than the countryside.", "key": "5", "accept": ["five"],
+          "evidence": "the centre of a city can be as much as five degrees warmer."
+        },
+        {
+          "id": "ielts_listening_s4_q32", "task_type": "note_completion",
+          "instruction": "Complete the notes. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "The difference is greatest a few hours after ___.", "key": "sunset", "accept": [],
+          "evidence": "the gap is greatest a few hours after sunset"
+        },
+        {
+          "id": "ielts_listening_s4_q33", "task_type": "note_completion",
+          "instruction": "Complete the notes. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "Cause 1: dark roofs and roads covered in ___ absorb heat.", "key": "asphalt", "accept": [],
+          "evidence": "Roads covered in asphalt, and dark roofs, absorb a great deal of heat during the day."
+        },
+        {
+          "id": "ielts_listening_s4_q34", "task_type": "note_completion",
+          "instruction": "Complete the notes. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "Cause 2: tall buildings close together block the ___.", "key": "wind", "accept": [],
+          "evidence": "Tall buildings close together block the wind, so the warm air is not carried away."
+        },
+        {
+          "id": "ielts_listening_s4_q35", "task_type": "note_completion",
+          "instruction": "Complete the notes. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "Cause 3: a city has far less ___ than the countryside.", "key": "vegetation", "accept": ["plants"],
+          "evidence": "The third is the lack of vegetation."
+        },
+        {
+          "id": "ielts_listening_s4_q36", "task_type": "note_completion",
+          "instruction": "Complete the notes. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "Cause 4: waste heat from air conditioning, traffic and ___.", "key": "factories", "accept": ["factory"],
+          "evidence": "the heat that comes from air conditioning, from traffic and from factories."
+        },
+        {
+          "id": "ielts_listening_s4_q37", "task_type": "note_completion",
+          "instruction": "Complete the notes. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "The people most at risk on hot days are the ___.", "key": "elderly", "accept": [],
+          "evidence": "the people most at risk are the elderly, particularly those who live alone"
+        },
+        {
+          "id": "ielts_listening_s4_q38", "task_type": "note_completion",
+          "instruction": "Complete the notes. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "Trees along the streets provide ___, which keeps pavements cooler.", "key": "shade", "accept": [],
+          "evidence": "Planting trees along the streets provides shade"
+        },
+        {
+          "id": "ielts_listening_s4_q39", "task_type": "note_completion",
+          "instruction": "Complete the notes. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "Light-coloured roofs ___ sunlight instead of absorbing it.", "key": "reflect", "accept": [],
+          "evidence": "they reflect sunlight instead of absorbing it."
+        },
+        {
+          "id": "ielts_listening_s4_q40", "task_type": "note_completion",
+          "instruction": "Complete the notes. Write ONE WORD AND/OR A NUMBER for each answer.",
+          "prompt": "Planners map the hottest districts using ___ images.", "key": "satellite", "accept": [],
+          "evidence": "They now map temperatures using satellite images"
+        }
+      ]
+    }
+  ]
+}

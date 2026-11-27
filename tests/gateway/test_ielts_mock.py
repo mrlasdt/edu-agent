@@ -1,6 +1,6 @@
 """
-The full IELTS mock: an ordered list of modules over the existing Reading and Writing attempts, a
-combined overall band computed in code (partial while Listening and Speaking are not assessed),
+The full IELTS mock: an ordered list of modules over the existing Listening, Reading and Writing
+attempts, a combined overall band computed in code (partial while Speaking is not assessed),
 a next-module recommendation, and the coach's digest and /chat path. A scripted completer replaces
 the marking model; the chat gates that call a model are mocked.
 """
@@ -27,6 +27,7 @@ from shared.src.shared.budget import Ledger
 from shared.src.shared.stats import round_half_band
 from shared.src.shared.wire import MAX_REPORT_DIGEST_CHARS, GenerateRequest
 from tests.gateway.gateway_fakes import agent_replies
+from tests.gateway.test_ielts_listening import correct_except
 from tests.gateway.test_ielts_reading import wrong_on
 from tests.gateway.test_ielts_writing_module import ESSAY_FULL, LETTER, Clock, TaskAware
 
@@ -82,7 +83,27 @@ def start(client: TestClient, mock_id: str, key: str):
     return client.post(f"/ielts/mock/{mock_id}/modules/{key}/attempt")
 
 
+LISTENING_BAND = 7.0  # ten wrong out of 40 is 30, the lowest raw score for band 7
+
+
+def sit_listening(client: TestClient, mock_id: str) -> dict:
+    """Sit Listening on the mock's attempt, making it first if the mock has none yet."""
+    body = client.get(f"/ielts/mock/{mock_id}").json()
+    if modules_of(body)["listening"]["attempt_id"] is None:
+        body = start(client, mock_id, "listening").json()
+    attempt_id = modules_of(body)["listening"]["attempt_id"]
+    client.post(f"/ielts/listening/attempts/{attempt_id}/start")
+    done = client.post(
+        f"/ielts/listening/attempts/{attempt_id}/submit", json={"answers": correct_except(10)}
+    )
+    assert done.status_code == 200
+    return client.get(f"/ielts/mock/{mock_id}").json()
+
+
 def sit_reading(client: TestClient, mock_id: str) -> dict:
+    """Sit Reading, after Listening if the mock has not had it yet (the mock is sat in order)."""
+    if modules_of(client.get(f"/ielts/mock/{mock_id}").json())["listening"]["state"] != "graded":
+        sit_listening(client, mock_id)
     body = start(client, mock_id, "reading").json()
     attempt_id = modules_of(body)["reading"]["attempt_id"]
     client.post(f"/ielts/reading/attempts/{attempt_id}/start")
@@ -131,25 +152,47 @@ def test_a_new_mock_lists_the_modules_in_order_and_assesses_none(client: TestCli
     body = client.get(f"/ielts/mock/{new_mock(client)}").json()
     assert [m["key"] for m in body["modules"]] == ["listening", "reading", "writing", "speaking"]
     by_key = modules_of(body)
-    assert by_key["listening"]["state"] == by_key["speaking"]["state"] == "not_assessed"
+    assert by_key["speaking"]["state"] == "not_assessed"
+    assert by_key["listening"]["state"] == "not_started" and by_key["listening"]["sittable"]
     assert by_key["reading"]["state"] == by_key["writing"]["state"] == "not_started"
     assert body["overall"] is None and body["partial"] is True
-    assert body["next_module"]["key"] == "reading"
+    assert body["next_module"]["key"] == "listening"
 
 
-def test_writing_cannot_start_before_reading_is_sat(client: TestClient):
+def test_the_modules_are_sat_in_order(client: TestClient):
     mock_id = new_mock(client)
+    resp = start(client, mock_id, "reading")
+    assert resp.status_code == 409 and "Listening" in resp.json()["detail"]
+    assert start(client, mock_id, "writing").status_code == 409
+    start(client, mock_id, "listening")  # created, not yet sat
+    assert start(client, mock_id, "reading").status_code == 409
+    assert start(client, mock_id, "listening").status_code == 409  # one attempt per module
+    sit_listening(client, mock_id)  # sits the attempt made above
     resp = start(client, mock_id, "writing")
     assert resp.status_code == 409 and "Reading" in resp.json()["detail"]
-    start(client, mock_id, "reading")  # created, not yet sat
-    assert start(client, mock_id, "writing").status_code == 409
-    assert start(client, mock_id, "reading").status_code == 409  # one attempt per module
 
 
-def test_listening_and_speaking_cannot_be_started_yet(client: TestClient):
+def test_speaking_cannot_be_started_yet(client: TestClient):
     mock_id = new_mock(client)
-    assert start(client, mock_id, "listening").status_code == 409
     assert start(client, mock_id, "speaking").status_code == 409
+
+
+def test_a_mock_begun_before_listening_existed_can_still_add_it(
+    client: TestClient, store: AttemptStore
+):
+    """Reading and Writing were sat first under the older order; Listening may still be added."""
+    mock_id = new_mock(client)
+    reading = create_reading_attempt(client)
+    store.link_mock_attempt(mock_id, "reading", reading)
+    before = client.get(f"/ielts/mock/{mock_id}").json()
+    assert modules_of(before)["listening"]["state"] == "not_started"
+    added = start(client, mock_id, "listening")
+    assert added.status_code == 201
+    assert modules_of(added.json())["listening"]["state"] == "in_progress"
+
+
+def create_reading_attempt(client: TestClient) -> str:
+    return str(client.post("/ielts/reading/attempts").json()["id"])
 
 
 def test_an_unknown_mock_is_not_found(client: TestClient):
@@ -157,27 +200,45 @@ def test_an_unknown_mock_is_not_found(client: TestClient):
     assert start(client, "nope", "reading").status_code == 404
 
 
-def test_reading_then_writing_gives_each_band_and_a_partial_overall(client: TestClient):
+def test_listening_reading_then_writing_gives_each_band_and_a_partial_overall(client: TestClient):
     mock_id = new_mock(client)
+
+    after_listening = sit_listening(client, mock_id)
+    listening = modules_of(after_listening)["listening"]
+    assert listening["state"] == "graded" and listening["band"] == LISTENING_BAND
+    assert listening["detail"] == "30 of 40 correct"
+    assert after_listening["overall"] == LISTENING_BAND and after_listening["partial"] is True
+    assert after_listening["next_module"]["key"] == "reading"
 
     after_reading = sit_reading(client, mock_id)
     reading = modules_of(after_reading)["reading"]
     reading_band = reading["band"]
     assert reading["state"] == "graded" and reading_band is not None
-    assert after_reading["overall"] == reading_band and after_reading["partial"] is True
+    assert after_reading["overall"] == round_half_band((LISTENING_BAND + reading_band) / 2)
     assert after_reading["next_module"]["key"] == "writing"
 
     final = sit_writing(client, mock_id)
     by_key = modules_of(final)
     assert by_key["writing"]["state"] == "graded" and by_key["writing"]["band"] == 6.5
-    assert by_key["listening"]["band"] is None and by_key["speaking"]["band"] is None
-    assert final["overall"] == round_half_band((reading_band + 6.5) / 2)
+    assert by_key["speaking"]["band"] is None
+    bands = [LISTENING_BAND, reading_band, 6.5]
+    assert final["overall"] == round_half_band(sum(bands) / 3)
     assert final["partial"] is True
-    assert "Listening and Speaking not assessed" in final["overall_note"]
+    assert "Speaking not assessed" in final["overall_note"]
+    assert "3 of 4 skills" in final["overall_note"]
     assert final["overall_source_url"] == SCORING_SOURCE_URL
     # everything sittable is done: the program names the lowest assessed skill
-    lowest = min(("reading", reading_band), ("writing", 6.5), key=lambda kv: kv[1])[0]
+    lowest = min(
+        ("listening", LISTENING_BAND), ("reading", reading_band), ("writing", 6.5),
+        key=lambda kv: kv[1],
+    )[0]
     assert final["next_module"]["key"] == lowest
+
+
+def test_the_listening_attempt_is_the_one_its_own_page_lists(client: TestClient):
+    mock_id = new_mock(client)
+    sit_listening(client, mock_id)
+    assert len(client.get("/ielts/listening/attempts").json()) == 1
 
 
 def test_the_overall_note_says_why_each_missing_skill_has_no_band(client: TestClient):
@@ -185,15 +246,20 @@ def test_the_overall_note_says_why_each_missing_skill_has_no_band(client: TestCl
     fresh = client.get(f"/ielts/mock/{mock_id}").json()
     assert "No skill has a band" in fresh["overall_note"]
 
-    after_reading = sit_reading(client, mock_id)
-    note = after_reading["overall_note"]
-    assert "Listening and Speaking not assessed" in note
-    assert "Writing not taken yet" in note
-    assert "Listening and Writing and Speaking" not in note
+    after_listening = sit_listening(client, mock_id)
+    note = after_listening["overall_note"]
+    assert "Reading and Writing not taken yet" in note and "Speaking not assessed" in note
     assert "1 of 4 skills" in note
 
+    after_reading = sit_reading(client, mock_id)
+    note = after_reading["overall_note"]
+    assert "Speaking not assessed" in note
+    assert "Writing not taken yet" in note
+    assert "Reading and Writing and Speaking" not in note
+    assert "2 of 4 skills" in note
+
     final = sit_writing(client, mock_id)
-    assert "Listening and Speaking not assessed" in final["overall_note"]
+    assert "Speaking not assessed" in final["overall_note"]
     assert "Writing" not in final["overall_note"].split("so this is")[0]
 
 
@@ -276,7 +342,9 @@ def test_the_coach_gets_the_whole_mock_digest_with_the_partial_overall_and_next_
     assert resp.text == "Practise Writing next."
     digest = seen[0].report_digest
     assert digest and len(digest) <= MAX_REPORT_DIGEST_CHARS and "<<<REPORT" in digest
-    assert "Listening: not assessed" in digest and "Speaking: not assessed" in digest
+    assert f"Listening: band {LISTENING_BAND}" in digest and "Speaking: not assessed" in digest
+    assert "Listening detail: 30 of 40 correct" in digest
+    assert "Listening by question type, weakest first:" in digest
     assert f"Overall band: {final['overall']} (PARTIAL" in digest
     recommended = final["next_module"]["label"]
     assert f"Recommended next module, worked out by the program: {recommended}" in digest

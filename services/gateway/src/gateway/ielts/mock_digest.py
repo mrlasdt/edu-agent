@@ -4,17 +4,31 @@ The mock coach's view of a full mock: bounded text, built in code.
 Like the other digests it is untrusted data between content-derived markers (the Writing task
 prompts and the model's priorities can carry instructions), and it never carries a passage or an
 essay. It gives the per-skill bands, the partial overall, the module the code recommends next, and
-for each sat module the few facts a coach needs to say why: Reading's score by question type and
-Writing's criterion bands and top priorities.
+for each sat module the few facts a coach needs to say why: Listening's and Reading's score by
+question type and Writing's criterion bands and top priorities.
 """
 from __future__ import annotations
 
 from services.gateway.src.gateway.ielts.digest import line, wrap
 from services.gateway.src.gateway.ielts.mock import LoadedMock, MockReport, build_report
-from services.gateway.src.gateway.ielts.models import ReadingReport, Report, WritingModuleReport
+from services.gateway.src.gateway.ielts.models import (
+    ListeningReport,
+    ReadingReport,
+    Report,
+    WritingModuleReport,
+)
 
 DIGEST_TITLE = "IELTS full mock result"
 MAX_BODY_CHARS = 5_000
+
+
+def _listening_lines(report: ListeningReport) -> list[str]:
+    weakest = sorted(report.by_type, key=lambda t: t.correct / max(t.total, 1))
+    return [
+        f"Listening detail: {report.raw} of {report.total} correct, band {report.band}.",
+        "Listening by question type, weakest first: "
+        + line("; ".join(f"{t.label} {t.correct}/{t.total}" for t in weakest), 600),
+    ]
 
 
 def _reading_lines(report: ReadingReport) -> list[str]:
@@ -61,6 +75,8 @@ def build_digest(loaded: LoadedMock, report: MockReport | None = None) -> str:
             f"Recommended next module, worked out by the program: {report.next_module.label}. "
             f"{line(report.next_module.reason, 300)}"
         )
+    if loaded.listening:
+        lines += ["", *_listening_lines(loaded.listening)]
     if loaded.reading:
         lines += ["", *_reading_lines(loaded.reading)]
     if loaded.writing:

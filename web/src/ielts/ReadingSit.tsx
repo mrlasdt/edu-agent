@@ -15,12 +15,13 @@ interface Props {
 
 type Save = "idle" | "saving" | "saved" | "error";
 
-function Field({
+/** The input for one question: a radio group when it has choices, else a short text box. */
+export function Field({
   q,
   value,
   onChange,
 }: {
-  q: Question;
+  q: Pick<Question, "id" | "number" | "task_type" | "choices">;
   value: string;
   onChange: (v: string) => void;
 }) {
