@@ -14,6 +14,8 @@ import json
 from dataclasses import dataclass
 
 from services.gateway.src.gateway.ielts.digest import build_digest, build_module_digest
+from services.gateway.src.gateway.ielts.mock import build_report, load_mock
+from services.gateway.src.gateway.ielts.mock_digest import build_digest as build_mock_digest
 from services.gateway.src.gateway.ielts.models import ReadingReport, Report, WritingModuleReport
 from services.gateway.src.gateway.ielts.reading_digest import (
     build_digest as build_reading_digest,
@@ -25,12 +27,16 @@ from services.gateway.src.gateway.ielts_store import (
     Attempt,
     AttemptNotFoundError,
     AttemptStore,
+    MockNotFoundError,
 )
 
-# The chat pairs this module coaches, and the attempt module each reads its report from.
+# The chat pairs this module coaches, and the attempt module each reads its report from. The
+# full mock is not an attempt: its "module" is the mocks table, so `find_report` handles it apart.
+MOCK_COACH = "ielts_mock"
 COACH_MODULES: dict[tuple[str, str], str] = {
     ("ielts", "writing"): MODULE_WRITING_T2,
     ("ielts", "reading"): MODULE_READING,
+    ("ielts", "mock"): MOCK_COACH,
 }
 # The Writing coach also reads a graded Writing module (letter and essay), alongside the
 # standalone Task 2 mock.
@@ -60,6 +66,19 @@ READING_SOLVE_MODE_NOTICE = (
     "The IELTS Reading coach has one mode: it coaches you from your marked result and your "
     "evidence sentences. Ask it about a question type you missed."
 )
+MOCK_NO_REPORT_NOTICE = (
+    "I coach from your full IELTS mock, and none has a band yet. Start a full mock at "
+    "/ielts-mock?module=mock, sit Reading, and once it is marked come back and ask me what to "
+    "practise next."
+)
+MOCK_UNKNOWN_ATTEMPT_NOTICE = (
+    "I can't find a full mock with a band for that link. Open /ielts-mock?module=mock, pick a "
+    "mock, and use its \"Discuss with the coach\" link."
+)
+MOCK_SOLVE_MODE_NOTICE = (
+    "The full-mock coach has one mode: it reads your mock result and says which skill to "
+    "practise next. Ask it why, or how to practise."
+)
 
 
 @dataclass(frozen=True)
@@ -70,6 +89,8 @@ class Notices:
 
 
 def notices_for(section: str) -> Notices:
+    if section == "mock":
+        return Notices(MOCK_NO_REPORT_NOTICE, MOCK_UNKNOWN_ATTEMPT_NOTICE, MOCK_SOLVE_MODE_NOTICE)
     if section == "reading":
         return Notices(
             READING_NO_REPORT_NOTICE, READING_UNKNOWN_ATTEMPT_NOTICE, READING_SOLVE_MODE_NOTICE
@@ -125,6 +146,8 @@ def find_report(
     The digest of the attempt named, or of the latest graded one of this section; None when there
     is none. An attempt of the other section is "not found", not a digest of the wrong module.
     """
+    if section == "mock":
+        return _find_mock(store, attempt_id)
     modules = (COACH_MODULES[("ielts", section)], *EXTRA_COACH_MODULES.get(section, ()))
     found: Attempt | None
     if attempt_id:
@@ -142,3 +165,20 @@ def find_report(
         return None
     digest = _digest(found, found.report_json)
     return CoachReport(found.id, digest) if digest else None
+
+
+def _find_mock(store: AttemptStore, mock_id: str | None) -> CoachReport | None:
+    """The digest of the full mock named, or of the newest one that has a band."""
+    if mock_id:
+        try:
+            candidates = [store.get_mock(mock_id)]
+        except MockNotFoundError:
+            return None
+    else:
+        candidates = store.recent_mocks()
+    for mock in candidates:
+        loaded = load_mock(store, mock)
+        digest = build_mock_digest(loaded, build_report(loaded))
+        if digest:
+            return CoachReport(mock.id, digest)
+    return None

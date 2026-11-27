@@ -30,6 +30,9 @@ ielts_coach:
 # IELTS Reading coach in /chat: tutor only, no tools (prompts/ielts_reading_coach/tutor/<version>.md)
 ielts_reading_coach:
   tutor: v1
+# IELTS full-mock coach in /chat: tutor only, no tools (prompts/ielts_mock_coach/tutor/<version>.md)
+ielts_mock_coach:
+  tutor: v1
 # IELTS mock (prompts/<agent>/writing_t2/<version>.md)
 ielts_grader:
   writing_t2: v1

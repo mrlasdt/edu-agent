@@ -107,3 +107,8 @@ roles:
   ielts_reading_coach:
     <<: *ielts
     temperature: 0.4
+
+  # The IELTS full-mock coach in /chat (ielts/mock): same model as the Writing coach.
+  ielts_mock_coach:
+    <<: *ielts
+    temperature: 0.4

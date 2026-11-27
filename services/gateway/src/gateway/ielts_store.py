@@ -52,8 +52,25 @@ CREATE TABLE IF NOT EXISTS attempts (
 )
 """
 
+# A full mock is a parent record that links the attempts of its modules (the same attempts the
+# standalone Reading and Writing pages use). Each link is set once, when that module's attempt is
+# created; the module's status and band are read from the attempt, never copied here.
+_MOCK_SCHEMA = """
+CREATE TABLE IF NOT EXISTS mocks (
+    id TEXT PRIMARY KEY,
+    created_at REAL NOT NULL,
+    reading_attempt_id TEXT,
+    writing_attempt_id TEXT
+)
+"""
+MOCK_ATTEMPT_COLUMNS = {"reading": "reading_attempt_id", "writing": "writing_attempt_id"}
+
 
 class AttemptNotFoundError(LookupError):
+    pass
+
+
+class MockNotFoundError(LookupError):
     pass
 
 
@@ -86,6 +103,20 @@ class Attempt:
         return self.final_text if self.final_text is not None else self.draft_text
 
 
+@dataclass(frozen=True)
+class Mock:
+    id: str
+    created_at: float
+    attempt_ids: dict[str, str | None]  # module key ("reading", "writing") -> attempt id
+
+
+def _mock_row(r: sqlite3.Row) -> Mock:
+    return Mock(
+        id=r["id"], created_at=r["created_at"],
+        attempt_ids={key: r[col] for key, col in MOCK_ATTEMPT_COLUMNS.items()},
+    )
+
+
 def _row(r: sqlite3.Row) -> Attempt:
     return Attempt(
         id=r["id"], module=r["module"], prompt_id=r["prompt_id"], prompt_text=r["prompt_text"],
@@ -105,6 +136,7 @@ class AttemptStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as db:
             db.execute(_SCHEMA)
+            db.execute(_MOCK_SCHEMA)
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -260,3 +292,33 @@ class AttemptStore:
                 (attempt.module, attempt.id, attempt.submitted_at or self.clock()),
             ).fetchone()
         return _row(row) if row else None
+
+    def create_mock(self) -> Mock:
+        mock_id = uuid.uuid4().hex
+        with self._connect() as db:
+            db.execute("INSERT INTO mocks (id, created_at) VALUES (?, ?)", (mock_id, self.clock()))
+        return self.get_mock(mock_id)
+
+    def get_mock(self, mock_id: str) -> Mock:
+        with self._connect() as db:
+            row = db.execute("SELECT * FROM mocks WHERE id = ?", (mock_id,)).fetchone()
+        if row is None:
+            raise MockNotFoundError(mock_id)
+        return _mock_row(row)
+
+    def recent_mocks(self, limit: int = 20) -> list[Mock]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT * FROM mocks ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [_mock_row(r) for r in rows]
+
+    def link_mock_attempt(self, mock_id: str, key: str, attempt_id: str) -> Mock:
+        """Record a module's attempt on the mock; a module that already has one keeps it."""
+        column = MOCK_ATTEMPT_COLUMNS[key]  # a KeyError here is a bug, not user input
+        with self._connect() as db:
+            db.execute(
+                f"UPDATE mocks SET {column} = ? WHERE id = ? AND {column} IS NULL",
+                (attempt_id, mock_id),
+            )
+        return self.get_mock(mock_id)

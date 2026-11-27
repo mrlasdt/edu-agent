@@ -1,4 +1,4 @@
-export type Subject = "quant" | "aw" | "ielts_writing" | "ielts_reading";
+export type Subject = "quant" | "aw" | "ielts_writing" | "ielts_reading" | "ielts_mock";
 export type Mode = "tutor" | "solve";
 export type MessageRole = "candidate" | "agent";
 

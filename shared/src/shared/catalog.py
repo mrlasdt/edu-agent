@@ -15,6 +15,7 @@ from collections.abc import Collection
 SUPPORTED_PAIRS: tuple[tuple[str, str], ...] = (
     ("gre", "aw"),
     ("gre", "quant"),
+    ("ielts", "mock"),
     ("ielts", "reading"),
     ("ielts", "writing"),
 )

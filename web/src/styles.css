@@ -195,3 +195,11 @@ ul.ielts-chips { list-style: none; padding: 0; }
 .reading-choices { display: grid; gap: 4px; }
 .reading-results { padding-left: 1.6em; display: grid; gap: 14px; }
 .reading-miss { padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.ielts-skills { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 8px; }
+.ielts-skill { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.ielts-skill[data-state="not_assessed"] { opacity: 0.7; }
+.ielts-skill-band { font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ielts-skill[data-state="not_assessed"] .ielts-skill-band { font-size: 0.9rem; font-weight: 500; }
+.ielts-next { margin: 12px 0; padding: 12px 14px; border-left: 4px solid var(--accent); background: var(--surface); border-radius: 6px; }
+.ielts-next h2 { margin: 0 0 4px; font-size: 1.05rem; }
+@media (max-width: 520px) { .ielts-skill { grid-template-columns: 1fr auto; } .ielts-skill button { grid-column: 1 / -1; } }

@@ -119,6 +119,22 @@ describe("App IELTS Writing coach", () => {
     });
   });
 
+  it("opens the full mock coach on ielts/mock from a mock result link", async () => {
+    const fetchMock = stubGateway();
+    const user = userEvent.setup();
+    window.history.replaceState({}, "", "/?attempt=m1&subject=mock");
+    render(<App />);
+    expect(screen.getByRole("heading", { name: "Edu Agent: IELTS full mock coach" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /solve|tutor/i })).not.toBeInTheDocument();
+    await send(user, "which skill should I practise next?");
+    expect(lastRequest(fetchMock)).toMatchObject({
+      test_type: "ielts",
+      section: "mock",
+      mode: "tutor",
+      attempt_id: "m1",
+    });
+  });
+
   it("still sends GRE turns as gre/<subject>", async () => {
     const fetchMock = stubGateway();
     const user = await openQuant();
