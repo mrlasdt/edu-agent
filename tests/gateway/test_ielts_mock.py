@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from services.gateway.src.gateway import ielts_api
 from services.gateway.src.gateway.guardrails.verdict import Verdict
+from services.gateway.src.gateway.ielts import llm
 from services.gateway.src.gateway.ielts.mock import SCORING_SOURCE_URL, overall_band
 from services.gateway.src.gateway.ielts_coach import (
     MOCK_NO_REPORT_NOTICE,
@@ -177,6 +178,46 @@ def test_reading_then_writing_gives_each_band_and_a_partial_overall(client: Test
     # everything sittable is done: the program names the lowest assessed skill
     lowest = min(("reading", reading_band), ("writing", 6.5), key=lambda kv: kv[1])[0]
     assert final["next_module"]["key"] == lowest
+
+
+def test_the_overall_note_says_why_each_missing_skill_has_no_band(client: TestClient):
+    mock_id = new_mock(client)
+    fresh = client.get(f"/ielts/mock/{mock_id}").json()
+    assert "No skill has a band" in fresh["overall_note"]
+
+    after_reading = sit_reading(client, mock_id)
+    note = after_reading["overall_note"]
+    assert "Listening and Speaking not assessed" in note
+    assert "Writing not taken yet" in note
+    assert "Listening and Writing and Speaking" not in note
+    assert "1 of 4 skills" in note
+
+    final = sit_writing(client, mock_id)
+    assert "Listening and Speaking not assessed" in final["overall_note"]
+    assert "Writing" not in final["overall_note"].split("so this is")[0]
+
+
+def test_a_failed_writing_marking_is_retryable_on_the_mocks_own_attempt(client: TestClient):
+    async def down(role: str, messages: list[dict[str, str]], **kw: object) -> str:
+        raise llm.ModelUnavailableError("down")
+
+    mock_id = new_mock(client)
+    sit_reading(client, mock_id)
+    working = app.dependency_overrides[ielts_api.get_completer]
+    app.dependency_overrides[ielts_api.get_completer] = lambda: down
+    failed = sit_writing(client, mock_id)
+    writing = modules_of(failed)["writing"]
+    assert writing["state"] == "ungraded" and writing["retryable"] is True
+    assert "Retry marking" in writing["detail"]
+    assert "Retry marking" in failed["next_module"]["reason"]
+    assert modules_of(failed)["reading"]["retryable"] is False
+
+    app.dependency_overrides[ielts_api.get_completer] = working
+    retry = client.post(f"/ielts/writing/attempts/{writing['attempt_id']}/regrade")
+    assert retry.status_code == 200
+    final = client.get(f"/ielts/mock/{mock_id}").json()
+    assert modules_of(final)["writing"]["state"] == "graded"
+    assert modules_of(final)["writing"]["retryable"] is False
 
 
 def test_the_module_pages_still_see_the_mock_attempts(client: TestClient):

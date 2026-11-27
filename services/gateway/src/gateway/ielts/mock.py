@@ -65,6 +65,7 @@ class ModuleStatus(BaseModel):
     band: float | None = None
     attempt_id: str | None = None
     sittable: bool
+    retryable: bool = False  # marking failed and the module's retry route will take it again
     detail: str = ""
 
 
@@ -132,7 +133,7 @@ def _state_of(attempt: Attempt | None, band: float | None, has_report: bool) -> 
     return "partial" if has_report else "ungraded"
 
 
-def _detail(key: str, state: ModuleState, loaded: LoadedMock) -> str:
+def _detail(key: str, state: ModuleState, loaded: LoadedMock, retryable: bool) -> str:
     if state == "not_assessed":
         return "Not assessed: this module is not part of the mock yet."
     if state == "graded" and key == "reading" and loaded.reading:
@@ -142,7 +143,7 @@ def _detail(key: str, state: ModuleState, loaded: LoadedMock) -> str:
     if state == "partial":
         return "Only one task could be marked, so there is no Writing band."
     if state == "ungraded":
-        return "Marking did not finish. Open the module to retry it."
+        return "Marking did not finish." + (" Use Retry marking to try again." if retryable else "")
     return ""
 
 
@@ -152,7 +153,7 @@ def module_statuses(loaded: LoadedMock) -> list[ModuleStatus]:
         if not sittable:
             out.append(ModuleStatus(
                 key=key, label=label, state="not_assessed", sittable=False,
-                detail=_detail(key, "not_assessed", loaded),
+                detail=_detail(key, "not_assessed", loaded, False),
             ))
             continue
         attempt = loaded.attempts.get(key)
@@ -163,10 +164,11 @@ def module_statuses(loaded: LoadedMock) -> list[ModuleStatus]:
         )
         has_report = loaded.reading is not None if key == "reading" else loaded.writing is not None
         state = _state_of(attempt, band, has_report)
+        retryable = bool(key == "writing" and state == "ungraded" and attempt and attempt.retryable)
         out.append(ModuleStatus(
             key=key, label=label, state=state, band=band if state == "graded" else None,
-            attempt_id=attempt.id if attempt else None, sittable=True,
-            detail=_detail(key, state, loaded),
+            attempt_id=attempt.id if attempt else None, sittable=True, retryable=retryable,
+            detail=_detail(key, state, loaded, retryable),
         ))
     return out
 
@@ -176,8 +178,28 @@ def overall_band(bands: list[float]) -> float | None:
     return round_half_band(sum(bands) / len(bands)) if bands else None
 
 
+def _names(labels: list[str]) -> str:
+    return labels[0] if len(labels) == 1 else ", ".join(labels[:-1]) + " and " + labels[-1]
+
+
+def _missing_clauses(modules: list[ModuleStatus]) -> list[str]:
+    """Why each skill without a band has none, grouped: 'Listening and Speaking not assessed'."""
+    reasons: tuple[tuple[tuple[ModuleState, ...], str], ...] = (
+        (("not_assessed",), "not assessed"),
+        (("not_started", "in_progress"), "not taken yet"),
+        (("marking",), "being marked"),
+        (("ungraded", "partial"), "without a band because marking did not finish"),
+    )
+    clauses = []
+    for states, text in reasons:
+        labels = [m.label for m in modules if m.band is None and m.state in states]
+        if labels:
+            clauses.append(f"{_names(labels)} {text}")
+    return clauses
+
+
 def _overall_note(modules: list[ModuleStatus], overall: float | None) -> str:
-    missing = [m.label for m in modules if m.band is None]
+    missing = [m for m in modules if m.band is None]
     if overall is None:
         return "No skill has a band yet, so there is no overall band."
     base = (
@@ -187,7 +209,7 @@ def _overall_note(modules: list[ModuleStatus], overall: float | None) -> str:
     if not missing:
         return base
     return (
-        f"Partial overall: {' and '.join(missing)} not assessed, so this is the mean of "
+        f"Partial overall: {'; '.join(_missing_clauses(modules))}, so this is the mean of "
         f"{len(modules) - len(missing)} of {len(modules)} skills. " + base
     )
 
@@ -214,7 +236,10 @@ def next_module(modules: list[ModuleStatus]) -> NextModule | None:
         if m.state in ("ungraded", "partial"):
             return NextModule(
                 key=key, label=m.label,
-                reason=f"{m.label} has no band yet because its marking did not finish: retry it.",
+                reason=(
+                    f"{m.label} has no band yet because its marking did not finish"
+                    + (": use Retry marking." if m.retryable else ".")
+                ),
             )
     graded = [m for m in modules if m.band is not None]
     if not graded:

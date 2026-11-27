@@ -8,7 +8,7 @@ import { ReadingSit } from "./ReadingSit";
 import { getReading, startReading } from "./readingApi";
 import type { ReadingAttempt } from "./readingTypes";
 import { WritingModuleSit } from "./WritingModuleSit";
-import { getWritingModule, startWritingModule } from "./writingModuleApi";
+import { getWritingModule, regradeWritingModule, startWritingModule } from "./writingModuleApi";
 import type { WritingModuleAttempt } from "./writingModuleTypes";
 
 const KEY = "ielts.fullmock.id";
@@ -152,6 +152,12 @@ export function FullMock({ pollMs = POLL_MS, autosaveMs }: FullMockProps) {
       await refresh(report.id);
     });
 
+  const retryMarking = (report: MockReport, attemptId: string) =>
+    run(async () => {
+      await regradeWritingModule(attemptId);
+      await refresh(report.id);
+    });
+
   const begin = () =>
     run(async () => {
       const report = await createMock();
@@ -225,6 +231,7 @@ export function FullMock({ pollMs = POLL_MS, autosaveMs }: FullMockProps) {
           report={view.report}
           busy={busy}
           onOpen={(key) => void openModule(view.report, key)}
+          onRetry={(attemptId) => void retryMarking(view.report, attemptId)}
           onAnother={another}
         />
       )}
@@ -236,11 +243,13 @@ function Overview({
   report,
   busy,
   onOpen,
+  onRetry,
   onAnother,
 }: {
   report: MockReport;
   busy: boolean;
   onOpen: (key: ModuleKey) => void;
+  onRetry: (attemptId: string) => void;
   onAnother: () => void;
 }) {
   const anyMarking = report.modules.some((m) => m.state === "marking");
@@ -282,6 +291,15 @@ function Overview({
             {m.sittable && (m.state === "not_started" || m.state === "in_progress") && (
               <button className="ielts-primary" onClick={() => onOpen(m.key)} disabled={busy}>
                 {m.state === "in_progress" ? `Continue ${m.label}` : `Start ${m.label}`}
+              </button>
+            )}
+            {m.retryable && m.attempt_id && (
+              <button
+                className="ielts-primary"
+                onClick={() => onRetry(m.attempt_id as string)}
+                disabled={busy}
+              >
+                Retry marking
               </button>
             )}
           </li>

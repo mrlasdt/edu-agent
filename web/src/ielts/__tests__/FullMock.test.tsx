@@ -6,7 +6,10 @@ import type { MockReport, ModuleStatus } from "../mockApi";
 
 const api = vi.hoisted(() => ({ createMock: vi.fn(), getMock: vi.fn(), startMockModule: vi.fn() }));
 const reading = vi.hoisted(() => ({ getReading: vi.fn(), startReading: vi.fn() }));
-const writing = vi.hoisted(() => ({ getWritingModule: vi.fn(), startWritingModule: vi.fn() }));
+const writing = vi.hoisted(() => ({ getWritingModule: vi.fn(),
+  startWritingModule: vi.fn(),
+  regradeWritingModule: vi.fn(),
+}));
 vi.mock("../mockApi", () => api);
 vi.mock("../readingApi", () => reading);
 vi.mock("../writingModuleApi", () => writing);
@@ -24,7 +27,7 @@ vi.mock("../WritingModuleSit", () => ({
 
 const status = (key: ModuleStatus["key"], over: Partial<ModuleStatus> = {}): ModuleStatus => ({
   key, label: key[0].toUpperCase() + key.slice(1), state: "not_started", band: null, attempt_id: null,
-  sittable: key === "reading" || key === "writing", detail: "", ...over,
+  sittable: key === "reading" || key === "writing", retryable: false, detail: "", ...over,
 });
 
 const mock = (over: {
@@ -156,5 +159,41 @@ describe("FullMock", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("retries a failed Writing marking on the mock's own attempt, then polls for the band", async () => {
+    window.localStorage.setItem("ielts.fullmock.id", "m1");
+    const failed = mock({
+      reading: { attempt_id: "r1", state: "graded", band: 6.0 },
+      writing: { attempt_id: "w1", state: "ungraded", retryable: true, detail: "Marking did not finish." },
+      report: { overall: 6.0, next_module: null },
+    });
+    const again = mock({
+      reading: { attempt_id: "r1", state: "graded", band: 6.0 },
+      writing: { attempt_id: "w1", state: "marking" },
+      report: { overall: 6.0, next_module: null },
+    });
+    api.getMock.mockResolvedValueOnce(failed).mockResolvedValue(again);
+    writing.regradeWritingModule.mockResolvedValue({ id: "w1", status: "grading" });
+    render(<FullMock />);
+    await settle();
+    await userEvent.click(screen.getByRole("button", { name: "Retry marking" }));
+    await settle();
+    expect(writing.regradeWritingModule).toHaveBeenCalledWith("w1");
+    expect(screen.queryByRole("button", { name: "Retry marking" })).toBeNull();
+    expect(screen.getByText(/Marking your Writing/)).toBeInTheDocument();
+  });
+
+  it("offers no retry when the failure cannot be retried", async () => {
+    window.localStorage.setItem("ielts.fullmock.id", "m1");
+    api.getMock.mockResolvedValue(
+      mock({
+        reading: { attempt_id: "r1", state: "graded", band: 6.0 },
+        writing: { attempt_id: "w1", state: "ungraded", retryable: false },
+      })
+    );
+    render(<FullMock />);
+    await settle();
+    expect(screen.queryByRole("button", { name: "Retry marking" })).toBeNull();
   });
 });

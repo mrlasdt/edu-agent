@@ -18,6 +18,7 @@ export interface ModuleStatus {
   band: number | null;
   attempt_id: string | null;
   sittable: boolean;
+  retryable: boolean;
   detail: string;
 }
 
