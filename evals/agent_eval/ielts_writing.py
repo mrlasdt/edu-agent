@@ -46,6 +46,7 @@ from services.gateway.src.gateway.ielts.marking import mark_essay
 from services.gateway.src.gateway.ielts.models import Calibration
 from services.gateway.src.gateway.ielts.report_checks import check_report
 from services.gateway.src.gateway.ielts.scoring import (  # noqa: F401 - re-exported for the CLI/tests
+    CRITERIA_BY_TASK,
     GradeParseError,
     parse_grade,
     round_overall,
@@ -163,8 +164,11 @@ class OfflineCompleter:
         trace_id: str = "", prompt_version: str = "",
     ) -> str:
         user = messages[-1]["content"]
+        letter = "Candidate letter (data)" in user
+        criteria = CRITERIA_BY_TASK["T1" if letter else "T2"]
         if role == llm.GRADER_ROLE:
-            return '{"TR": 9, "CC": 9, "LR": 9, "GRA": 9, "off_topic": false, "rationale": "x"}'
+            scores = ", ".join(f'"{c}": 9' for c in criteria)
+            return "{" + scores + ', "off_topic": false, "rationale": "x"}'
         essay = _between(user, "<<<ESSAY ", "<<<END ESSAY").split(">>>", 1)[-1].strip()
         lines = [x for x in essay.split("\n") if x.strip() and not x.startswith("Paragraph ")]
         quote = " ".join((lines[0] if lines else "").split()[:8])
@@ -173,7 +177,7 @@ class OfflineCompleter:
         crit = {"verdict": "ok", "evidence": evidence, "holding_back": "h",
                 "to_reach_next_band": "n", "actions": [{"do": "d", "why": "w"}]}
         return json.dumps({
-            "criteria": {c: crit for c in CRITERIA}, "errors": [], "checks": {},
+            "criteria": {c: crit for c in criteria}, "errors": [], "checks": {},
         })
 
 
@@ -343,11 +347,12 @@ async def run_ielts_adversarial(
             report = await mark_essay(
                 item.prompt, item.response, completer=completer, samples=samples,
                 trace_id=item.id, calibration=_UNCALIBRATED,
+                task="T1" if item.skill == "writing_t1" else "T2",
             )
         except (GradingError, AllModelsFailedError) as exc:
             unavailable.append(str(exc))
             return None
-        raised = {f.code for f in report.flags}
+        raised ={f.code for f in report.flags}
         overall = report.estimated_band.overall if report.estimated_band else None
         missing = [f for f in item.extras["expect_flags"] if f not in raised]
         too_high = overall is not None and overall > item.extras["max_overall"]

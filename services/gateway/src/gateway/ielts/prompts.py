@@ -35,3 +35,28 @@ def load_prompts(path: Path = PROMPTS_PATH) -> list[WritingPrompt]:
             essay_type_label=ESSAY_TYPE_LABELS.get(essay_type, essay_type), text=row["prompt"],
         ))
     return prompts
+
+
+LETTERS_PATH = Path(__file__).resolve().parent / "data" / "ielts_letter_prompts.jsonl"
+
+REGISTER_LABELS = {"formal": "Formal", "semi_formal": "Semi-formal", "personal": "Personal"}
+
+
+@dataclass(frozen=True)
+class LetterPrompt:
+    id: str
+    register: str
+    register_label: str
+    text: str
+
+
+def load_letter_prompts(path: Path = LETTERS_PATH) -> list[LetterPrompt]:
+    """Original General Training Task 1 letter prompts (written for this repository)."""
+    return [
+        LetterPrompt(
+            id=row["id"], register=row["register"],
+            register_label=REGISTER_LABELS.get(row["register"], row["register"]),
+            text=row["prompt"],
+        )
+        for row in read_jsonl(path)
+    ]

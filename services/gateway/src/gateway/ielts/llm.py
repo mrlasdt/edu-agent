@@ -41,9 +41,9 @@ class Completer(Protocol):
     ) -> Awaitable[str]: ...
 
 
-def prompt_version(role: str) -> str:
+def prompt_version(role: str, task: str = "T2") -> str:
     config = load_model_config(get_llm_settings().model_config_path)
-    return config.prompt_version(role, "writing_t2")
+    return config.prompt_version(role, f"writing_{task.lower()}")
 
 
 def role_temperature(role: str) -> float:

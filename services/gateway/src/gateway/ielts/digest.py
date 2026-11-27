@@ -16,14 +16,22 @@ from __future__ import annotations
 
 import hashlib
 
-from services.gateway.src.gateway.ielts.models import CriterionReport, Report
+from services.gateway.src.gateway.ielts.models import (
+    CriterionReport,
+    Report,
+    WritingModuleReport,
+)
 from shared.src.shared.wire import MAX_REPORT_DIGEST_CHARS
 
 # About 1.5k tokens of body; the markers and the heading add a few dozen characters.
 MAX_DIGEST_BODY_CHARS = 6_000
 assert MAX_DIGEST_BODY_CHARS + 200 <= MAX_REPORT_DIGEST_CHARS
 
-DIGEST_TITLE = "Graded IELTS Writing Task 2 mock report"
+DIGEST_TITLES = {
+    "T1": "Graded IELTS General Training Writing Task 1 (letter) mock report",
+    "T2": "Graded IELTS Writing Task 2 mock report",
+}
+DIGEST_TITLE = DIGEST_TITLES["T2"]
 
 
 def wrap(title: str, body: str) -> str:
@@ -122,7 +130,9 @@ def _body(report: Report, essay: str, prompt: str, quotes: int, actions: int, sp
 _TIERS: tuple[tuple[int, int, int], ...] = ((2, 2, 3), (1, 2, 2), (1, 1, 0), (0, 1, 0), (0, 0, 0))
 
 
-def build_digest(report: Report, essay: str, prompt: str = "") -> str:
+def build_digest(
+    report: Report, essay: str, prompt: str = "", limit: int = MAX_DIGEST_BODY_CHARS
+) -> str:
     """
     The coach's digest of a graded report, between content-derived markers; "" when the report is
     not graded (an ungraded one has nothing to coach from). `essay` is the text the report was
@@ -133,8 +143,35 @@ def build_digest(report: Report, essay: str, prompt: str = "") -> str:
     body = ""
     for quotes, actions, spans in _TIERS:
         body = _body(report, essay, prompt, quotes, actions, spans)
-        if len(body) <= MAX_DIGEST_BODY_CHARS:
+        if len(body) <= limit:
             break
     else:
-        body = body[:MAX_DIGEST_BODY_CHARS]
-    return wrap(DIGEST_TITLE, body)
+        body = body[:limit]
+    return wrap(DIGEST_TITLES[report.task], body)
+
+
+# Two task digests and the band line must fit the one digest the agent service accepts.
+MODULE_TASK_BODY_CHARS = 3_600
+assert 2 * (MODULE_TASK_BODY_CHARS + 200) + 200 <= MAX_REPORT_DIGEST_CHARS
+
+
+def build_module_digest(
+    report: WritingModuleReport, texts: dict[str, str], prompts: dict[str, str]
+) -> str:
+    """
+    The digest of a Writing module report: the combined band, then the digest of each graded
+    task. A task that was not marked is left out; "" when neither was.
+    """
+    built = (
+        build_digest(sub, texts.get(key, ""), prompts.get(key, ""), MODULE_TASK_BODY_CHARS)
+        for key, sub in (("t1", report.t1), ("t2", report.t2))
+    )
+    parts = [d for d in built if d]
+    if not parts:
+        return ""
+    band = (
+        f"Combined Writing band (mock): {report.writing_band}. {report.weights_note}"
+        if report.writing_band is not None else
+        "Combined Writing band: not given, because only one task could be marked."
+    )
+    return "\n\n".join([line(band, 300), *parts])

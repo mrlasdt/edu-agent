@@ -8,7 +8,7 @@ from services.gateway.src.gateway.ielts.feedback import (
     within_paragraph,
 )
 from services.gateway.src.gateway.ielts.models import DISCLAIMER, Report
-from services.gateway.src.gateway.ielts.scoring import CRITERIA, round_overall
+from services.gateway.src.gateway.ielts.scoring import CRITERIA_BY_TASK, round_overall
 
 
 def _in_paragraph(paragraphs: list[tuple[int, int]], number: int, start: int, end: int) -> bool:
@@ -32,7 +32,7 @@ def check_report(report: Report, essay: str) -> list[str]:
     if band is None:
         return [*problems, "graded report has no mock score"]
     bands = {c.id: c.band for c in report.criteria}
-    if set(bands) != set(CRITERIA):
+    if set(bands) != set(CRITERIA_BY_TASK[report.task]):
         return [*problems, f"criteria are {sorted(bands)}"]
     if band.overall != round_overall(bands):
         problems.append("overall is not the rounded mean of the four criteria")

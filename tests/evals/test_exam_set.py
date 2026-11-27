@@ -97,7 +97,7 @@ def test_gre_loader_is_unchanged():
 
 def test_committed_exam_families_load_and_are_committable():
     items = load_exam_items()
-    assert {i.skill for i in items} == {"sat_math", "reading", "writing_t2"}
+    assert {i.skill for i in items} == {"sat_math", "reading", "writing_t1", "writing_t2"}
     assert items and all(i.committable() for i in items)
     for family in EXAM_FAMILIES:
         assert family_path(family).exists()

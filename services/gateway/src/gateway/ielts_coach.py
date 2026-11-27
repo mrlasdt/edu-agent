@@ -10,15 +10,17 @@ and the evidence sentence for each key, never a passage.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
-from services.gateway.src.gateway.ielts.digest import build_digest
-from services.gateway.src.gateway.ielts.models import ReadingReport, Report
+from services.gateway.src.gateway.ielts.digest import build_digest, build_module_digest
+from services.gateway.src.gateway.ielts.models import ReadingReport, Report, WritingModuleReport
 from services.gateway.src.gateway.ielts.reading_digest import (
     build_digest as build_reading_digest,
 )
 from services.gateway.src.gateway.ielts_store import (
     MODULE_READING,
+    MODULE_WRITING,
     MODULE_WRITING_T2,
     Attempt,
     AttemptNotFoundError,
@@ -30,6 +32,9 @@ COACH_MODULES: dict[tuple[str, str], str] = {
     ("ielts", "writing"): MODULE_WRITING_T2,
     ("ielts", "reading"): MODULE_READING,
 }
+# The Writing coach also reads a graded Writing module (letter and essay), alongside the
+# standalone Task 2 mock.
+EXTRA_COACH_MODULES: dict[str, tuple[str, ...]] = {"writing": (MODULE_WRITING,)}
 
 NO_REPORT_NOTICE = (
     "I coach from your graded IELTS Writing mock report, and I can't find one yet. Take a "
@@ -78,17 +83,37 @@ class CoachReport:
     digest: str
 
 
-def _graded(attempt: Attempt, module: str) -> bool:
+def _graded(attempt: Attempt, modules: tuple[str, ...]) -> bool:
     return (
-        attempt.module == module
+        attempt.module in modules
         and attempt.status == "graded"
         and attempt.report_json is not None
     )
 
 
+def _json_object(raw: str) -> dict[str, object]:
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _module_digest(attempt: Attempt, report_json: str) -> str:
+    """The Writing module: its texts and prompts are JSON objects keyed t1 and t2."""
+    texts = {k: str(v) for k, v in _json_object(attempt.essay).items()}
+    prompts = {
+        k: str(v.get("text", "")) for k, v in _json_object(attempt.prompt_text).items()
+        if isinstance(v, dict)
+    }
+    return build_module_digest(WritingModuleReport.model_validate_json(report_json), texts, prompts)
+
+
 def _digest(attempt: Attempt, report_json: str) -> str:
     if attempt.module == MODULE_READING:
         return build_reading_digest(ReadingReport.model_validate_json(report_json))
+    if attempt.module == MODULE_WRITING:
+        return _module_digest(attempt, report_json)
     report = Report.model_validate_json(report_json)
     return build_digest(report, attempt.essay, attempt.prompt_text)
 
@@ -100,7 +125,7 @@ def find_report(
     The digest of the attempt named, or of the latest graded one of this section; None when there
     is none. An attempt of the other section is "not found", not a digest of the wrong module.
     """
-    module = COACH_MODULES[("ielts", section)]
+    modules = (COACH_MODULES[("ielts", section)], *EXTRA_COACH_MODULES.get(section, ()))
     found: Attempt | None
     if attempt_id:
         try:
@@ -108,8 +133,12 @@ def find_report(
         except AttemptNotFoundError:
             return None
     else:
-        found = next((a for a in store.recent(module=module) if _graded(a, module)), None)
-    if found is None or not _graded(found, module) or found.report_json is None:
+        newest_first = sorted(
+            (a for m in modules for a in store.recent(module=m)),
+            key=lambda a: a.submitted_at or 0.0, reverse=True,
+        )
+        found = next((a for a in newest_first if _graded(a, modules)), None)
+    if found is None or not _graded(found, modules) or found.report_json is None:
         return None
     digest = _digest(found, found.report_json)
     return CoachReport(found.id, digest) if digest else None
