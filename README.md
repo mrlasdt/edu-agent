@@ -168,7 +168,7 @@ A General Training Writing module at `/ielts-mock?module=writing-module`: Task 1
 
 - Combined band = (Task 1 + 2 x Task 2) / 3, rounded to the nearest half band. Example: Task 1 at 6.0 and Task 2 at 7.0 give 6.67, so 6.5. The weighting is stated by IELTS ("Task 2 contributes twice as much as Task 1 to the Writing score") at https://ielts.org/take-a-test/test-types/ielts-general-training-test/ielts-general-training-format-writing and https://ielts.org/take-a-test/your-results/ielts-scoring-in-detail. The 20 and 40 minute split is guidance on the same page; the test itself is one 60-minute paper.
 - If only one task can be marked, the report says there is no combined band and shows the task that was marked.
-- The letter prompts are original (`services/gateway/src/gateway/ielts/data/ielts_letter_prompts.jsonl`). The Task 1 band descriptors were not independently checked against the official descriptor PDF, so Task 1 scores are mock scores.
+- The letter prompts are original (`services/gateway/src/gateway/ielts/data/ielts_letter_prompts.jsonl`). The Task 1 band descriptors were not independently checked against the official descriptor PDF, so Task 1 scores are mock scores, and each letter report is labelled "Uncalibrated estimate" because no letter has been checked against a labelled set.
 - The coach reads a bounded digest of both reports at `/?attempt=<id>`. The practice re-mark tool (`mark_revision`) still re-marks a Task 2 attempt only.
 
 ## Evals
