@@ -62,4 +62,7 @@ class GenerateRequest(BaseModel):
     # IELTS Writing coach only: the gateway's digest of the learner's graded report, which is
     # delimited untrusted data (it quotes the learner's essay). Empty for every other agent.
     report_digest: str = Field(default="", max_length=MAX_REPORT_DIGEST_CHARS)
+    # IELTS Writing coach only: the attempt that digest came from, so a re-mark is compared with
+    # it. Empty for every other agent.
+    attempt_id: str = Field(default="", max_length=64)
     trace_id: str = ""

@@ -150,6 +150,7 @@ async def generate(req: GenerateRequest, request: Request) -> StreamingResponse 
         history=[Message(role=h.role, content=h.content) for h in req.history],
         personal_style_enabled=req.personal_style_enabled,
         report_digest=req.report_digest,
+        attempt_id=req.attempt_id,
     )
 
     items = agent.run(session, req.message, trace_id=req.trace_id)

@@ -9,6 +9,12 @@ import httpx
 from services.gateway.src.gateway.settings import get_settings
 from shared.src.shared.wire import GenerateRequest
 
+AGENT_TIMEOUT_S = 120.0
+# A coached IELTS turn can re-mark an essay: the agent calls the model, waits up to 180s for the
+# gateway's marking (the agent's `MARK_TIMEOUT_S`), then calls the model again, and sends nothing
+# until all of that is done. The wait for those bytes must outlast the whole turn.
+COACH_TURN_READ_TIMEOUT_S = 420.0
+
 
 class AgentClient:
     """
@@ -27,7 +33,9 @@ class AgentClient:
         """
         settings = get_settings()
         url = f"{settings.agent_service_url}/generate"
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        read_timeout = COACH_TURN_READ_TIMEOUT_S if request.attempt_id else AGENT_TIMEOUT_S
+        timeout = httpx.Timeout(AGENT_TIMEOUT_S, read=read_timeout)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             async with client.stream(
                 "POST", url, json=request.model_dump(mode="json")
             ) as resp:

@@ -86,6 +86,7 @@ async def ielts_report(turn: ChatTurn) -> Verdict:
         notice = UNKNOWN_ATTEMPT_NOTICE if turn.req.attempt_id else NO_REPORT_NOTICE
         return Verdict.stop(Outcome.clarification_requested, notice)
     turn.report_digest = found.digest
+    turn.attempt_id = found.attempt_id
     turn.meter.annotate(ielts_attempt=found.attempt_id)
     return Verdict.allow()
 

@@ -85,6 +85,13 @@ def test_a_named_attempt_is_coached_over_the_latest_one(store):
     seed(store)
     _, seen = chat({"attempt_id": first.id})
     assert seen and seen[0].report_digest
+    assert seen[0].attempt_id == first.id  # the coach's re-mark tool compares with this one
+
+
+def test_the_latest_attempt_id_reaches_the_agent_when_none_is_named(store):
+    attempt = seed(store)
+    _, seen = chat()
+    assert seen[0].attempt_id == attempt.id
 
 
 def test_no_graded_attempt_is_answered_without_calling_the_agent_or_a_model(store, gates):
@@ -116,7 +123,7 @@ def test_a_gre_turn_sends_no_digest_and_never_opens_the_store(store):
     seed(store)
     resp, seen = chat({"test_type": "gre", "section": "quant", "message": "Solve x+1=2"})
     assert resp.status_code == 200
-    assert seen[0].report_digest == ""
+    assert seen[0].report_digest == "" and seen[0].attempt_id == ""
 
 
 def test_a_coaching_reply_passes_the_tutor_answer_leak_guard(store):

@@ -74,7 +74,7 @@ PROMPT_PINS = {
     "quant_agent_math_tools": {"tutor": "v1", "solve": "v1"},
     "quant_agent_notes_tool": {"tutor": "v1"},
     "aw_agent": {"tutor": "v1", "solve": "v1"},
-    "ielts_coach": {"tutor": "v1"},
+    "ielts_coach": {"tutor": "v2"},
     "ielts_grader": {"writing_t2": "v1"},
     "ielts_feedback": {"writing_t2": "v2"},
     "orchestrator": {"completeness": "v1", "leak_check": "v1"},

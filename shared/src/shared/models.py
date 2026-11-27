@@ -38,6 +38,7 @@ class Session(BaseModel):
     # Writing coach's digest of the learner's graded report (gateway/ielts/digest.py). Empty for
     # the GRE agents.
     report_digest: str = ""
+    attempt_id: str = ""  # the attempt the digest is of; the coach's re-mark compares with it
 
     def append_message(self, role: MessageRole, content: str) -> Session:
         return self.model_copy(

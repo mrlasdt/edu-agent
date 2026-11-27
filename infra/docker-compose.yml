@@ -18,6 +18,7 @@ x-app-env: &app-env
   UVICORN_RELOAD_DIRS: /app/services:/app/shared
   CORPUS_SERVICE_URL: http://corpus:8001
   AGENT_SERVICE_URL: http://agent:8002
+  GATEWAY_SERVICE_URL: http://gateway:8000
   INGESTION_SERVICE_URL: http://ingestion:8003
   MATH_VERIFIER_URL: http://math-verifier:8090
   QDRANT_URL: http://qdrant:6333
