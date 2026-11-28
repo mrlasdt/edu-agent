@@ -281,9 +281,35 @@ def test_a_speaking_attempt_with_too_little_speech_reads_as_partial_in_the_mock(
     sit_reading(client, mock_id)
     sit_writing(client, mock_id)
     assessor.texts = [reply(heard_speech=False, parts=[], criteria={})]
-    speaking = modules_of(sit_speaking(client, mock_id))["speaking"]
+    final = sit_speaking(client, mock_id)
+    speaking = modules_of(final)["speaking"]
     assert speaking["state"] == "partial" and speaking["band"] is None
     assert "Too little speech" in speaking["detail"]
+    assert "Speaking without a band because too little speech was heard" in final["overall_note"]
+    assert "marking did not finish" not in final["overall_note"]
+    assert final["next_module"] is not None and final["next_module"]["key"] != "speaking"
+
+
+def test_a_sample_speaking_band_is_labelled_in_the_module_and_the_overall(client: TestClient):
+    mock_id = new_mock(client)
+    sit_reading(client, mock_id)
+    sit_writing(client, mock_id)
+    final = sit_speaking(client, mock_id, sample=True)
+    speaking = modules_of(final)["speaking"]
+    assert speaking["state"] == "graded" and speaking["sample"] is True
+    assert "Quick sample" in speaking["detail"]
+    assert final["sample"] is True
+    assert final["overall_note"].startswith("Sample-based: the Speaking band came from the quick")
+    assert modules_of(final)["reading"]["sample"] is False
+
+
+def test_a_full_speaking_band_is_not_labelled_a_sample(client: TestClient):
+    mock_id = new_mock(client)
+    sit_reading(client, mock_id)
+    sit_writing(client, mock_id)
+    final = sit_speaking(client, mock_id)
+    assert final["sample"] is False and modules_of(final)["speaking"]["sample"] is False
+    assert "Sample-based" not in final["overall_note"]
 
 
 def test_speaking_can_be_sat_on_the_quick_sample_through_the_mock(client: TestClient):

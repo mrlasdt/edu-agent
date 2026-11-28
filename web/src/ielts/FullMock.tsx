@@ -299,7 +299,11 @@ function Overview({
     <article className="ielts-report" aria-label="Full mock result">
       <section className="ielts-hero" aria-label="Overall band">
         <p className="ielts-eyebrow">
-          {report.partial ? "Partial overall band (mock score)" : "Overall band (mock score)"}
+          {report.sample
+            ? "Sample-based overall band (not a real mock score)"
+            : report.partial
+              ? "Partial overall band (mock score)"
+              : "Overall band (mock score)"}
         </p>
         {report.overall !== null ? (
           <p className="ielts-hero-band" aria-label={`Mock overall band ${band(report.overall)}`}>
@@ -329,6 +333,7 @@ function Overview({
             <div className="ielts-skill-band">
               {m.band !== null ? band(m.band) : m.state === "not_assessed" ? "Not assessed" : "-"}
               {m.band !== null && m.band_partial && <span className="ielts-hint"> partial</span>}
+              {m.band !== null && m.sample && <span className="ielts-hint"> sample</span>}
             </div>
             {m.sittable && (m.state === "not_started" || m.state === "in_progress") && (
               <button className="ielts-primary" onClick={() => onOpen(m.key)} disabled={busy}>

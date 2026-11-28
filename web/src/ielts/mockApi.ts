@@ -21,6 +21,8 @@ export interface ModuleStatus {
   retryable: boolean;
   /** True when the band leaves a criterion out (Speaking), so it is shown as partial. */
   band_partial?: boolean;
+  /** True when the band came from a quick sample, so it is not a real mock score. */
+  sample?: boolean;
   detail: string;
 }
 
@@ -36,6 +38,8 @@ export interface MockReport {
   modules: ModuleStatus[];
   overall: number | null;
   partial: boolean;
+  /** True when a skill band in the overall came from a quick sample. */
+  sample?: boolean;
   overall_note: string;
   overall_source_url: string;
   next_module: NextModule | null;

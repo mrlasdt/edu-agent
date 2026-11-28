@@ -77,8 +77,12 @@ def build_digest(loaded: LoadedMock, report: MockReport | None = None) -> str:
     lines = ["Skill bands (mock estimates, not official results):"]
     for m in report.modules:
         lines.append(
-            f"- {m.label}: band {m.band}" if m.band is not None
+            f"- {m.label}: band {m.band}"
+            + (" (quick sample, not a real mock score)" if m.sample else "")
+            if m.band is not None
             else f"- {m.label}: not assessed" if m.state == "not_assessed"
+            else f"- {m.label}: no band yet (too little speech was heard)"
+            if m.key == "speaking" and m.state == "partial"
             else f"- {m.label}: no band yet ({m.state.replace('_', ' ')})"
         )
     partial = " (PARTIAL: a skill above has no band, or its band leaves out a criterion)"

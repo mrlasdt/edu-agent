@@ -293,10 +293,10 @@ async def upload_audio(
     except AttemptStateError as exc:
         staged.unlink(missing_ok=True)
         raise HTTPException(409, str(exc)) from None
-    for old in folder.glob(f"part{part}.*"):
-        if old != staged:
-            old.unlink()
     staged.replace(folder / name)
+    for old in folder.glob(f"part{part}.*"):
+        if old.name != name:
+            old.unlink()
     return _view(saved, store)
 
 

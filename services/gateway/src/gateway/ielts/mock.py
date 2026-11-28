@@ -79,6 +79,7 @@ class ModuleStatus(BaseModel):
     attempt_id: str | None = None
     sittable: bool
     retryable: bool = False  # marking failed and the module's retry route will take it again
+    sample: bool = False  # the band came from a quick sample, so it is not a real mock score
     detail: str = ""
 
 
@@ -94,6 +95,7 @@ class MockReport(BaseModel):
     modules: list[ModuleStatus]
     overall: float | None  # the mean of the assessed skill bands, rounded; None before any band
     partial: bool  # true while any skill is not assessed
+    sample: bool = False  # true when a skill band in the overall came from a quick sample
     overall_note: str
     overall_source_url: str = SCORING_SOURCE_URL
     next_module: NextModule | None = None
@@ -168,7 +170,8 @@ def _detail(key: str, state: ModuleState, loaded: LoadedMock, retryable: bool) -
     if state == "graded" and key == "writing":
         return "Task 1 letter and Task 2 essay"
     if state == "graded" and key == "speaking" and loaded.speaking:
-        return "Partial band: Pronunciation not assessed"
+        prefix = "Quick sample, not a real mock score. " if loaded.speaking.sample else ""
+        return prefix + "Partial band: Pronunciation not assessed"
     if state == "partial" and key == "speaking":
         return "Too little speech was heard to mark, so there is no Speaking band."
     if state == "partial":
@@ -209,6 +212,10 @@ def module_statuses(loaded: LoadedMock) -> list[ModuleStatus]:
                 state == "graded" and key == "speaking" and loaded.speaking
                 and loaded.speaking.partial
             ),
+            sample=bool(
+                state == "graded" and key == "speaking" and loaded.speaking
+                and loaded.speaking.sample
+            ),
             attempt_id=attempt.id if attempt else None, sittable=True, retryable=retryable,
             detail=_detail(key, state, loaded, retryable),
         ))
@@ -224,23 +231,56 @@ def _names(labels: list[str]) -> str:
     return labels[0] if len(labels) == 1 else ", ".join(labels[:-1]) + " and " + labels[-1]
 
 
+NO_SPEECH_REASON = "without a band because too little speech was heard"
+NO_BAND_REASONS = (
+    "not assessed",
+    "not taken yet",
+    "being marked",
+    NO_SPEECH_REASON,
+    "without a band because marking did not finish",
+)
+
+
+def _is_no_speech(m: ModuleStatus) -> bool:
+    return m.key == "speaking" and m.state == "partial"
+
+
+def _no_band_reason(m: ModuleStatus) -> str | None:
+    if m.state == "not_assessed":
+        return NO_BAND_REASONS[0]
+    if m.state in ("not_started", "in_progress"):
+        return NO_BAND_REASONS[1]
+    if m.state == "marking":
+        return NO_BAND_REASONS[2]
+    if _is_no_speech(m):
+        return NO_SPEECH_REASON
+    if m.state in ("ungraded", "partial"):
+        return NO_BAND_REASONS[4]
+    return None
+
+
 def _missing_clauses(modules: list[ModuleStatus]) -> list[str]:
     """Why each skill without a band has none, grouped: 'Listening and Speaking not assessed'."""
-    reasons: tuple[tuple[tuple[ModuleState, ...], str], ...] = (
-        (("not_assessed",), "not assessed"),
-        (("not_started", "in_progress"), "not taken yet"),
-        (("marking",), "being marked"),
-        (("ungraded", "partial"), "without a band because marking did not finish"),
-    )
     clauses = []
-    for states, text in reasons:
-        labels = [m.label for m in modules if m.band is None and m.state in states]
+    for text in NO_BAND_REASONS:
+        labels = [m.label for m in modules if m.band is None and _no_band_reason(m) == text]
         if labels:
             clauses.append(f"{_names(labels)} {text}")
     return clauses
 
 
 def _overall_note(modules: list[ModuleStatus], overall: float | None) -> str:
+    note = _overall_core(modules, overall)
+    sampled = [m.label for m in modules if m.sample and m.band is not None]
+    if not sampled:
+        return note
+    return (
+        f"Sample-based: the {_names(sampled)} band came from the quick sample, so this overall "
+        "is not a real mock score. " + note
+    )
+
+
+def _overall_core(modules: list[ModuleStatus], overall: float | None) -> str:
     missing = [m for m in modules if m.band is None]
     if overall is None:
         return "No skill has a band yet, so there is no overall band."
@@ -281,7 +321,7 @@ def next_module(modules: list[ModuleStatus]) -> NextModule | None:
         return None
     for key in SITTABLE_ORDER:
         m = by_key[key]
-        if m.state in ("ungraded", "partial"):
+        if m.state in ("ungraded", "partial") and not _is_no_speech(m):
             return NextModule(
                 key=key, label=m.label,
                 reason=(
@@ -309,6 +349,7 @@ def build_report(loaded: LoadedMock) -> MockReport:
     return MockReport(
         id=loaded.mock.id, created_at=loaded.mock.created_at, modules=modules, overall=overall,
         partial=len(bands) < len(modules) or any(m.band_partial for m in modules),
+        sample=any(m.sample and m.band is not None for m in modules),
         overall_note=_overall_note(modules, overall),
         next_module=next_module(modules),
     )

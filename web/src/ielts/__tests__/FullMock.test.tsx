@@ -286,6 +286,23 @@ describe("FullMock", () => {
     expect(skills).toHaveTextContent("partial");
   });
 
+  it("labels a sample-based Speaking band and the overall as not a real mock score", async () => {
+    window.localStorage.setItem("ielts.fullmock.id", "m1");
+    const sampled = afterWriting({
+      state: "graded", band: 6.5, band_partial: true, sample: true, attempt_id: "s1",
+    });
+    api.getMock.mockResolvedValue({
+      ...sampled,
+      overall: 6.5,
+      sample: true,
+      overall_note: "Sample-based: the Speaking band came from the quick sample.",
+    });
+    render(<FullMock />);
+    await settle();
+    expect(screen.getByText("Sample-based overall band (not a real mock score)")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Skill bands" })).toHaveTextContent("sample");
+  });
+
   it("retries a failed Speaking marking through the Speaking API", async () => {
     window.localStorage.setItem("ielts.fullmock.id", "m1");
     api.getMock.mockResolvedValue(
