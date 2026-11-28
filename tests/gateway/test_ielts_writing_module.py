@@ -12,9 +12,10 @@ from fastapi.testclient import TestClient
 
 from services.gateway.src.gateway import ielts_api
 from services.gateway.src.gateway.ielts import llm
-from services.gateway.src.gateway.ielts.digest import build_digest
+from services.gateway.src.gateway.ielts.digest import build_digest, build_module_digest
 from services.gateway.src.gateway.ielts.gate import load_calibration
 from services.gateway.src.gateway.ielts.marking import mark_essay
+from services.gateway.src.gateway.ielts.models import Timing
 from services.gateway.src.gateway.ielts.prompts import load_letter_prompts
 from services.gateway.src.gateway.ielts.report_checks import check_report
 from services.gateway.src.gateway.ielts.scoring import (
@@ -23,9 +24,11 @@ from services.gateway.src.gateway.ielts.scoring import (
     writing_band,
 )
 from services.gateway.src.gateway.ielts_store import GRACE_S, WRITING_ALLOWED_S, AttemptStore
+from services.gateway.src.gateway.ielts_writing_api import combine
 from services.gateway.src.gateway.limits import ielts_limiter
 from services.gateway.src.gateway.main import app
 from shared.src.shared.budget import Ledger
+from shared.src.shared.wire import MAX_REPORT_DIGEST_CHARS
 from tests.gateway.test_ielts_marking import ESSAY, feedback_reply, grade_reply
 
 LETTER_PROMPT = (
@@ -184,6 +187,27 @@ async def test_a_letter_is_marked_on_task_achievement_with_the_letter_checks():
     assert report.prompt_versions is not None
     digest = build_digest(report, LETTER, LETTER_PROMPT)
     assert "Task 1 (letter)" in digest and "Task Achievement" in digest
+
+
+async def test_the_worst_case_sample_module_digest_fits_what_the_agent_accepts():
+    reports = {}
+    for task, prompt, text in (("T1", LETTER_PROMPT, LETTER), ("T2", "q", ESSAY_FULL)):
+        report = await mark_essay(
+            prompt, text, completer=TaskAware((6, 6, 6, 6), (7, 7, 7, 7)), samples=1,
+            trace_id="t", task=task,
+        )
+        long = "word " * 200
+        for c in report.criteria:
+            c.verdict, c.holding_back, c.to_reach_next_band = long, long, long
+        reports[task] = report
+    timing = Timing(allowed_s=240, used_s=60, late=False)
+    module = combine(reports["T1"], reports["T2"], timing, True)
+    module.weights_note = "weights " * 200
+    prompts = {"t1": "p" * 2000, "t2": "p" * 2000}
+    digest = build_module_digest(module, {"t1": LETTER, "t2": ESSAY_FULL}, prompts)
+    assert "SAMPLE" in digest and digest.count("<<<REPORT") == 2
+    assert len(digest) > 7_000  # both task digests were clipped, so this is the worst case
+    assert len(digest) <= MAX_REPORT_DIGEST_CHARS
 
 
 async def test_a_letter_under_100_words_is_capped_like_a_short_essay():
