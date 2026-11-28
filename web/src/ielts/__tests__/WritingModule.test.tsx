@@ -79,6 +79,15 @@ describe("WritingModule", () => {
     expect(screen.getByRole("link", { name: "Writing module" })).toHaveAttribute("aria-current", "page");
   });
 
+  it("shows a short sample target, not the real 150/250 minimums, on a sample attempt", async () => {
+    window.localStorage.setItem("ielts.writingmodule.attempt", "m1");
+    api.getWritingModule.mockResolvedValue(attempt({ sample: true, allowed_s: 240, remaining_s: 240 }));
+    render(<WritingModule />);
+    expect(await screen.findByText(/Sample target: about 50 words/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Word count")).toHaveTextContent("Letter 0/50 - Essay 0/50 words");
+    expect(screen.queryByText(/at least 150/)).not.toBeInTheDocument();
+  });
+
   it("writes a letter then an essay on one clock, submits both, and shows one combined band", async () => {
     api.createWritingModule.mockResolvedValue(attempt({ status: "created", remaining_s: null }));
     api.startWritingModule.mockResolvedValue(attempt());

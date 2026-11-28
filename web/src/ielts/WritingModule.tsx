@@ -210,7 +210,7 @@ export function WritingModule({ pollMs = POLL_MS, autosaveMs }: WritingModulePro
               {busy ? "Starting..." : "Start the 60 minute clock"}
             </button>
             <button onClick={() => void begin(true)} disabled={busy} title={SAMPLE_HINT}>
-              Quick sample test (3 minutes)
+              Quick sample test (4 minutes)
             </button>
           </div>
         </section>

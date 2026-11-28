@@ -3,6 +3,8 @@ import type { AttemptStatus, Report, Timing } from "./types";
 
 export const LETTER_MINIMUM_WORDS = 150;
 export const ESSAY_MINIMUM_WORDS = 250;
+/** A quick sample is marked from this many words per task (the server's floor), on a 4 minute clock. */
+export const SAMPLE_MINIMUM_WORDS = 50;
 
 export type TaskKey = "t1" | "t2";
 

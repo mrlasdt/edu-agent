@@ -21,8 +21,8 @@ from tests.gateway.test_ielts_mock import (  # noqa: F401 - fixtures
 )
 from tests.gateway.test_ielts_writing_module import ESSAY_FULL, LETTER, Clock
 
-# the report shows 'in 3 minutes' at most, so every module's sample clock stays short
-SAMPLE_TOTAL_CLOCK_S = 2 * 60 + 3 * 60 + 3 * 60
+# the clocks are a ceiling, not a duration: a normal check submits early and takes about 5 minutes
+SAMPLE_TOTAL_CLOCK_S = 3 * 60 + 210 + 4 * 60
 
 
 def sample_mock(client: TestClient) -> str:
@@ -37,11 +37,11 @@ def keys_of(paper) -> dict[str, str]:
 
 
 def test_the_sample_clocks_are_short_and_the_real_clocks_are_unchanged():
-    assert allowed_s_for("ielts_reading", True) == 120
+    assert allowed_s_for("ielts_reading", True) == 180
     assert allowed_s_for("ielts_reading", False) == 3600
     assert allowed_s_for("ielts_listening", False) == 1800
     assert allowed_s_for("ielts_writing", False) == 3600
-    assert SAMPLE_TOTAL_CLOCK_S <= 8 * 60
+    assert SAMPLE_TOTAL_CLOCK_S <= 11 * 60
 
 
 def test_the_sample_sets_are_a_renumbered_subset_of_the_real_items():
@@ -57,9 +57,9 @@ def test_the_sample_sets_are_a_renumbered_subset_of_the_real_items():
 
 def test_a_sample_reading_attempt_runs_the_real_path_and_is_labelled(client: TestClient):
     created = client.post("/ielts/reading/attempts?sample=true").json()
-    assert created["sample"] is True and created["allowed_s"] == 120
+    assert created["sample"] is True and created["allowed_s"] == 180
     started = client.post(f"/ielts/reading/attempts/{created['id']}/start").json()
-    assert started["remaining_s"] == 120
+    assert started["remaining_s"] == 180
     assert len(started["paper"]["questions"]) == 5
     answers = keys_of(reading.get_sample_set())
     done = client.post(f"/ielts/reading/attempts/{created['id']}/submit", json={"answers": answers})
@@ -84,7 +84,7 @@ def test_an_answer_to_a_question_outside_the_sample_is_dropped(client: TestClien
 
 def test_a_sample_listening_attempt_serves_only_its_recording(client: TestClient):
     created = client.post("/ielts/listening/attempts?sample=true").json()
-    assert created["sample"] is True and created["allowed_s"] == 180
+    assert created["sample"] is True and created["allowed_s"] == 210
     started = client.post(f"/ielts/listening/attempts/{created['id']}/start").json()
     assert [s["id"] for s in started["paper"]["sections"]] == ["s1"]
     assert client.get(f"/ielts/listening/attempts/{created['id']}/audio/s1").status_code == 200
@@ -116,7 +116,7 @@ def test_the_sample_clock_runs_out_on_the_server(
 ):
     created = client.post("/ielts/reading/attempts?sample=true").json()
     client.post(f"/ielts/reading/attempts/{created['id']}/start")
-    clock.now += 121 + 30  # past the 2 minute sample clock and the grace period
+    clock.now += 181 + 30  # past the 3 minute sample clock and the grace period
     done = client.post(
         f"/ielts/reading/attempts/{created['id']}/submit",
         json={"answers": keys_of(reading.get_sample_set())},
@@ -145,7 +145,7 @@ def test_the_sample_full_mock_runs_end_to_end_to_an_overall_band(client: TestCli
 
     wid = modules_of(start(client, mock_id, "writing").json())["writing"]["attempt_id"]
     started = client.post(f"/ielts/writing/attempts/{wid}/start").json()
-    assert started["sample"] is True and started["allowed_s"] == 180
+    assert started["sample"] is True and started["allowed_s"] == 240
     client.post(f"/ielts/writing/attempts/{wid}/submit", json={"t1": LETTER, "t2": ESSAY_FULL})
 
     body = client.get(f"/ielts/mock/{mock_id}").json()

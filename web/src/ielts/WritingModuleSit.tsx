@@ -6,6 +6,7 @@ import { saveWritingModuleDraft, submitWritingModule } from "./writingModuleApi"
 import {
   ESSAY_MINIMUM_WORDS,
   LETTER_MINIMUM_WORDS,
+  SAMPLE_MINIMUM_WORDS,
   type ModuleTexts,
   type TaskKey,
   type WritingModuleAttempt,
@@ -19,6 +20,7 @@ interface Props {
 }
 
 const WARN_AT_S = 5 * 60;
+const SAMPLE_WARN_AT_S = 60;
 const SAVE_MS = 10_000;
 const TASKS: { key: TaskKey; tab: string; label: string; min: number; minutes: number }[] = [
   { key: "t1", tab: "Task 1 - Letter", label: "Your letter", min: LETTER_MINIMUM_WORDS, minutes: 20 },
@@ -84,9 +86,10 @@ export function WritingModuleSit({ attempt, onSubmitted, autosaveMs = SAVE_MS }:
   const task = TASKS.find((t) => t.key === active)!;
   const view = active === "t1" ? attempt.t1 : attempt.t2;
   const words = { t1: countWords(texts.t1), t2: countWords(texts.t2) };
-  const urgent = countdown.left <= WARN_AT_S;
+  const urgent = countdown.left <= (attempt.sample ? SAMPLE_WARN_AT_S : WARN_AT_S);
   const timeUp = countdown.left <= 0;
-  const short = TASKS.filter((t) => words[t.key] < t.min);
+  const minOf = (t: (typeof TASKS)[number]) => (attempt.sample ? SAMPLE_MINIMUM_WORDS : t.min);
+  const short = TASKS.filter((t) => words[t.key] < minOf(t));
 
   return (
     <section className="ielts-writing" aria-label="Writing module">
@@ -98,7 +101,7 @@ export function WritingModuleSit({ attempt, onSubmitted, autosaveMs = SAVE_MS }:
         <div className="ielts-meta">
           {attempt.sample && <SampleBadge />}
           <span className="ielts-words" aria-label="Word count">
-            Letter {words.t1}/{LETTER_MINIMUM_WORDS} - Essay {words.t2}/{ESSAY_MINIMUM_WORDS} words
+            Letter {words.t1}/{minOf(TASKS[0])} - Essay {words.t2}/{minOf(TASKS[1])} words
           </span>
           <span className="ielts-save">{saveState}</span>
         </div>
@@ -121,10 +124,10 @@ export function WritingModuleSit({ attempt, onSubmitted, autosaveMs = SAVE_MS }:
 
       <div className="ielts-prompt" aria-label="Question">
         <p className="ielts-eyebrow">
-          Writing {task.tab.split(" - ")[0]} (about {task.minutes} minutes)
+          Writing {task.tab.split(" - ")[0]}{attempt.sample ? " (sample)" : ` (about ${task.minutes} minutes)`}
         </p>
         <p style={{ whiteSpace: "pre-line" }}>{view.prompt}</p>
-        <p className="ielts-hint">Write at least {task.min} words. One {clock(attempt.allowed_s)} clock covers both tasks.</p>
+        <p className="ielts-hint">{attempt.sample ? `Sample target: about ${SAMPLE_MINIMUM_WORDS} words (a short answer is enough to be marked).` : `Write at least ${task.min} words.`} One {clock(attempt.allowed_s)} clock covers both tasks.</p>
       </div>
 
       {timeUp && (

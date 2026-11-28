@@ -166,7 +166,7 @@ export function ListeningMock({ autosaveMs }: ListeningMockProps) {
               {busy ? "Starting..." : `Start the ${view.info.allowed_s / 60} minutes`}
             </button>
             <button onClick={() => void begin(true)} disabled={busy} title={SAMPLE_HINT}>
-              Quick sample test (3 minutes)
+              Quick sample test (about 4 minutes)
             </button>
           </div>
         </div>

@@ -130,14 +130,14 @@ describe("ReadingMock", () => {
 
   it("the quick sample test creates a sample attempt on a short clock and labels it SAMPLE", async () => {
     api.createReading.mockResolvedValue(
-      attempt({ status: "created", paper: null, remaining_s: null, allowed_s: 120, sample: true })
+      attempt({ status: "created", paper: null, remaining_s: null, allowed_s: 180, sample: true })
     );
-    api.startReading.mockResolvedValue(attempt({ allowed_s: 120, remaining_s: 120, sample: true }));
+    api.startReading.mockResolvedValue(attempt({ allowed_s: 180, remaining_s: 180, sample: true }));
     render(<ReadingMock />);
-    await userEvent.click(await screen.findByRole("button", { name: "Quick sample test (2 minutes)" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Quick sample test (3 minutes)" }));
     expect(api.createReading).toHaveBeenCalledWith(true);
     expect(await screen.findByText("SAMPLE")).toBeInTheDocument();
-    expect(screen.getByRole("timer")).toHaveTextContent("02:00");
+    expect(screen.getByRole("timer")).toHaveTextContent("03:00");
   });
 
   it("the real start is not a sample", async () => {

@@ -162,7 +162,7 @@ export function ReadingMock({ autosaveMs }: ReadingMockProps) {
               {busy ? "Starting..." : "Start the 60 minutes"}
             </button>
             <button onClick={() => void begin(true)} disabled={busy} title={SAMPLE_HINT}>
-              Quick sample test (2 minutes)
+              Quick sample test (3 minutes)
             </button>
           </div>
         </div>

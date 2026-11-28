@@ -33,9 +33,9 @@ ALLOWED_S_BY_MODULE = {
 # A sample (quick test) sits a handful of real items on a short clock so a slice can be checked
 # end to end in minutes. It is the same module on the same code path; only the clock differs.
 SAMPLE_ALLOWED_S_BY_MODULE = {
-    MODULE_READING: 2 * 60,
-    MODULE_LISTENING: 3 * 60,  # the one recording runs 2:17
-    MODULE_WRITING: 3 * 60,
+    MODULE_READING: 3 * 60,
+    MODULE_LISTENING: 210,  # the one recording runs 2:17, leaving about a minute to check answers
+    MODULE_WRITING: 4 * 60,
 }
 
 
