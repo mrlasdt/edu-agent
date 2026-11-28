@@ -7,6 +7,7 @@ import { listMocks } from "./mockApi";
 import type { MockReport } from "./mockApi";
 import { ModuleNav } from "./ModuleNav";
 import { listReadings } from "./readingApi";
+import { listSpeakings } from "./speakingApi";
 import { listWritingModules } from "./writingModuleApi";
 
 type SkillKey = "listening" | "reading" | "writing-module" | "writing" | "speaking" | "mock";
@@ -116,15 +117,25 @@ const CARDS: Card[] = [
 ];
 
 type Bands = Partial<Record<SkillKey, number>>;
+interface SpeakingNote {
+  sample: boolean;
+  partial: boolean;
+}
+interface HomeData {
+  bands: Bands;
+  mock: MockReport | null;
+  speakingNote: SpeakingNote | null;
+}
 
 /** The learner's latest band per skill: the newest marked attempt in each existing list API. */
-async function loadBands(signal: AbortSignal): Promise<{ bands: Bands; mock: MockReport | null }> {
+async function loadBands(signal: AbortSignal): Promise<HomeData> {
   const quiet = <T,>(p: Promise<T[]>) => p.catch(() => [] as T[]);
-  const [writing, reading, listening, writingModule, mocks] = await Promise.all([
+  const [writing, reading, listening, writingModule, speaking, mocks] = await Promise.all([
     quiet(listAttempts(signal)),
     quiet(listReadings(signal)),
     quiet(listListenings(signal)),
     quiet(listWritingModules(signal)),
+    quiet(listSpeakings(signal)),
     quiet(listMocks(signal)),
   ]);
   const mock = mocks[0] ?? null;
@@ -136,9 +147,11 @@ async function loadBands(signal: AbortSignal): Promise<{ bands: Bands; mock: Moc
   bands.listening = listening.find((a) => a.band !== null)?.band ?? fromMocks("listening");
   bands["writing-module"] =
     writingModule.find((a) => a.writing_band !== null)?.writing_band ?? fromMocks("writing");
-  bands.speaking = fromMocks("speaking");
+  const marked = speaking.find((a) => a.band !== null);
+  bands.speaking = marked?.band ?? fromMocks("speaking");
+  const speakingNote = marked ? { sample: marked.paper.sample, partial: marked.partial === true } : null;
   bands.mock = mocks.find((m) => m.overall !== null)?.overall ?? undefined;
-  return { bands, mock };
+  return { bands, mock, speakingNote };
 }
 
 /** The first skill with no band yet, so a new learner always has one obvious next step. */
@@ -161,14 +174,14 @@ function recommend(bands: Bands, mock: MockReport | null): { key: SkillKey; reas
 }
 
 export function IeltsHome() {
-  const [data, setData] = useState<{ bands: Bands; mock: MockReport | null } | null>(null);
+  const [data, setData] = useState<HomeData | null>(null);
 
   useEffect(() => {
     document.title = "IELTS practice";
     const controller = new AbortController();
     loadBands(controller.signal)
       .then(setData)
-      .catch(() => setData({ bands: {}, mock: null }));
+      .catch(() => setData({ bands: {}, mock: null, speakingNote: null }));
     return () => controller.abort();
   }, []);
 
@@ -205,6 +218,7 @@ export function IeltsHome() {
           <ul className="home-cards" aria-label="Practice tests">
             {CARDS.map((c) => {
               const b = data.bands[c.key];
+              const note = c.key === "speaking" ? data.speakingNote : null;
               return (
                 <li key={c.key} className="home-card" data-recommended={c.key === rec.key ? "true" : undefined}>
                   <div className="home-card-top">
@@ -217,13 +231,14 @@ export function IeltsHome() {
                   <p className="home-band" data-tried={b !== undefined ? "true" : "false"}>
                     {b !== undefined ? (
                       <>
-                        <span>Latest band</span>
+                        <span>{note?.sample ? "Latest band (quick sample)" : "Latest band"}</span>
                         <strong>{band(b)}</strong>
                       </>
                     ) : (
                       <span>No band yet</span>
                     )}
                   </p>
+                  {note?.partial && <p className="home-meta">Partial: Pronunciation not assessed</p>}
                   <a className="home-cta" href={c.href}>
                     {b !== undefined ? "Open" : c.cta}
                   </a>

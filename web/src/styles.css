@@ -335,7 +335,7 @@ nav.ielts-chips a.ielts-chip[aria-current="page"] { background: var(--accent); c
 }
 
 /* IELTS home, full mock steps, report encouragement */
-.ielts-encourage { font-size: 1.1rem; font-weight: 600; color: var(--text); margin: 6px 0 10px; }
+.ielts-encourage { font-size: 1.1rem; font-weight: 600; color: var(--fg); margin: 6px 0 10px; }
 .subject-other { margin-top: var(--space-4); }
 .subject-home { font-weight: 600; }
 .home-hero { margin: var(--space-3) 0 var(--space-5); padding: var(--space-6, 28px) var(--space-5); border-radius: var(--radius-lg); background: linear-gradient(135deg, var(--accent), #6d5bd0); color: #fff; box-shadow: var(--shadow); }

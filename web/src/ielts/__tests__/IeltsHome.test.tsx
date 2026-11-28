@@ -9,11 +9,13 @@ const apis = vi.hoisted(() => ({
   listListenings: vi.fn(),
   listMocks: vi.fn(),
   listWritingModules: vi.fn(),
+  listSpeakings: vi.fn(),
 }));
 vi.mock("../api", () => ({ listAttempts: apis.listAttempts }));
 vi.mock("../readingApi", () => ({ listReadings: apis.listReadings }));
 vi.mock("../listeningApi", () => ({ listListenings: apis.listListenings }));
 vi.mock("../mockApi", () => ({ listMocks: apis.listMocks }));
+vi.mock("../speakingApi", () => ({ listSpeakings: apis.listSpeakings }));
 vi.mock("../writingModuleApi", () => ({ listWritingModules: apis.listWritingModules }));
 
 beforeEach(() => {
@@ -58,6 +60,39 @@ describe("IeltsHome", () => {
     render(<IeltsHome />);
     expect(await screen.findByText("6.5")).toBeInTheDocument();
     expect(screen.getAllByText("No band yet").length).toBe(5);
+  });
+});
+
+describe("IeltsHome Speaking card", () => {
+  it("uses the newest marked Speaking attempt over the full mocks", async () => {
+    apis.listSpeakings.mockResolvedValue([
+      { band: null, partial: null, paper: { sample: false } },
+      { band: 6, partial: false, paper: { sample: false } },
+    ]);
+    apis.listMocks.mockResolvedValue([
+      { overall: null, next_module: null, modules: [{ key: "speaking", band: 5 }] },
+    ]);
+    render(<IeltsHome />);
+    expect(await screen.findByText("6.0")).toBeInTheDocument();
+    expect(screen.queryByText("5.0")).not.toBeInTheDocument();
+    expect(screen.queryByText(/quick sample/)).not.toBeInTheDocument();
+  });
+
+  it("labels a quick sample band as a sample and keeps partial visible", async () => {
+    apis.listSpeakings.mockResolvedValue([{ band: 6.5, partial: true, paper: { sample: true } }]);
+    render(<IeltsHome />);
+    expect(await screen.findByText("Latest band (quick sample)")).toBeInTheDocument();
+    expect(screen.getByText("6.5")).toBeInTheDocument();
+    expect(screen.getByText("Partial: Pronunciation not assessed")).toBeInTheDocument();
+  });
+
+  it("stops recommending Speaking once a Speaking attempt is marked", async () => {
+    apis.listListenings.mockResolvedValue([{ band: 6 }]);
+    apis.listReadings.mockResolvedValue([{ band: 6 }]);
+    apis.listWritingModules.mockResolvedValue([{ writing_band: 6 }]);
+    apis.listSpeakings.mockResolvedValue([{ band: 6, partial: false, paper: { sample: false } }]);
+    render(<IeltsHome />);
+    expect(await screen.findByText(/lowest band/)).toBeInTheDocument();
   });
 });
 
