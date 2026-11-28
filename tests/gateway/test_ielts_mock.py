@@ -29,7 +29,7 @@ from shared.src.shared.budget import Ledger
 from shared.src.shared.stats import round_half_band
 from shared.src.shared.wire import MAX_REPORT_DIGEST_CHARS, GenerateRequest
 from tests.gateway.gateway_fakes import agent_replies
-from tests.gateway.speaking_fakes import SPEAKING_BAND, FakeAssessor
+from tests.gateway.speaking_fakes import SPEAKING_BAND, FakeAssessor, reply
 from tests.gateway.test_ielts_listening import correct_except
 from tests.gateway.test_ielts_reading import wrong_on
 from tests.gateway.test_ielts_writing_module import ESSAY_FULL, LETTER, Clock, TaskAware
@@ -48,13 +48,17 @@ def store(tmp_path: Path, clock: Clock) -> AttemptStore:
 
 
 @pytest.fixture
-def client(store: AttemptStore, tmp_path: Path) -> Iterator[TestClient]:
+def assessor() -> FakeAssessor:
+    return FakeAssessor()
+
+
+@pytest.fixture
+def client(store: AttemptStore, tmp_path: Path, assessor: FakeAssessor) -> Iterator[TestClient]:
     ledger = Ledger(tmp_path / "ledger.json", ceiling_usd=5.0)
     app.dependency_overrides[ielts_api.get_store] = lambda: store
     completer = TaskAware((6, 6, 6, 6), (7, 7, 7, 7))
     app.dependency_overrides[ielts_api.get_completer] = lambda: completer
     app.dependency_overrides[ielts_api.get_ledger] = lambda: ledger
-    assessor = FakeAssessor()
     app.dependency_overrides[get_assessor] = lambda: assessor
     app.dependency_overrides[get_audio_dir] = lambda: tmp_path / "speaking-audio"
     ielts_limiter().reset()
@@ -268,6 +272,18 @@ def test_listening_reading_then_writing_gives_each_band_and_a_partial_overall(cl
         ("speaking", SPEAKING_BAND), key=lambda kv: kv[1],
     )[0]
     assert with_speaking["next_module"]["key"] == lowest
+
+
+def test_a_speaking_attempt_with_too_little_speech_reads_as_partial_in_the_mock(
+    client: TestClient, assessor: FakeAssessor,
+):
+    mock_id = new_mock(client)
+    sit_reading(client, mock_id)
+    sit_writing(client, mock_id)
+    assessor.texts = [reply(heard_speech=False, parts=[], criteria={})]
+    speaking = modules_of(sit_speaking(client, mock_id))["speaking"]
+    assert speaking["state"] == "partial" and speaking["band"] is None
+    assert "Too little speech" in speaking["detail"]
 
 
 def test_speaking_can_be_sat_on_the_quick_sample_through_the_mock(client: TestClient):

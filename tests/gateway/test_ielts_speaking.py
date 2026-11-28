@@ -148,7 +148,24 @@ def test_too_little_speech_gives_no_band(client: TestClient, assessor: FakeAsses
     client.post(f"/ielts/speaking/attempts/{attempt_id}/submit")
     report = report_of(client, attempt_id)
     assert report["status"] == "no_speech" and report["band"] is None
-    assert client.get(f"/ielts/speaking/attempts/{attempt_id}").json()["status"] == "ungraded"
+    body = client.get(f"/ielts/speaking/attempts/{attempt_id}").json()
+    assert body["status"] == "graded" and body["band"] is None and body["error"] is None
+
+
+def test_a_late_re_recording_keeps_the_stored_clip(
+    client: TestClient, clock: Clock, audio_dir: Path,
+):
+    attempt_id = make(client)
+    record_all(client, attempt_id)
+    clock.now += 60 * 60
+    again = upload(client, attempt_id, 1, mime="audio/webm")
+    assert again.status_code == 409
+    assert sorted(p.name for p in (audio_dir / attempt_id).iterdir()) == [
+        "part1.wav", "part2.wav", "part3.wav",
+    ]
+    done = client.post(f"/ielts/speaking/attempts/{attempt_id}/submit")
+    assert done.status_code == 200
+    assert client.get(f"/ielts/speaking/attempts/{attempt_id}").json()["status"] == "graded"
 
 
 def test_an_unreadable_reply_is_retried_once_then_retryable_with_the_audio_kept(

@@ -191,7 +191,7 @@ async def grade_speaking_attempt(
             run_id=f"ielts-speaking-{attempt_id}", temperature=role_temperature(SPEAKING_ROLE),
             prompt_version=config.prompt_version("ielts_speaking", "assess"),
         )
-        store.finish(attempt_id, report.model_dump_json(), graded=report.status == "graded")
+        store.finish(attempt_id, report.model_dump_json(), graded=True)
         _delete_audio(audio_dir, attempt_id)
     except GradingError as exc:
         store.fail(attempt_id, exc.reason, retryable=True)
@@ -283,17 +283,21 @@ async def upload_audio(
     folder.mkdir(parents=True, exist_ok=True)
     name = f"part{part}.{EXTENSIONS[mime]}"
     uploaded = _parts_of(attempt)
-    for old in folder.glob(f"part{part}.*"):
-        old.unlink()
-    (folder / name).write_bytes(bytes(data))
+    staged = folder / f"{name}.upload"
+    staged.write_bytes(bytes(data))
     uploaded[part] = UploadedPart(
         part=part, mime=mime, bytes=len(data), duration_s=round(duration, 1), file=name,
     )
     try:
-        return _view(store.save_draft(attempt_id, _encode(uploaded)), store)
+        saved = store.save_draft(attempt_id, _encode(uploaded))
     except AttemptStateError as exc:
-        (folder / name).unlink(missing_ok=True)
+        staged.unlink(missing_ok=True)
         raise HTTPException(409, str(exc)) from None
+    for old in folder.glob(f"part{part}.*"):
+        if old != staged:
+            old.unlink()
+    staged.replace(folder / name)
+    return _view(saved, store)
 
 
 @router.post("/attempts/{attempt_id}/submit")
