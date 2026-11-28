@@ -5,9 +5,9 @@ const base = "/ielts/speaking";
 
 export const speakingInfo = (signal?: AbortSignal) =>
   requestJson<SpeakingInfo>(`${base}/info`, { signal });
-/** `sample` makes the quick sample set: one question per part and short timings. */
 export const listSpeakings = (signal?: AbortSignal) =>
   requestJson<SpeakingAttempt[]>(`${base}/attempts`, { signal });
+/** `sample` makes the quick sample set: one question per part and short timings. */
 export const createSpeaking = (sample = false) =>
   requestJson<SpeakingAttempt>(`${base}/attempts${sample ? "?sample=true" : ""}`, { method: "POST" });
 export const getSpeaking = (id: string, signal?: AbortSignal) =>

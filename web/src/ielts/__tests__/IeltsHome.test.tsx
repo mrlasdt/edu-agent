@@ -86,6 +86,26 @@ describe("IeltsHome Speaking card", () => {
     expect(screen.getByText("Partial: Pronunciation not assessed")).toBeInTheDocument();
   });
 
+  it("does not let a quick sample band count as a real Speaking band", async () => {
+    apis.listListenings.mockResolvedValue([{ band: 6 }]);
+    apis.listReadings.mockResolvedValue([{ band: 6 }]);
+    apis.listWritingModules.mockResolvedValue([{ writing_band: 6 }]);
+    apis.listSpeakings.mockResolvedValue([{ band: 8, partial: true, paper: { sample: true } }]);
+    render(<IeltsHome />);
+    expect(await screen.findByRole("heading", { name: /Speaking is next/ })).toBeInTheDocument();
+    expect(screen.getByText("Latest band (quick sample)")).toBeInTheDocument();
+    expect(screen.getByText(/record your Speaking answers/)).toBeInTheDocument();
+  });
+
+  it("ignores a sample band when picking the lowest real band", async () => {
+    apis.listListenings.mockResolvedValue([{ band: 7 }]);
+    apis.listReadings.mockResolvedValue([{ band: 6 }]);
+    apis.listWritingModules.mockResolvedValue([{ writing_band: 7 }]);
+    apis.listSpeakings.mockResolvedValue([{ band: 4, partial: false, paper: { sample: true } }]);
+    render(<IeltsHome />);
+    expect(await screen.findByRole("heading", { name: /Speaking is next/ })).toBeInTheDocument();
+  });
+
   it("stops recommending Speaking once a Speaking attempt is marked", async () => {
     apis.listListenings.mockResolvedValue([{ band: 6 }]);
     apis.listReadings.mockResolvedValue([{ band: 6 }]);

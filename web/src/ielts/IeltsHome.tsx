@@ -155,7 +155,13 @@ async function loadBands(signal: AbortSignal): Promise<HomeData> {
 }
 
 /** The first skill with no band yet, so a new learner always has one obvious next step. */
-function recommend(bands: Bands, mock: MockReport | null): { key: SkillKey; reason: string } {
+function recommend(
+  shown: Bands,
+  mock: MockReport | null,
+  speakingNote: SpeakingNote | null
+): { key: SkillKey; reason: string } {
+  const bands: Bands = { ...shown };
+  if (speakingNote?.sample) delete bands.speaking;
   const next = mock?.next_module;
   if (next) {
     const key = next.key === "writing" ? "writing-module" : next.key;
@@ -185,7 +191,7 @@ export function IeltsHome() {
     return () => controller.abort();
   }, []);
 
-  const rec = data ? recommend(data.bands, data.mock) : null;
+  const rec = data ? recommend(data.bands, data.mock, data.speakingNote) : null;
   const recCard = rec ? CARDS.find((c) => c.key === rec.key) : undefined;
   const tried = data ? Object.values(data.bands).filter((b) => b !== undefined).length : 0;
 
