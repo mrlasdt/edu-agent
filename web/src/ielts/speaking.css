@@ -1,0 +1,28 @@
+/* Speaking only: the recorder and the report's transcripts. Colours come from styles.css. */
+.speaking-sit { display: grid; gap: 14px; }
+.speaking-steps { list-style: none; display: flex; gap: 8px; margin: 0; padding: 0; }
+.speaking-steps li {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.9rem;
+}
+.speaking-steps li[aria-current="step"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.speaking-steps li[data-done]::after { content: " \2713"; color: var(--ok); }
+.speaking-questions { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; font-size: 1.1rem; }
+.speaking-card { padding: 12px 16px; border: 1px dashed var(--border); border-radius: 10px; background: var(--bg); }
+.speaking-card ul { margin: 0 0 8px; padding-left: 1.2em; }
+.speaking-prep { font-size: 1.4rem; font-weight: 600; font-variant-numeric: tabular-nums; margin: 8px 0 0; }
+.speaking-live { display: flex; align-items: center; gap: 8px; margin: 0; font-weight: 600; }
+.speaking-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bad);
+  animation: speaking-pulse 1.2s ease-in-out infinite;
+}
+@keyframes speaking-pulse { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .speaking-dot { animation: none; } }
+.speaking-sit audio { display: block; margin-top: 8px; width: 100%; }
+.speaking-transcript { margin: 8px 0; }
+.speaking-transcript p { white-space: pre-wrap; }

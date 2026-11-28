@@ -23,6 +23,7 @@ from services.gateway.src.gateway.ielts.mock import (
 from services.gateway.src.gateway.ielts_api import _limit, get_ledger, get_store
 from services.gateway.src.gateway.ielts_listening_api import create_attempt as create_listening
 from services.gateway.src.gateway.ielts_reading_api import create_attempt as create_reading
+from services.gateway.src.gateway.ielts_speaking_api import create_attempt as create_speaking
 from services.gateway.src.gateway.ielts_store import AttemptStore, MockNotFoundError
 from services.gateway.src.gateway.ielts_writing_api import (
     CreateModuleAttempt,
@@ -62,8 +63,13 @@ def get_mock(mock_id: str, store: Store) -> MockReport:
 
 
 @router.post("/{mock_id}/modules/{key}/attempt", status_code=201)
-def start_module(mock_id: str, key: str, store: Store, ledger: SpendLedger) -> MockReport:
-    """Create the module's attempt (the same one its own page makes) and link it to the mock."""
+def start_module(
+    mock_id: str, key: str, store: Store, ledger: SpendLedger, sample: bool = False,
+) -> MockReport:
+    """
+    Create the module's attempt (the same one its own page makes) and link it to the mock.
+    `sample` only matters to Speaking: the short quick-sample set instead of a full test.
+    """
     loaded = _loaded(store, mock_id)
     why_not = can_start(loaded, key)
     if why_not:
@@ -72,6 +78,8 @@ def start_module(mock_id: str, key: str, store: Store, ledger: SpendLedger) -> M
         attempt_id = create_listening(store).id
     elif key == "reading":
         attempt_id = create_reading(store).id
+    elif key == "speaking":
+        attempt_id = create_speaking(store, ledger, sample).id
     else:
         attempt_id = create_writing(CreateModuleAttempt(), store, ledger).id
     store.link_mock_attempt(mock_id, key, attempt_id)

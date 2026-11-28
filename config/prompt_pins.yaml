@@ -40,6 +40,9 @@ ielts_grader:
 ielts_feedback:
   writing_t2: v2  # v1 plus: both spelling conventions are correct; style is not an error
   writing_t1: v1
+# IELTS Speaking marker, audio in (prompts/ielts_speaking/assess/<version>.md)
+ielts_speaking:
+  assess: v1
 # The AW judge's rubric (prompts/aw_judge/rubric/<version>.md)
 aw_judge:
   rubric: v1

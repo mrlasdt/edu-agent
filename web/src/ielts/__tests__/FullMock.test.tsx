@@ -11,6 +11,17 @@ const writing = vi.hoisted(() => ({ getWritingModule: vi.fn(),
   startWritingModule: vi.fn(),
   regradeWritingModule: vi.fn(),
 }));
+const speaking = vi.hoisted(() => ({
+  getSpeaking: vi.fn(),
+  startSpeaking: vi.fn(),
+  regradeSpeaking: vi.fn(),
+}));
+vi.mock("../speakingApi", () => speaking);
+vi.mock("../SpeakingSit", () => ({
+  SpeakingSit: ({ onSubmitted }: { onSubmitted: (a: unknown) => void }) => (
+    <button onClick={() => onSubmitted({})}>Submit speaking</button>
+  ),
+}));
 vi.mock("../mockApi", () => api);
 vi.mock("../readingApi", () => reading);
 vi.mock("../listeningApi", () => listening);
@@ -61,7 +72,7 @@ const settle = () => act(async () => {});
 
 beforeEach(() => {
   window.localStorage.clear();
-  Object.values({ ...api, ...listening, ...reading, ...writing }).forEach((f) => f.mockReset());
+  Object.values({ ...api, ...listening, ...reading, ...writing, ...speaking }).forEach((f) => f.mockReset());
 });
 afterEach(() => window.localStorage.clear());
 
@@ -231,5 +242,78 @@ describe("FullMock", () => {
     render(<FullMock />);
     await settle();
     expect(screen.queryByRole("button", { name: "Retry marking" })).toBeNull();
+  });
+
+  const afterWriting = (speakingOver: Partial<ModuleStatus> = {}) =>
+    mock({
+      listening: { attempt_id: "l1", state: "graded", band: 7.0 },
+      reading: { attempt_id: "r1", state: "graded", band: 6.5 },
+      writing: { attempt_id: "w1", state: "graded", band: 6.0 },
+      report: {
+        modules: [
+          status("listening", { attempt_id: "l1", state: "graded", band: 7.0 }),
+          status("reading", { attempt_id: "r1", state: "graded", band: 6.5 }),
+          status("writing", { attempt_id: "w1", state: "graded", band: 6.0 }),
+          status("speaking", speakingOver),
+        ],
+      },
+    });
+
+  it("offers Speaking's quick sample and starts it with the sample flag", async () => {
+    window.localStorage.setItem("ielts.fullmock.id", "m1");
+    api.getMock.mockResolvedValue(afterWriting({ sittable: true }));
+    api.startMockModule.mockResolvedValue(
+      afterWriting({ sittable: true, state: "in_progress", attempt_id: "s1" })
+    );
+    speaking.getSpeaking.mockResolvedValue({ id: "s1", status: "in_progress" });
+    render(<FullMock />);
+    await settle();
+    await userEvent.click(screen.getByRole("button", { name: /Quick sample/ }));
+    await settle();
+    expect(api.startMockModule).toHaveBeenCalledWith("m1", "speaking", true);
+    expect(screen.getByRole("button", { name: "Submit speaking" })).toBeInTheDocument();
+  });
+
+  it("shows the Speaking band as partial", async () => {
+    window.localStorage.setItem("ielts.fullmock.id", "m1");
+    api.getMock.mockResolvedValue(
+      afterWriting({ state: "partial", band: 6.5, band_partial: true, attempt_id: "s1" })
+    );
+    render(<FullMock />);
+    await settle();
+    const skills = screen.getByRole("list", { name: "Skill bands" });
+    expect(skills).toHaveTextContent("6.5");
+    expect(skills).toHaveTextContent("partial");
+  });
+
+  it("labels a sample-based Speaking band and the overall as not a real mock score", async () => {
+    window.localStorage.setItem("ielts.fullmock.id", "m1");
+    const sampled = afterWriting({
+      state: "graded", band: 6.5, band_partial: true, sample: true, attempt_id: "s1",
+    });
+    api.getMock.mockResolvedValue({
+      ...sampled,
+      overall: 6.5,
+      sample: true,
+      overall_note: "Sample-based: the Speaking band came from the quick sample.",
+    });
+    render(<FullMock />);
+    await settle();
+    expect(screen.getByText("Sample-based overall band (not a real mock score)")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Skill bands" })).toHaveTextContent("sample");
+  });
+
+  it("retries a failed Speaking marking through the Speaking API", async () => {
+    window.localStorage.setItem("ielts.fullmock.id", "m1");
+    api.getMock.mockResolvedValue(
+      afterWriting({ state: "ungraded", attempt_id: "s1", retryable: true })
+    );
+    speaking.regradeSpeaking.mockResolvedValue({ id: "s1", status: "grading" });
+    render(<FullMock />);
+    await settle();
+    await userEvent.click(screen.getByRole("button", { name: "Retry marking" }));
+    await settle();
+    expect(speaking.regradeSpeaking).toHaveBeenCalledWith("s1");
+    expect(writing.regradeWritingModule).not.toHaveBeenCalled();
   });
 });

@@ -97,3 +97,13 @@ roles:
   ielts_mock_coach:
     <<: *ielts
     temperature: 0.4
+
+  # The IELTS Speaking marker (ielts/speaking_llm): reads the learner's recording, so it needs a
+  # model that takes audio. Gemma and OpenAI chat models used by the other IELTS roles do not, so
+  # this role is Gemini in every config and the audio client calls the Gemini API directly (the
+  # key is GEMINI_API_KEY). `fallbacks` are tried in order after the first model is busy.
+  ielts_speaking:
+    provider: gemini
+    model: gemini-3.5-flash-lite
+    temperature: 0.2
+    fallbacks: [gemini/gemini-3.5-flash]

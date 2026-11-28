@@ -4,7 +4,7 @@ The owner wants to sit a full IELTS mock with the agent and get a score with det
 
 ## Status
 
-Accepted. Implemented for Writing Task 2, the Writing module (a Task 1 letter plus Task 2 on one 60-minute clock, one combined band; the letter is not calibrated, because no letter has been checked against labelled data) Reading (marked in code), Listening (marked in code; original scripts spoken once at build time by Gemini text-to-speech and stored, never synthesised per attempt) and the full-mock orchestration across them. Speaking is a later slice. The decision gate below has **not** passed, so the UI says "Uncalibrated estimate".
+Accepted. Implemented for Writing Task 2, the Writing module (a Task 1 letter plus Task 2 on one 60-minute clock, one combined band; the letter is not calibrated, because no letter has been checked against labelled data) Reading (marked in code), Listening (marked in code; original scripts spoken once at build time by Gemini text-to-speech and stored, never synthesised per attempt) and the full-mock orchestration across them. Speaking is implemented as a partial score (recorded in the browser, marked by a Gemini audio model on Fluency and coherence, Lexical resource and Grammatical range and accuracy, with Pronunciation shown as not assessed); its bands are uncalibrated like Writing's. The decision gate below has **not** passed, so the UI says "Uncalibrated estimate".
 
 ## Decision
 
@@ -90,6 +90,6 @@ The default config moved to free OpenRouter models, which moved the IELTS roles 
 ## Next slices
 
 1. Owner scores the 30-essay blind pool, the grader is measured on it as a development check, and a second pool with more model drafts (`--drafts 30 --teacher 0`) brings the decision gate to n of 60 (`captain_blind`); if the slope stays below 0.8, add a calibration map fitted on the dev half and checked on the test half, or try a stronger model.
-2. Speaking (audio transcription and fluency features). Listening, Reading and the full-mock orchestration with a combined overall band are done.
+2. Speaking is done as a partial score: browser recording, Gemini audio understanding for the transcript and three criteria, Pronunciation marked "not assessed". A calibrated Pronunciation score and a check of the three bands against labelled recordings are later work. Listening, Reading and the full-mock orchestration with a combined overall band are done.
 3. Tutoring chat grounded in the attempt report (done for the mock).
 4. Auth and per-user storage and spend caps before any hosted deployment.
