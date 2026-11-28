@@ -167,6 +167,7 @@ class ReadingReport(BaseModel):
     keys_note: str
     band_source_url: str
     timing_source_url: str
+    sample: bool = False  # a quick sample test, not a real mock: its band is not comparable
     disclaimer: str = DISCLAIMER
 
 
@@ -197,6 +198,7 @@ class ListeningReport(BaseModel):
     keys_note: str
     band_source_url: str
     timing_source_url: str
+    sample: bool = False
     disclaimer: str = DISCLAIMER
 
 
@@ -215,4 +217,5 @@ class WritingModuleReport(BaseModel):
     weights_note: str
     weights_source_urls: list[str]
     timing: Timing
+    sample: bool = False
     disclaimer: str = DISCLAIMER

@@ -30,6 +30,20 @@ ALLOWED_S_BY_MODULE = {
     MODULE_WRITING: WRITING_ALLOWED_S,
     MODULE_LISTENING: LISTENING_ALLOWED_S,
 }
+# A sample (quick test) sits a handful of real items on a short clock so a slice can be checked
+# end to end in minutes. It is the same module on the same code path; only the clock differs.
+SAMPLE_ALLOWED_S_BY_MODULE = {
+    MODULE_READING: 2 * 60,
+    MODULE_LISTENING: 3 * 60,  # the one recording runs 2:17
+    MODULE_WRITING: 3 * 60,
+}
+
+
+def allowed_s_for(module: str, sample: bool) -> int:
+    """The clock for a module attempt: the real time, or the short sample time."""
+    return SAMPLE_ALLOWED_S_BY_MODULE[module] if sample else ALLOWED_S_BY_MODULE[module]
+
+
 GRACE_S = 30  # network and clock slack before a submission counts as late
 DRAFT_MAX_CHARS = 20_000
 
@@ -51,7 +65,8 @@ CREATE TABLE IF NOT EXISTS attempts (
     report_json TEXT,
     error TEXT,
     retryable INTEGER NOT NULL DEFAULT 0,
-    graded_at REAL
+    graded_at REAL,
+    sample INTEGER NOT NULL DEFAULT 0
 )
 """
 
@@ -64,7 +79,8 @@ CREATE TABLE IF NOT EXISTS mocks (
     created_at REAL NOT NULL,
     reading_attempt_id TEXT,
     writing_attempt_id TEXT,
-    listening_attempt_id TEXT
+    listening_attempt_id TEXT,
+    sample INTEGER NOT NULL DEFAULT 0
 )
 """
 MOCK_ATTEMPT_COLUMNS = {
@@ -105,6 +121,7 @@ class Attempt:
     error: str | None
     retryable: bool
     graded_at: float | None
+    sample: bool = False  # a quick sample test: short clock, never a real mock score
 
     @property
     def essay(self) -> str:
@@ -116,12 +133,14 @@ class Mock:
     id: str
     created_at: float
     attempt_ids: dict[str, str | None]  # module key ("listening", ...) -> attempt id
+    sample: bool = False
 
 
 def _mock_row(r: sqlite3.Row) -> Mock:
     return Mock(
         id=r["id"], created_at=r["created_at"],
         attempt_ids={key: r[col] for key, col in MOCK_ATTEMPT_COLUMNS.items()},
+        sample=bool(r["sample"]),
     )
 
 
@@ -132,7 +151,7 @@ def _row(r: sqlite3.Row) -> Attempt:
         deadline_at=r["deadline_at"], submitted_at=r["submitted_at"], late=bool(r["late"]),
         draft_text=r["draft_text"], draft_saved_at=r["draft_saved_at"],
         final_text=r["final_text"], report_json=r["report_json"], error=r["error"],
-        retryable=bool(r["retryable"]), graded_at=r["graded_at"],
+        retryable=bool(r["retryable"]), graded_at=r["graded_at"], sample=bool(r["sample"]),
     )
 
 
@@ -150,6 +169,10 @@ class AttemptStore:
             for column in MOCK_ATTEMPT_COLUMNS.values():
                 if column not in have:
                     db.execute(f"ALTER TABLE mocks ADD COLUMN {column} TEXT")
+            for table in ("mocks", "attempts"):
+                cols = {row["name"] for row in db.execute(f"PRAGMA table_info({table})")}
+                if "sample" not in cols:
+                    db.execute(f"ALTER TABLE {table} ADD COLUMN sample INTEGER NOT NULL DEFAULT 0")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -176,19 +199,22 @@ class AttemptStore:
     def recent(self, limit: int = 20, module: str = MODULE_WRITING_T2) -> list[Attempt]:
         with self._connect() as db:
             rows = db.execute(
-                "SELECT * FROM attempts WHERE module = ? AND status != 'created' "
+                "SELECT * FROM attempts WHERE module = ? AND status != 'created' AND sample = 0 "
                 "ORDER BY COALESCE(started_at, created_at) DESC LIMIT ?",
                 (module, limit),
             ).fetchall()
         return [_row(r) for r in rows]
 
-    def create(self, prompt_id: str, prompt_text: str, module: str = MODULE_WRITING_T2) -> Attempt:
+    def create(
+        self, prompt_id: str, prompt_text: str, module: str = MODULE_WRITING_T2,
+        sample: bool = False,
+    ) -> Attempt:
         attempt_id = uuid.uuid4().hex
         with self._connect() as db:
             db.execute(
-                "INSERT INTO attempts (id, module, prompt_id, prompt_text, status, created_at) "
-                "VALUES (?, ?, ?, ?, 'created', ?)",
-                (attempt_id, module, prompt_id, prompt_text, self.clock()),
+                "INSERT INTO attempts (id, module, prompt_id, prompt_text, status, created_at, "
+                "sample) VALUES (?, ?, ?, ?, 'created', ?, ?)",
+                (attempt_id, module, prompt_id, prompt_text, self.clock(), int(sample)),
             )
         return self.get(attempt_id)
 
@@ -198,11 +224,12 @@ class AttemptStore:
         if attempt.status != "created":
             return attempt
         now = self.clock()
+        allowed_s = allowed_s_for(attempt.module, attempt.sample)
         with self._connect() as db:
             db.execute(
                 "UPDATE attempts SET status = 'in_progress', started_at = ?, deadline_at = ? "
                 "WHERE id = ? AND status = 'created'",
-                (now, now + ALLOWED_S_BY_MODULE[attempt.module], attempt_id),
+                (now, now + allowed_s, attempt_id),
             )
         return self.get(attempt_id)
 
@@ -301,15 +328,21 @@ class AttemptStore:
         with self._connect() as db:
             row = db.execute(
                 "SELECT * FROM attempts WHERE module = ? AND status = 'graded' AND id != ? "
-                "AND submitted_at < ? ORDER BY submitted_at DESC LIMIT 1",
-                (attempt.module, attempt.id, attempt.submitted_at or self.clock()),
+                "AND sample = ? AND submitted_at < ? ORDER BY submitted_at DESC LIMIT 1",
+                (
+                    attempt.module, attempt.id, int(attempt.sample),
+                    attempt.submitted_at or self.clock(),
+                ),
             ).fetchone()
         return _row(row) if row else None
 
-    def create_mock(self) -> Mock:
+    def create_mock(self, sample: bool = False) -> Mock:
         mock_id = uuid.uuid4().hex
         with self._connect() as db:
-            db.execute("INSERT INTO mocks (id, created_at) VALUES (?, ?)", (mock_id, self.clock()))
+            db.execute(
+                "INSERT INTO mocks (id, created_at, sample) VALUES (?, ?, ?)",
+                (mock_id, self.clock(), int(sample)),
+            )
         return self.get_mock(mock_id)
 
     def get_mock(self, mock_id: str) -> Mock:
@@ -322,7 +355,7 @@ class AttemptStore:
     def recent_mocks(self, limit: int = 20) -> list[Mock]:
         with self._connect() as db:
             rows = db.execute(
-                "SELECT * FROM mocks ORDER BY created_at DESC LIMIT ?", (limit,)
+                "SELECT * FROM mocks WHERE sample = 0 ORDER BY created_at DESC LIMIT ?", (limit,)
             ).fetchall()
         return [_mock_row(r) for r in rows]
 

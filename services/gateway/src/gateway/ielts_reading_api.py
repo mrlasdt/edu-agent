@@ -24,6 +24,7 @@ from services.gateway.src.gateway.ielts_store import (
     Attempt,
     AttemptStateError,
     AttemptStore,
+    allowed_s_for,
 )
 
 router = APIRouter(prefix="/ielts/reading", tags=["ielts-reading"])
@@ -87,7 +88,12 @@ class ReadingAttemptOut(BaseModel):
     raw: int | None = None
     scaled_40: int | None = None
     paper: PaperOut | None = None  # only while the attempt is in progress
+    sample: bool = False  # the quick sample test: a few items on a short clock
     disclaimer: str = DISCLAIMER
+
+
+def _paper_of(attempt: Attempt) -> reading.ReadingSet:
+    return reading.get_sample_set() if attempt.sample else reading.get_set()
 
 
 def _paper_out(paper: reading.ReadingSet) -> PaperOut:
@@ -118,12 +124,14 @@ def _view(attempt: Attempt, store: AttemptStore) -> ReadingAttemptOut:
     report = _report_of(attempt)
     return ReadingAttemptOut(
         id=attempt.id, set_id=attempt.prompt_id, status=attempt.status,
-        allowed_s=READING_ALLOWED_S, remaining_s=remaining, started_at=attempt.started_at,
+        allowed_s=allowed_s_for(MODULE_READING, attempt.sample), remaining_s=remaining,
+        started_at=attempt.started_at,
         submitted_at=attempt.submitted_at, late=attempt.late, answers=answers,
         answered=sum(1 for v in answers.values() if v.strip()),
         band=report.band if report else None, raw=report.raw if report else None,
         scaled_40=report.scaled_40 if report else None,
-        paper=_paper_out(reading.get_set()) if attempt.status == "in_progress" else None,
+        paper=_paper_out(_paper_of(attempt)) if attempt.status == "in_progress" else None,
+        sample=attempt.sample,
     )
 
 
@@ -131,8 +139,8 @@ def _load_reading(store: AttemptStore, attempt_id: str) -> Attempt:
     return _load(store, attempt_id, MODULE_READING)
 
 
-def _encode(answers: dict[str, str]) -> str:
-    known = {q.id for q in reading.get_set().questions}
+def _encode(attempt: Attempt, answers: dict[str, str]) -> str:
+    known = {q.id for q in _paper_of(attempt).questions}
     text = json.dumps({k: v for k, v in answers.items() if k in known}, ensure_ascii=False)
     if len(text) > DRAFT_MAX_CHARS:
         raise HTTPException(422, "answers are too long")
@@ -156,10 +164,12 @@ def list_attempts(store: Store) -> list[ReadingAttemptOut]:
 
 
 @router.post("/attempts", status_code=201)
-def create_attempt(store: Store) -> ReadingAttemptOut:
+def create_attempt(store: Store, sample: bool = False) -> ReadingAttemptOut:
+    """`sample=true` starts the quick sample test: a few of the same items on a short clock."""
     _limit()
-    paper = reading.get_set()
-    return _view(store.create(paper.id, "IELTS General Training Reading", MODULE_READING), store)
+    paper = reading.get_sample_set() if sample else reading.get_set()
+    attempt = store.create(paper.id, "IELTS General Training Reading", MODULE_READING, sample)
+    return _view(attempt, store)
 
 
 @router.get("/attempts/{attempt_id}")
@@ -175,9 +185,9 @@ def start_attempt(attempt_id: str, store: Store) -> ReadingAttemptOut:
 
 @router.put("/attempts/{attempt_id}/draft")
 def save_draft(attempt_id: str, body: Answers, store: Store) -> ReadingAttemptOut:
-    _load_reading(store, attempt_id)
+    current = _load_reading(store, attempt_id)
     try:
-        return _view(store.save_draft(attempt_id, _encode(body.answers)), store)
+        return _view(store.save_draft(attempt_id, _encode(current, body.answers)), store)
     except AttemptStateError as exc:
         raise HTTPException(409, str(exc)) from None
 
@@ -185,20 +195,22 @@ def save_draft(attempt_id: str, body: Answers, store: Store) -> ReadingAttemptOu
 @router.post("/attempts/{attempt_id}/submit")
 def submit_attempt(attempt_id: str, body: Answers, store: Store) -> ReadingAttemptOut:
     """Mark in code and return the report's headline; repeating a submit changes nothing."""
-    _load_reading(store, attempt_id)
+    current = _load_reading(store, attempt_id)
     try:
-        attempt, submitted = store.submit(attempt_id, _encode(body.answers))
+        attempt, submitted = store.submit(attempt_id, _encode(current, body.answers))
     except AttemptStateError as exc:
         raise HTTPException(409, str(exc)) from None
     if submitted:  # only the call that made the transition marks
         attempt, _ = store.begin_grading(attempt_id)
         assert attempt.started_at is not None and attempt.submitted_at is not None
         timing = Timing(
-            allowed_s=READING_ALLOWED_S,
+            allowed_s=allowed_s_for(MODULE_READING, attempt.sample),
             used_s=int(attempt.submitted_at - attempt.started_at),
             late=attempt.late,
         )
-        report = reading.mark(reading.get_set(), reading.read_answers(attempt.essay), timing)
+        report = reading.mark(
+            _paper_of(attempt), reading.read_answers(attempt.essay), timing, attempt.sample
+        )
         attempt = store.finish(attempt_id, report.model_dump_json(), graded=True)
     return _view(attempt, store)
 

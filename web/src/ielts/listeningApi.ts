@@ -5,7 +5,8 @@ const base = "/ielts/listening";
 
 export const listeningInfo = (signal?: AbortSignal) =>
   requestJson<ListeningInfo>(`${base}/info`, { signal });
-export const createListening = () => requestJson<ListeningAttempt>(`${base}/attempts`, { method: "POST" });
+export const createListening = (sample = false) =>
+  requestJson<ListeningAttempt>(`${base}/attempts${sample ? "?sample=true" : ""}`, { method: "POST" });
 export const getListening = (id: string, signal?: AbortSignal) =>
   requestJson<ListeningAttempt>(`${base}/attempts/${id}`, { signal });
 export const startListening = (id: string) =>

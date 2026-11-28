@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../request";
 import { clock, countWords } from "./format";
+import { SampleBadge } from "./SampleBadge";
 import { saveWritingModuleDraft, submitWritingModule } from "./writingModuleApi";
 import {
   ESSAY_MINIMUM_WORDS,
@@ -95,6 +96,7 @@ export function WritingModuleSit({ attempt, onSubmitted, autosaveMs = SAVE_MS }:
           <span className="ielts-clock-label">{urgent ? "left - wrap up" : "left"}</span>
         </div>
         <div className="ielts-meta">
+          {attempt.sample && <SampleBadge />}
           <span className="ielts-words" aria-label="Word count">
             Letter {words.t1}/{LETTER_MINIMUM_WORDS} - Essay {words.t2}/{ESSAY_MINIMUM_WORDS} words
           </span>
@@ -122,7 +124,7 @@ export function WritingModuleSit({ attempt, onSubmitted, autosaveMs = SAVE_MS }:
           Writing {task.tab.split(" - ")[0]} (about {task.minutes} minutes)
         </p>
         <p style={{ whiteSpace: "pre-line" }}>{view.prompt}</p>
-        <p className="ielts-hint">Write at least {task.min} words. One 60 minute clock covers both tasks.</p>
+        <p className="ielts-hint">Write at least {task.min} words. One {clock(attempt.allowed_s)} clock covers both tasks.</p>
       </div>
 
       {timeUp && (

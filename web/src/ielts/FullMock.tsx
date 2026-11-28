@@ -4,6 +4,7 @@ import { band } from "./format";
 import { createMock, getMock, startMockModule } from "./mockApi";
 import type { MockReport, ModuleKey, ModuleStatus } from "./mockApi";
 import { ModuleNav } from "./ModuleNav";
+import { SAMPLE_HINT, SampleBadge } from "./SampleBadge";
 import { getListening, startListening } from "./listeningApi";
 import type { ListeningAttempt } from "./listeningTypes";
 import { ListeningSit } from "./ListeningSit";
@@ -166,9 +167,9 @@ export function FullMock({ pollMs = POLL_MS, autosaveMs }: FullMockProps) {
       await refresh(report.id);
     });
 
-  const begin = () =>
+  const begin = (sample = false) =>
     run(async () => {
-      const report = await createMock();
+      const report = await createMock(sample);
       remember(report.id);
       await openModule(report, "listening");
     });
@@ -217,6 +218,9 @@ export function FullMock({ pollMs = POLL_MS, autosaveMs }: FullMockProps) {
           <div className="ielts-actions">
             <button className="ielts-primary" onClick={() => void begin()} disabled={busy}>
               {busy ? "Starting..." : "Start full mock"}
+            </button>
+            <button onClick={() => void begin(true)} disabled={busy} title={SAMPLE_HINT}>
+              Quick sample full mock (about 5 minutes)
             </button>
           </div>
         </section>
@@ -277,7 +281,12 @@ function Overview({
     <article className="ielts-report" aria-label="Full mock result">
       <section className="ielts-hero" aria-label="Overall band">
         <p className="ielts-eyebrow">
-          {report.partial ? "Partial overall band (mock score)" : "Overall band (mock score)"}
+          {report.sample && <SampleBadge />}{" "}
+          {report.sample
+            ? "Sample overall band (not a real mock score)"
+            : report.partial
+              ? "Partial overall band (mock score)"
+              : "Overall band (mock score)"}
         </p>
         {report.overall !== null ? (
           <p className="ielts-hero-band" aria-label={`Mock overall band ${band(report.overall)}`}>

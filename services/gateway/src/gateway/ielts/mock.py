@@ -92,6 +92,7 @@ class MockReport(BaseModel):
     overall_note: str
     overall_source_url: str = SCORING_SOURCE_URL
     next_module: NextModule | None = None
+    sample: bool = False  # the quick sample mock: its bands are not a real mock score
     disclaimer: str = DISCLAIMER
 
 
@@ -217,6 +218,12 @@ def _missing_clauses(modules: list[ModuleStatus]) -> list[str]:
     return clauses
 
 
+SAMPLE_NOTE = (
+    "SAMPLE: a quick test with a handful of questions per module on short clocks, for checking "
+    "the flow. These bands are NOT comparable to a real mock score. "
+)
+
+
 def _overall_note(modules: list[ModuleStatus], overall: float | None) -> str:
     missing = [m for m in modules if m.band is None]
     if overall is None:
@@ -277,10 +284,12 @@ def build_report(loaded: LoadedMock) -> MockReport:
     modules = module_statuses(loaded)
     bands = [m.band for m in modules if m.band is not None]
     overall = overall_band(bands)
+    sample = loaded.mock.sample
     return MockReport(
         id=loaded.mock.id, created_at=loaded.mock.created_at, modules=modules, overall=overall,
-        partial=len(bands) < len(modules), overall_note=_overall_note(modules, overall),
-        next_module=next_module(modules),
+        partial=len(bands) < len(modules),
+        overall_note=(SAMPLE_NOTE if sample else "") + _overall_note(modules, overall),
+        next_module=next_module(modules), sample=sample,
     )
 
 

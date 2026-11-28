@@ -45,6 +45,7 @@ export interface ReadingAttempt {
   raw: number | null;
   scaled_40: number | null;
   paper: { passages: Passage[]; questions: Question[] } | null;
+  sample?: boolean;
 }
 
 export interface QuestionResult {
@@ -85,4 +86,5 @@ export interface ReadingReport {
   band_source_url: string;
   timing_source_url: string;
   disclaimer: string;
+  sample?: boolean;
 }

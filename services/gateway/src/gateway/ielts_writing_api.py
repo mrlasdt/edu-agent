@@ -51,6 +51,7 @@ from services.gateway.src.gateway.ielts_store import (
     Attempt,
     AttemptStateError,
     AttemptStore,
+    allowed_s_for,
 )
 from services.gateway.src.gateway.settings import get_settings
 from shared.src.shared.budget import BudgetExceededError, Ledger, spend_ledger
@@ -89,6 +90,7 @@ class ModuleTexts(BaseModel):
 class CreateModuleAttempt(BaseModel):
     t1_prompt_id: str | None = None  # a random one when omitted
     t2_prompt_id: str | None = None
+    sample: bool = False  # the quick sample test: the same marking on a short clock
 
 
 class ModuleAttemptOut(BaseModel):
@@ -104,6 +106,7 @@ class ModuleAttemptOut(BaseModel):
     error: str | None
     retryable: bool
     writing_band: float | None = None
+    sample: bool = False
     disclaimer: str = DISCLAIMER
 
 
@@ -146,15 +149,19 @@ def _view(attempt: Attempt, store: AttemptStore) -> ModuleAttemptOut:
         )
 
     return ModuleAttemptOut(
-        id=attempt.id, status=attempt.status, allowed_s=WRITING_ALLOWED_S, remaining_s=remaining,
-        started_at=attempt.started_at, submitted_at=attempt.submitted_at, late=attempt.late,
+        id=attempt.id, status=attempt.status,
+        allowed_s=allowed_s_for(MODULE_WRITING, attempt.sample),
+        remaining_s=remaining, started_at=attempt.started_at,
+        submitted_at=attempt.submitted_at, late=attempt.late,
         t1=task("t1", report.t1 if report else None), t2=task("t2", report.t2 if report else None),
         error=attempt.error, retryable=attempt.retryable,
-        writing_band=report.writing_band if report else None,
+        writing_band=report.writing_band if report else None, sample=attempt.sample,
     )
 
 
-def combine(t1: Report, t2: Report, timing: Timing) -> WritingModuleReport:
+def combine(
+    t1: Report, t2: Report, timing: Timing, sample: bool = False
+) -> WritingModuleReport:
     """The module report from the two task reports; the band needs both to be graded."""
     both = (
         t1.status == "graded" and t2.status == "graded"
@@ -167,6 +174,7 @@ def combine(t1: Report, t2: Report, timing: Timing) -> WritingModuleReport:
     return WritingModuleReport(
         status="graded" if both else "partial", t1=t1, t2=t2, writing_band=band,
         weights_note=TASK_WEIGHTS_NOTE, weights_source_urls=list(TASK_SOURCE_URLS), timing=timing,
+        sample=sample,
     )
 
 
@@ -182,7 +190,7 @@ async def grade_module_attempt(
         assert attempt.started_at is not None and attempt.submitted_at is not None
         prompts, texts = _prompts_of(attempt), _decode(attempt.essay)
         timing = Timing(
-            allowed_s=WRITING_ALLOWED_S,
+            allowed_s=allowed_s_for(MODULE_WRITING, attempt.sample),
             used_s=int(attempt.submitted_at - attempt.started_at),
             late=attempt.late,
         )
@@ -197,7 +205,7 @@ async def grade_module_attempt(
                 samples=samples, trace_id=f"{attempt_id}-t2", task="T2",
             ),
         )
-        report = combine(t1, t2, timing)
+        report = combine(t1, t2, timing, attempt.sample)
         store.finish(attempt_id, report.model_dump_json(), graded=report.status == "graded")
     except GradingError as exc:
         store.fail(attempt_id, exc.reason, retryable=True)
@@ -241,7 +249,10 @@ def create_attempt(
         "t1": {"id": letter.id, "text": letter.text},
         "t2": {"id": essay.id, "text": essay.text},
     })
-    return _view(store.create(f"{letter.id}+{essay.id}", prompt_text, MODULE_WRITING), store)
+    attempt = store.create(
+        f"{letter.id}+{essay.id}", prompt_text, MODULE_WRITING, sample=body.sample
+    )
+    return _view(attempt, store)
 
 
 def _load_module(store: AttemptStore, attempt_id: str) -> Attempt:

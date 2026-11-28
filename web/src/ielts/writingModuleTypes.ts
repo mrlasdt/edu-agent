@@ -38,6 +38,7 @@ export interface WritingModuleAttempt {
   retryable: boolean;
   writing_band: number | null;
   disclaimer: string;
+  sample?: boolean;
 }
 
 export interface WritingModuleReport {
@@ -50,6 +51,7 @@ export interface WritingModuleReport {
   weights_source_urls: string[];
   timing: Timing | null;
   disclaimer: string;
+  sample?: boolean;
 }
 
 export interface ModuleTexts {

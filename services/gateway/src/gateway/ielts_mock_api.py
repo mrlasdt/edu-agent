@@ -46,9 +46,10 @@ def _loaded(store: AttemptStore, mock_id: str) -> LoadedMock:
 
 
 @router.post("", status_code=201)
-def create_mock(store: Store) -> MockReport:
+def create_mock(store: Store, sample: bool = False) -> MockReport:
+    """`sample=true` makes the quick sample mock: each module is its sample test."""
     _limit()
-    return build_report(load_mock(store, store.create_mock()))
+    return build_report(load_mock(store, store.create_mock(sample)))
 
 
 @router.get("")
@@ -69,10 +70,12 @@ def start_module(mock_id: str, key: str, store: Store, ledger: SpendLedger) -> M
     if why_not:
         raise HTTPException(409, why_not)
     if key == "listening":
-        attempt_id = create_listening(store).id
+        attempt_id = create_listening(store, loaded.mock.sample).id
     elif key == "reading":
-        attempt_id = create_reading(store).id
+        attempt_id = create_reading(store, loaded.mock.sample).id
     else:
-        attempt_id = create_writing(CreateModuleAttempt(), store, ledger).id
+        attempt_id = create_writing(
+            CreateModuleAttempt(sample=loaded.mock.sample), store, ledger
+        ).id
     store.link_mock_attempt(mock_id, key, attempt_id)
     return build_report(_loaded(store, mock_id))

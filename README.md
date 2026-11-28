@@ -192,7 +192,20 @@ A full mock at `/ielts-mock?module=mock` ("Full mock" in the module links). "Sta
 - The report names the next module to sit, and a Writing module whose marking failed has a "Retry marking" button. The coach reads a bounded digest of the whole mock at `/?attempt=<mock id>&subject=mock` and recommends which skill to practise next.
 - API: `POST /ielts/mock`, `GET /ielts/mock`, `GET /ielts/mock/{id}`, `POST /ielts/mock/{id}/modules/{listening|reading|writing}/attempt`. The modules are started in order: Listening, Reading, Writing (a mock made before Listening existed may skip Listening).
 
-## Evals
+### Quick sample test (check any slice in about 5 minutes)
+
+Every mock page (Listening, Reading, Writing module and the full mock) has a second button, "Quick sample test" or "Quick sample full mock (about 5 minutes)". It runs the same attempt, marking, band and report path as the real thing on a handful of the real items and a short clock, so a change to any slice can be checked end to end without sitting an hour. Use it to check every future slice.
+
+- It is the real code path with one `sample` flag (`POST /ielts/{reading|listening|writing}/attempts?sample=true`, `POST /ielts/mock?sample=true`). Only the item subset and the clock differ: Reading 5 questions on 2 minutes, Listening 5 questions of Section 1 (one recording, 2:17) on 3 minutes, Writing a letter and an essay on 3 minutes.
+- It is labelled SAMPLE on the clock bar, the report and the overall band ("not a real mock score"), and is kept out of the real history and mock lists. A sample band is never compared with a real one.
+- Writing is marked by the model, so it needs the keys in `.env` and costs a little of the 5 USD cap. A task under 50 words is not marked.
+
+How to test (full flow, http://localhost:5173/ielts-mock?module=mock):
+
+1. Click "Quick sample full mock (about 5 minutes)". Listening starts with a SAMPLE badge and a 3 minute clock. Press play on the recording, type any answers, press "Submit answers", then "Yes, submit".
+2. On the overview press "Start Reading" (2 minute clock), answer, submit.
+3. Press "Start Writing" (3 minute clock). Paste at least 50 words into each task, for example the letter: `Dear Mr Hall, the lift in our building has been broken for three weeks and many residents, including elderly neighbours and parents with small children, now struggle to reach their flats. Please arrange a repair this week and tell us when it will be done. Thank you for your help with this problem. Yours sincerely, A. Tenant` and the essay: `Some people think children should learn to cook at school. I agree with this view because cooking is a basic life skill, it teaches healthy eating, and it helps young people to live independently. Schools already teach many subjects, but few are as useful every day. Therefore, I believe cooking lessons should be part of the school timetable.` Submit both tasks.
+4. Wait about a minute for marking. The overview then shows the sample overall band (partial, Speaking is not assessed) and each skill band, with the SAMPLE label.
 
 Every eval and report tool is one command of `uv run python -m evals <command>` (run it with no command to list them; add `--help` after a command for its flags). The older `python -m evals.<module>` spellings of the moved report tools still work for one more release.
 

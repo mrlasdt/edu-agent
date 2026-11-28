@@ -1,3 +1,4 @@
+import { SampleBadge } from "./SampleBadge";
 import { band, clock } from "./format";
 import type { ReadingReport } from "./readingTypes";
 
@@ -12,7 +13,9 @@ export function ReadingReportView({ attemptId, report, onAnother }: Props) {
   return (
     <div className="ielts-report">
       <section className="ielts-hero" aria-label="Result">
-        <p className="ielts-eyebrow">Mock Reading band</p>
+        <p className="ielts-eyebrow">
+          {report.sample && <SampleBadge />} {report.sample ? "Sample Reading band" : "Mock Reading band"}
+        </p>
         <p className="ielts-hero-band">{band(report.band)}</p>
         <p>
           Raw score {report.raw} of {report.total}. Scaled to {report.scaled_40} of 40 for the band table.

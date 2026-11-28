@@ -4,6 +4,7 @@ import { saveListeningAnswers, submitListening } from "./listeningApi";
 import type { ListeningAttempt, Section } from "./listeningTypes";
 import { clock } from "./format";
 import { Field } from "./ReadingSit";
+import { SampleBadge } from "./SampleBadge";
 import { useCountdown } from "./useCountdown";
 
 export const LISTENING_AUTOSAVE_MS = 10_000;
@@ -97,6 +98,7 @@ export function ListeningSit({ attempt, onSubmitted, autosaveMs = LISTENING_AUTO
           </span>
         </div>
         <div className="ielts-meta">
+          {attempt.sample && <SampleBadge />}
           <span className="ielts-words">
             {answered} of {total} answered
           </span>

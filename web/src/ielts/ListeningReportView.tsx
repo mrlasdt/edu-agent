@@ -1,3 +1,4 @@
+import { SampleBadge } from "./SampleBadge";
 import { band, clock } from "./format";
 import type { ListeningReport } from "./listeningTypes";
 
@@ -11,7 +12,9 @@ export function ListeningReportView({ report, onAnother }: Props) {
   return (
     <div className="ielts-report">
       <section className="ielts-hero" aria-label="Result">
-        <p className="ielts-eyebrow">Mock Listening band</p>
+        <p className="ielts-eyebrow">
+          {report.sample && <SampleBadge />} {report.sample ? "Sample Listening band" : "Mock Listening band"}
+        </p>
         <p className="ielts-hero-band">{band(report.band)}</p>
         <p>
           Raw score {report.raw} of {report.total}.

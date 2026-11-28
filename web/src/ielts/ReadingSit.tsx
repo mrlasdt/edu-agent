@@ -3,6 +3,7 @@ import { ApiError } from "../request";
 import { saveReadingAnswers, submitReading } from "./readingApi";
 import type { Passage, Question, ReadingAttempt } from "./readingTypes";
 import { clock } from "./format";
+import { SampleBadge } from "./SampleBadge";
 import { useCountdown } from "./useCountdown";
 
 export const READING_AUTOSAVE_MS = 10_000;
@@ -126,6 +127,7 @@ export function ReadingSit({ attempt, onSubmitted, autosaveMs = READING_AUTOSAVE
           </span>
         </div>
         <div className="ielts-meta">
+          {attempt.sample && <SampleBadge />}
           <span className="ielts-words">
             {answered} of {total} answered
           </span>
