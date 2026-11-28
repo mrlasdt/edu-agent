@@ -48,7 +48,8 @@ export interface MockReport {
 
 const base = "/ielts/mock";
 
-export const createMock = () => requestJson<MockReport>(base, { method: "POST" });
+export const listMocks = (signal?: AbortSignal) => requestJson<MockReport[]>(base, { signal });
+export const createMock =() => requestJson<MockReport>(base, { method: "POST" });
 export const getMock = (id: string, signal?: AbortSignal) =>
   requestJson<MockReport>(`${base}/${id}`, { signal });
 /** `sample` starts the quick sample of Speaking (one short question per part); other modules ignore it. */

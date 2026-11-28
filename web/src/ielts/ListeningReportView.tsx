@@ -1,4 +1,4 @@
-import { band, clock } from "./format";
+import { band, clock, encourage } from "./format";
 import type { ListeningReport } from "./listeningTypes";
 
 interface Props {
@@ -13,6 +13,7 @@ export function ListeningReportView({ report, onAnother }: Props) {
       <section className="ielts-hero" aria-label="Result">
         <p className="ielts-eyebrow">Mock Listening band</p>
         <p className="ielts-hero-band">{band(report.band)}</p>
+        <p className="ielts-encourage">{encourage(report.band)}</p>
         <p>
           Raw score {report.raw} of {report.total}.
           {report.total !== 40 && ` Scaled to ${report.scaled_40} of 40 for the band table.`}

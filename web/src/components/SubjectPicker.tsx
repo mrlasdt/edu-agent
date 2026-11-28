@@ -4,28 +4,36 @@ interface Props {
   onSelect: (subject: Subject) => void;
 }
 
+const CHOICES: { subject: Subject; label: string; hint: string }[] = [
+  { subject: "quant", label: "Quant", hint: "Work through GRE maths problems step by step." },
+  { subject: "aw", label: "AW", hint: "Get feedback on your GRE analytical writing." },
+  { subject: "ielts_writing", label: "IELTS Writing", hint: "Talk through your marked essay and what to fix first." },
+  { subject: "ielts_reading", label: "IELTS Reading", hint: "Review your Reading result and the questions you missed." },
+];
+
 export function SubjectPicker({ onSelect }: Props) {
   return (
     <div className="subject-picker" role="dialog" aria-label="Choose a subject">
       <h2>What are you working on today?</h2>
+      <p className="subject-lead">Pick a subject to start. Your tutor is ready when you are.</p>
       <div className="subject-buttons">
-        <button onClick={() => onSelect("quant")} aria-label="Quant">
-          Quant
-        </button>
-        <button onClick={() => onSelect("aw")} aria-label="AW">
-          AW
-        </button>
-        <button onClick={() => onSelect("ielts_writing")} aria-label="IELTS Writing">
-          IELTS Writing
-        </button>
-        <button onClick={() => onSelect("ielts_reading")} aria-label="IELTS Reading">
-          IELTS Reading
-        </button>
+        {CHOICES.map((c) => (
+          <button key={c.subject} onClick={() => onSelect(c.subject)} aria-label={c.label}>
+            <span className="subject-name">{c.label}</span>
+            <span className="subject-desc">{c.hint}</span>
+          </button>
+        ))}
       </div>
       <p className="subject-other">
-        The IELTS coaches work from a marked mock. <a href="/ielts-mock">Take an IELTS Writing mock</a>
+        <a className="subject-home" href="/ielts-mock?module=home">
+          Open IELTS practice: see your bands and what to do next
+        </a>
+      </p>
+      <p className="subject-other">
+        Want a timed practice test? <a href="/ielts-mock">Take an IELTS Writing mock</a>
         {" or "}
         <a href="/ielts-mock?module=reading">an IELTS Reading mock</a>
+        {". The IELTS coaches work from a marked mock."}
       </p>
     </div>
   );

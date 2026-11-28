@@ -16,6 +16,15 @@ const SUBJECT_TITLE: Record<Subject, string> = {
   ielts_mock: "IELTS full mock coach",
 };
 
+// Tap-to-fill starters for an empty chat. They only fill the box; the learner still presses Send.
+const STARTERS: Record<Subject, string[]> = {
+  quant: ["How do I find the average speed of a trip?", "Explain percent change", "Help me with ratios"],
+  aw: ["How should I structure an Analyze an Issue essay?", "What makes a strong thesis?"],
+  ielts_writing: ["What should I fix first?", "Why is my Coherence band low?"],
+  ielts_reading: ["Why did I miss the matching headings?", "How can I read faster?"],
+  ielts_mock: ["Which skill should I practise next?", "What does my overall band mean?"],
+};
+
 const isCoach = (subject: Subject) =>
   subject === "ielts_writing" || subject === "ielts_reading" || subject === "ielts_mock";
 
@@ -87,6 +96,19 @@ function Chat({ subject, attemptId }: { subject: Subject; attemptId?: string }) 
         )}
       </header>
       <section className="messages" aria-label="Conversation" aria-live="polite">
+        {messages.length === 0 && (
+          <div className="chat-empty">
+            <h2>Ask your first question</h2>
+            <p>Type below, or start from one of these.</p>
+            <div className="chat-suggestions">
+              {STARTERS[subject].map((s) => (
+                <button key={s} type="button" onClick={() => setDraft(s)}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {messages.map((m) => {
           // Rate a reply once it is complete and the gateway has named its turn.
           const canRate = m.role === "agent" && m.traceId && m.content && m.status !== "streaming";

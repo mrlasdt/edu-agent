@@ -106,6 +106,9 @@ export function ListeningSit({ attempt, onSubmitted, autosaveMs = LISTENING_AUTO
             {save === "error" && "Could not save - will retry"}
           </span>
         </div>
+        <div className="ielts-progress" role="progressbar" aria-label="Questions answered" aria-valuemin={0} aria-valuemax={total} aria-valuenow={answered}>
+          <span style={{ width: `${total ? (answered / total) * 100 : 0}%` }} />
+        </div>
       </div>
       {left === 0 && <p className="ielts-timeup">Time is up - submitting your answers.</p>}
       {bySection.map(({ s, qs }) => (

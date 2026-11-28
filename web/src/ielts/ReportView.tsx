@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { band, clock, signed } from "./format";
+import { band, clock, encourage, signed } from "./format";
 import { DISCLAIMER } from "./types";
 import type { CriterionReport, ErrorSpan, Report } from "./types";
 
@@ -145,6 +145,7 @@ export function ReportView({ report, essay, onAnother, attemptId, embedded = fal
           <p className="ielts-hero-band" aria-label={`Mock overall score ${band(est.overall)}`}>
             {band(est.overall)}
           </p>
+          <p className="ielts-encourage">{encourage(est.overall)}</p>
           <p>
             Most likely between {band(est.range[0])} and {band(est.range[1])}.
           </p>
