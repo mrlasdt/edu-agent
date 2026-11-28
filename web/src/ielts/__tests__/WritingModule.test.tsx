@@ -76,7 +76,7 @@ describe("WritingModule", () => {
     expect(await screen.findByText(/One 60:00 clock covers both tasks/)).toBeInTheDocument();
     expect(screen.getByText(NOTE)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "ielts-scoring-in-detail" })).toHaveAttribute("href", SOURCES[1]);
-    expect(screen.getByRole("link", { name: "Writing module" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Writing test" })).toHaveAttribute("aria-current", "page");
   });
 
   it("writes a letter then an essay on one clock, submits both, and shows one combined band", async () => {

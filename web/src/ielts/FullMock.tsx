@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../request";
-import { band } from "./format";
+import { band, encourage } from "./format";
 import { createMock, getMock, startMockModule } from "./mockApi";
 import type { MockReport, ModuleKey, ModuleStatus } from "./mockApi";
 import { ModuleNav } from "./ModuleNav";
@@ -203,11 +203,25 @@ export function FullMock({ pollMs = POLL_MS, autosaveMs }: FullMockProps) {
       {view.kind === "intro" && (
         <section className="ielts-ready" aria-label="Full mock">
           <h2>Full mock: Listening, Reading, then Writing</h2>
-          <ul className="ielts-rules">
+          <p className="ielts-hint">About 2 hours 30 minutes in total. You can stop between modules and come back.</p>
+          <ol className="mock-steps" aria-label="The three modules">
             <li>
-              You sit the modules in order: Listening (30 minutes, with sound on), Reading (60 minutes),
-              then Writing (60 minutes).
+              <strong>Listening</strong>
+              <span className="mock-step-time">30 min</span>
+              <span>Sound on. Four recordings, 40 questions.</span>
             </li>
+            <li>
+              <strong>Reading</strong>
+              <span className="mock-step-time">60 min</span>
+              <span>Three passages with the questions beside them.</span>
+            </li>
+            <li>
+              <strong>Writing</strong>
+              <span className="mock-step-time">60 min</span>
+              <span>A letter and an essay, each marked with a band.</span>
+            </li>
+          </ol>
+          <ul className="ielts-rules">
             <li>
               Each skill gets its own band, and the program combines them into one overall band. Speaking
               is not part of the mock yet, so the overall band is partial.
@@ -286,6 +300,7 @@ function Overview({
         ) : (
           <p className="ielts-hint">No skill has a band yet.</p>
         )}
+        {report.overall !== null && <p className="ielts-encourage">{encourage(report.overall)}</p>}
         <p>{report.overall_note}</p>
         <p className="ielts-hint">
           Rounding rule:{" "}
@@ -295,6 +310,12 @@ function Overview({
         </p>
         <p className="ielts-disclaimer">{report.disclaimer}</p>
       </section>
+      {next && (
+        <section className="ielts-next" aria-label="Next module">
+          <h2>Next: {next.label}</h2>
+          <p>{next.reason}</p>
+        </section>
+      )}
       <h2>Skills</h2>
       <ul className="ielts-skills" aria-label="Skill bands">
         {report.modules.map((m) => (
@@ -328,12 +349,6 @@ function Overview({
         <p className="ielts-hint" role="status" aria-live="polite">
           Marking your Writing. This usually takes under a minute.
         </p>
-      )}
-      {next && (
-        <section className="ielts-next" aria-label="Next module">
-          <h2>Next: {next.label}</h2>
-          <p>{next.reason}</p>
-        </section>
       )}
       <footer className="ielts-report-foot">
         {report.overall !== null && (

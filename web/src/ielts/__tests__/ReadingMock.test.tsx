@@ -92,7 +92,7 @@ describe("ReadingMock", () => {
     expect(screen.getByText(info.set_note)).toBeInTheDocument();
     expect(screen.getByText(info.keys_note)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "IELTS.org" })).toHaveAttribute("href", info.timing_source_url);
-    expect(screen.getByRole("link", { name: "Writing" })).toHaveAttribute("href", "/ielts-mock");
+    expect(screen.getByRole("link", { name: "Writing practice" })).toHaveAttribute("href", "/ielts-mock");
     expect(screen.getByRole("link", { name: "Reading" })).toHaveAttribute("aria-current", "page");
   });
 

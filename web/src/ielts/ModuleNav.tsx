@@ -1,14 +1,16 @@
 import { useEffect, useRef } from "react";
 
 /** The mock modules at /ielts-mock; the page has no router, so the others are `?module=...`. */
-type Current = "writing" | "writing-module" | "listening" | "reading" | "mock";
+type Current = "home" | "writing" | "writing-module" | "listening" | "reading" | "mock";
 
+// Plain names: "Writing test" is the timed letter + essay; "Writing practice" is one essay on a question you pick.
 const LINKS: { key: Current; label: string; href: string }[] = [
-  { key: "mock", label: "Full mock", href: "/ielts-mock?module=mock" },
-  { key: "writing", label: "Writing", href: "/ielts-mock" },
-  { key: "writing-module", label: "Writing module", href: "/ielts-mock?module=writing-module" },
+  { key: "home", label: "Home", href: "/ielts-mock?module=home" },
   { key: "listening", label: "Listening", href: "/ielts-mock?module=listening" },
   { key: "reading", label: "Reading", href: "/ielts-mock?module=reading" },
+  { key: "writing-module", label: "Writing test", href: "/ielts-mock?module=writing-module" },
+  { key: "writing", label: "Writing practice", href: "/ielts-mock" },
+  { key: "mock", label: "Full mock", href: "/ielts-mock?module=mock" },
 ];
 
 export function ModuleNav({ current }: { current: Current }) {

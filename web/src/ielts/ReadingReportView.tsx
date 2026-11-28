@@ -1,4 +1,4 @@
-import { band, clock } from "./format";
+import { band, clock, encourage } from "./format";
 import type { ReadingReport } from "./readingTypes";
 
 interface Props {
@@ -14,6 +14,7 @@ export function ReadingReportView({ attemptId, report, onAnother }: Props) {
       <section className="ielts-hero" aria-label="Result">
         <p className="ielts-eyebrow">Mock Reading band</p>
         <p className="ielts-hero-band">{band(report.band)}</p>
+        <p className="ielts-encourage">{encourage(report.band)}</p>
         <p>
           Raw score {report.raw} of {report.total}. Scaled to {report.scaled_40} of 40 for the band table.
         </p>
