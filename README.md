@@ -113,7 +113,7 @@ Candidate / Admin     ┌──────────────────�
 
 | Service | Port | Role |
 |---|---|---|
-| `web` | 5173 | React app behind nginx. `/` is the tutor chat, `/ielts-mock` the IELTS Writing mock; the report page links to the coach |
+| `web` | 5173 | React app behind nginx. `/` is the tutor chat, `/ielts-mock` the IELTS mocks (Writing practice by default, `?module=home` for the Home page); the report page links to the coach |
 | `gateway` | 8000 | `POST /chat`, `POST /feedback`, the `/ielts/*` mock API (grader code in `services/gateway/src/gateway/ielts/`), orchestrator, guardrails, rate limit |
 | `corpus` | 8001 | `POST /corpus/retrieve`: Qdrant dense + sparse search fused with RRF, ACL filter, optional rerank |
 | `agent` | 8002 | `POST /generate`: Quant, AW and IELTS Writing coach agents, capabilities, tools, critics |
@@ -148,6 +148,8 @@ Under each finished reply the chat page has a collapsed **Show working** panel, 
 
 ## IELTS Writing mock
 
+The mock pages share a module strip: Home, Listening, Reading, Writing test (the letter + essay module below), Writing practice (this section) and Full mock. `/ielts-mock?module=home` is the Home page: your latest band for each skill (read from the existing attempt APIs; "No band yet" when there is none), a recommended next step and a card for each test. Reports lead with the band and a short encouraging line.
+
 A timed Task 2 mock for the General Training test (40 minutes, server-side clock, 250+ words): pick one of 8 original prompts, write with a live word counter and autosave, submit (or time out), and get a mock score for each of the four criteria with evidence from your essay, next steps and an error table. Marking is three independent passes whose per-criterion median is the score, deterministic checks (length, paragraphs, off-topic or copied text, instructions aimed at the marker) and a written review whose quotes are verified against the essay. Every score is labelled an estimate, not an official IELTS result, and "uncalibrated" until the ADR-0014 gate is met. Attempts are stored in SQLite under `./ielts-local`. A marked report has a "Discuss this report" link that opens the chat coach on that attempt; paste a revised essay there and say "re-mark this" to get a practice re-mark (new band and the change since the mock).
 
 Without Docker: run the gateway (`uv run uvicorn services.gateway.src.gateway.main:app --port 8000`, `OPENROUTER_API_KEY` in the environment, or `OPENAI_API_KEY` with `MODEL_CONFIG_PATH=config/model_config.dev.yaml`) and `cd web && npm run dev`, then open http://localhost:5173/ielts-mock. The mock does not need Qdrant or the embedder.
@@ -166,7 +168,7 @@ A 30-minute General Training Listening mock at `/ielts-mock?module=listening`: f
 
 ## IELTS Reading mock
 
-A 60-minute General Training Reading mock at `/ielts-mock?module=reading` (the Writing and Reading links at the top of the page switch between modules). The clock is server-side and shares the Writing attempt store (module `ielts_reading`). It serves the committed golden passages and is marked in code, with no model call: answers are matched after normalisation and the report shows the raw score, a mock band, the score by question type and, for each miss, your answer, the key and the evidence sentence. Three limits are stated in the UI and the report:
+A 60-minute General Training Reading mock at `/ielts-mock?module=reading` (the links at the top of the page switch between modules). The clock is server-side and shares the Writing attempt store (module `ielts_reading`). It serves the committed golden passages and is marked in code, with no model call: answers are matched after normalisation and the report shows the raw score, a mock band, the score by question type and, for each miss, your answer, the key and the evidence sentence. Three limits are stated in the UI and the report:
 
 - The set has 41 items, not a full 40-question section, so the raw score is scaled to 40 before the band lookup.
 - The band table uses the anchors IDP publishes for General Training Reading (4 = 15, 5 = 23, 6 = 30, 7 = 34, 8 = 38 of 40, https://ielts.idp.com/bangladesh/results/scores/reading); half bands are interpolated.
@@ -185,7 +187,7 @@ A General Training Writing module at `/ielts-mock?module=writing-module`: Task 1
 
 ## IELTS full mock (Listening, Reading, then Writing)
 
-A full mock at `/ielts-mock?module=mock` ("Full mock" in the module links). "Start full mock" creates a mock record, then you sit Listening, then Reading, then Writing. The modules are the standalone Listening, Reading and Writing modules; the mock only links their attempts, so nothing is stored twice and the standalone pages keep working.
+A full mock at `/ielts-mock?module=mock` ("Full mock" in the module links). Its intro shows the three modules as step cards, and a mock's overview puts the next module first. "Start full mock" creates a mock record, then you sit Listening, then Reading, then Writing. The modules are the standalone Listening, Reading and Writing modules; the mock only links their attempts, so nothing is stored twice and the standalone pages keep working.
 
 - Each skill shows its own band. Speaking shows "Not assessed", so the overall band is marked partial.
 - Overall band = the mean of the assessed skill bands, rounded to the nearest half band by one shared `round_half_band` (a .25 rounds up to the next half, a .75 up to the next whole band). Example: Listening 7.0, Reading 6.0 and Writing 6.5 give 6.5. Rule: https://ielts.org/take-a-test/your-results/ielts-scoring-in-detail.

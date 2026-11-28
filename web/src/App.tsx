@@ -25,7 +25,7 @@ const STARTERS: Record<Subject, string[]> = {
   ielts_mock: ["Which skill should I practise next?", "What does my overall band mean?"],
 };
 
-const isCoach =(subject: Subject) =>
+const isCoach = (subject: Subject) =>
   subject === "ielts_writing" || subject === "ielts_reading" || subject === "ielts_mock";
 
 // A mock report's "Discuss" link opens the coach on that attempt: /?attempt=<id>, plus
