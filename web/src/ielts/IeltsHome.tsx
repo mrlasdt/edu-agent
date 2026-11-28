@@ -125,6 +125,7 @@ interface HomeData {
   bands: Bands;
   mock: MockReport | null;
   speakingNote: SpeakingNote | null;
+  realSpeaking: number | undefined;
 }
 
 /** The learner's latest band per skill: the newest marked attempt in each existing list API. */
@@ -149,19 +150,19 @@ async function loadBands(signal: AbortSignal): Promise<HomeData> {
     writingModule.find((a) => a.writing_band !== null)?.writing_band ?? fromMocks("writing");
   const marked = speaking.find((a) => a.band !== null);
   bands.speaking = marked?.band ?? fromMocks("speaking");
+  const realSpeaking = speaking.find((a) => a.band !== null && !a.paper.sample)?.band ?? fromMocks("speaking");
   const speakingNote = marked ? { sample: marked.paper.sample, partial: marked.partial === true } : null;
   bands.mock = mocks.find((m) => m.overall !== null)?.overall ?? undefined;
-  return { bands, mock, speakingNote };
+  return { bands, mock, speakingNote, realSpeaking };
 }
 
 /** The first skill with no band yet, so a new learner always has one obvious next step. */
 function recommend(
   shown: Bands,
   mock: MockReport | null,
-  speakingNote: SpeakingNote | null
+  realSpeaking: number | undefined
 ): { key: SkillKey; reason: string } {
-  const bands: Bands = { ...shown };
-  if (speakingNote?.sample) delete bands.speaking;
+  const bands: Bands = { ...shown, speaking: realSpeaking };
   const next = mock?.next_module;
   if (next) {
     const key = next.key === "writing" ? "writing-module" : next.key;
@@ -187,11 +188,11 @@ export function IeltsHome() {
     const controller = new AbortController();
     loadBands(controller.signal)
       .then(setData)
-      .catch(() => setData({ bands: {}, mock: null, speakingNote: null }));
+      .catch(() => setData({ bands: {}, mock: null, speakingNote: null, realSpeaking: undefined }));
     return () => controller.abort();
   }, []);
 
-  const rec = data ? recommend(data.bands, data.mock, data.speakingNote) : null;
+  const rec = data ? recommend(data.bands, data.mock, data.realSpeaking) : null;
   const recCard = rec ? CARDS.find((c) => c.key === rec.key) : undefined;
   const tried = data ? Object.values(data.bands).filter((b) => b !== undefined).length : 0;
 

@@ -97,6 +97,33 @@ describe("IeltsHome Speaking card", () => {
     expect(screen.getByText(/record your Speaking answers/)).toBeInTheDocument();
   });
 
+  it("keeps a real Speaking band counting when a newer quick sample sits on top", async () => {
+    apis.listListenings.mockResolvedValue([{ band: 7 }]);
+    apis.listReadings.mockResolvedValue([{ band: 7 }]);
+    apis.listWritingModules.mockResolvedValue([{ writing_band: 7 }]);
+    apis.listSpeakings.mockResolvedValue([
+      { band: 8, partial: true, paper: { sample: true } },
+      { band: 6.5, partial: false, paper: { sample: false } },
+    ]);
+    render(<IeltsHome />);
+    expect(await screen.findByRole("heading", { name: /Speaking is next/ })).toBeInTheDocument();
+    expect(screen.getByText(/lowest band/)).toBeInTheDocument();
+    expect(screen.queryByText(/record your Speaking answers/)).not.toBeInTheDocument();
+  });
+
+  it("falls back to the full mock Speaking band behind a quick sample", async () => {
+    apis.listListenings.mockResolvedValue([{ band: 6 }]);
+    apis.listReadings.mockResolvedValue([{ band: 6 }]);
+    apis.listWritingModules.mockResolvedValue([{ writing_band: 6 }]);
+    apis.listSpeakings.mockResolvedValue([{ band: 8, partial: true, paper: { sample: true } }]);
+    apis.listMocks.mockResolvedValue([
+      { overall: null, next_module: null, modules: [{ key: "speaking", band: 5 }] },
+    ]);
+    render(<IeltsHome />);
+    expect(await screen.findByText(/lowest band/)).toBeInTheDocument();
+    expect(screen.queryByText(/record your Speaking answers/)).not.toBeInTheDocument();
+  });
+
   it("ignores a sample band when picking the lowest real band", async () => {
     apis.listListenings.mockResolvedValue([{ band: 7 }]);
     apis.listReadings.mockResolvedValue([{ band: 6 }]);
