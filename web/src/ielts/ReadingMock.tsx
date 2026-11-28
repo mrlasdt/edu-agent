@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ApiError } from "../request";
 import { ModuleNav } from "./ModuleNav";
+import { SAMPLE_HINT } from "./SampleBadge";
 import { ReadingReportView } from "./ReadingReportView";
 import { ReadingSit } from "./ReadingSit";
 import {
@@ -88,11 +89,11 @@ export function ReadingMock({ autosaveMs }: ReadingMockProps) {
     };
   }, []);
 
-  async function begin() {
+  async function begin(sample = false) {
     setBusy(true);
     setNotice(null);
     try {
-      const created = await createReading();
+      const created = await createReading(sample);
       remember(created.id);
       setView({ kind: "sit", attempt: await startReading(created.id) });
     } catch (err) {
@@ -159,6 +160,9 @@ export function ReadingMock({ autosaveMs }: ReadingMockProps) {
           <div className="ielts-actions">
             <button className="ielts-primary" onClick={() => void begin()} disabled={busy}>
               {busy ? "Starting..." : "Start the 60 minutes"}
+            </button>
+            <button onClick={() => void begin(true)} disabled={busy} title={SAMPLE_HINT}>
+              Quick sample test (3 minutes)
             </button>
           </div>
         </div>

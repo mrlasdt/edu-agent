@@ -33,6 +33,11 @@ DIGEST_TITLES = {
 }
 DIGEST_TITLE = DIGEST_TITLES["T2"]
 
+SAMPLE_DIGEST_NOTE = (
+    "SAMPLE: this was a quick sample test (a handful of items on a short clock, to check the "
+    "flow), not a real mock. Its band is NOT a real mock score and must not be compared with one."
+)
+
 
 def wrap(title: str, body: str) -> str:
     """The body between markers derived from its own content, under a title that says it is data."""
@@ -157,9 +162,16 @@ MODULE_REMARK_UNAVAILABLE = (
     "sit a standalone Task 2."
 )
 
-# Two task digests and the band line must fit the one digest the agent service accepts.
-MODULE_TASK_BODY_CHARS = 3_600
-assert 2 * (MODULE_TASK_BODY_CHARS + 200) + 200 <= MAX_REPORT_DIGEST_CHARS
+# The sample note, the band line, the remark and two task digests must fit the one digest the
+# agent service accepts.
+MODULE_BAND_LINE_CHARS = 300
+MODULE_TASK_BODY_CHARS = 3_400
+_WRAP_CHARS = max(len(wrap(t, "")) for t in DIGEST_TITLES.values())
+MODULE_DIGEST_WORST_CHARS = (
+    len(SAMPLE_DIGEST_NOTE) + MODULE_BAND_LINE_CHARS + len(MODULE_REMARK_UNAVAILABLE)
+    + 2 * (MODULE_TASK_BODY_CHARS + _WRAP_CHARS) + 4 * len("\n\n")
+)
+assert MODULE_DIGEST_WORST_CHARS <= MAX_REPORT_DIGEST_CHARS
 
 
 def build_module_digest(
@@ -181,4 +193,6 @@ def build_module_digest(
         if report.writing_band is not None else
         "Combined Writing band: not given, because only one task could be marked."
     )
-    return "\n\n".join([line(band, 300), MODULE_REMARK_UNAVAILABLE, *parts])
+    head = [SAMPLE_DIGEST_NOTE] if report.sample else []
+    band_line = line(band, MODULE_BAND_LINE_CHARS)
+    return "\n\n".join([*head, band_line, MODULE_REMARK_UNAVAILABLE, *parts])

@@ -143,6 +143,25 @@ describe("ListeningMock", () => {
     expect(screen.getByText("Clerk: Good morning.")).toBeInTheDocument();
   });
 
+  it("the clock turns urgent only in the last minute of a sample but the last 5 minutes of the real test", async () => {
+    window.localStorage.setItem("ielts.listening.attempt", "a1");
+    const urgent = () => screen.getByRole("timer").parentElement!.classList.contains("ielts-clock--urgent");
+    api.getListening.mockResolvedValue(attempt({ sample: true, remaining_s: 150 }));
+    const first = render(<ListeningMock />);
+    await screen.findByRole("timer");
+    expect(urgent()).toBe(false);
+    first.unmount();
+    api.getListening.mockResolvedValue(attempt({ sample: true, remaining_s: 50 }));
+    const second = render(<ListeningMock />);
+    await screen.findByRole("timer");
+    expect(urgent()).toBe(true);
+    second.unmount();
+    api.getListening.mockResolvedValue(attempt({ remaining_s: 250 }));
+    render(<ListeningMock />);
+    await screen.findByRole("timer");
+    expect(urgent()).toBe(true);
+  });
+
   it("resumes an attempt in progress with its saved answers", async () => {
     window.localStorage.setItem("ielts.listening.attempt", "a1");
     api.getListening.mockResolvedValue(attempt({ remaining_s: 900, answers: { q3: "A" } }));

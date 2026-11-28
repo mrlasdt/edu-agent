@@ -79,6 +79,28 @@ describe("WritingModule", () => {
     expect(screen.getByRole("link", { name: "Writing module" })).toHaveAttribute("aria-current", "page");
   });
 
+  it("shows a short sample target, not the real 150/250 minimums, on a sample attempt", async () => {
+    window.localStorage.setItem("ielts.writingmodule.attempt", "m1");
+    api.getWritingModule.mockResolvedValue(attempt({ sample: true, allowed_s: 240, remaining_s: 240 }));
+    render(<WritingModule />);
+    expect(await screen.findByText(/Sample target: about 50 words/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Word count")).toHaveTextContent("Letter 0/50 - Essay 0/50 words");
+    expect(screen.queryByText(/at least 150/)).not.toBeInTheDocument();
+  });
+
+  it("checks the submit confirmation against the short sample target on a sample attempt", async () => {
+    window.localStorage.setItem("ielts.writingmodule.attempt", "m1");
+    api.getWritingModule.mockResolvedValue(attempt({ sample: true, allowed_s: 240, remaining_s: 240 }));
+    render(<WritingModule />);
+    const words = (n: number) => Array.from({ length: n }, () => "word").join(" ");
+    fireEvent.change(await screen.findByLabelText("Your letter"), { target: { value: words(40) } });
+    await userEvent.click(screen.getByRole("tab", { name: "Task 2 - Essay" }));
+    fireEvent.change(screen.getByLabelText("Your essay"), { target: { value: words(60) } });
+
+    await userEvent.click(screen.getByRole("button", { name: "Submit both tasks for marking" }));
+    expect(screen.getByText("Under the minimum: letter 40/50. Submit anyway?")).toBeInTheDocument();
+  });
+
   it("writes a letter then an essay on one clock, submits both, and shows one combined band", async () => {
     api.createWritingModule.mockResolvedValue(attempt({ status: "created", remaining_s: null }));
     api.startWritingModule.mockResolvedValue(attempt());

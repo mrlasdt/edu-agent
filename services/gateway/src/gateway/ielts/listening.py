@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -85,6 +85,19 @@ KEYS_NOTE = (
     "The scripts, questions and answer keys are written by the project's authors and have not "
     "been checked by a human, and the voices are text-to-speech. Each key shows the sentence it "
     "rests on, and the full transcript is shown after you submit, so you can judge for yourself."
+)
+
+# The quick sample test: the first recording only, with the questions heard early in it and one
+# multiple-choice. Same items, keys, audio, marking and band table as the full paper.
+SAMPLE_SECTION = "s1"
+SAMPLE_QUESTION_IDS = (
+    "ielts_listening_s1_q01", "ielts_listening_s1_q02", "ielts_listening_s1_q03",
+    "ielts_listening_s1_q04", "ielts_listening_s1_q09",
+)
+SAMPLE_NOTE = (
+    "SAMPLE: a quick test of 5 questions on the first recording, for checking the flow in a few "
+    "minutes. The band below scales 5 questions to a 40-mark table, so it is NOT comparable to "
+    "a real mock score. Take the full Listening mock for a real estimate."
 )
 
 TASK_LABELS = {
@@ -183,6 +196,19 @@ def get_set() -> ListeningSet:
     return load_set()
 
 
+def sample_of(paper: ListeningSet) -> ListeningSet:
+    """The quick sample test: a subset of the paper's own items, renumbered from 1."""
+    wanted = [q for q in paper.questions if q.id in SAMPLE_QUESTION_IDS]
+    questions = tuple(replace(q, number=i) for i, q in enumerate(wanted, start=1))
+    sections = tuple(s for s in paper.sections if s.id == SAMPLE_SECTION)
+    return ListeningSet(paper.id + "-sample", paper.style, sections, questions)
+
+
+@lru_cache
+def get_sample_set() -> ListeningSet:
+    return sample_of(get_set())
+
+
 def is_correct(question: Question, answer: str) -> bool:
     given = normalise(answer)
     return bool(given) and given in {normalise(k) for k in (question.key, *question.accept)}
@@ -198,7 +224,9 @@ def _label(question: Question, value: str) -> str:
     return value
 
 
-def mark(paper: ListeningSet, answers: dict[str, str], timing: Timing) -> ListeningReport:
+def mark(
+    paper: ListeningSet, answers: dict[str, str], timing: Timing, sample: bool = False
+) -> ListeningReport:
     """Mark the answers (question id to answer) against the keys. Pure code, no model."""
     titles = {s.id: s.title for s in paper.sections}
     results: list[QuestionResult] = []
@@ -228,8 +256,9 @@ def mark(paper: ListeningSet, answers: dict[str, str], timing: Timing) -> Listen
             SectionTranscript(id=s.id, title=s.title, lines=list(s.transcript))
             for s in paper.sections
         ],
-        band_note=BAND_TABLE_NOTE, set_note=SET_NOTE, keys_note=KEYS_NOTE,
-        band_source_url=BAND_SOURCE_URL, timing_source_url=TIMING_SOURCE_URL,
+        band_note=BAND_TABLE_NOTE, set_note=SAMPLE_NOTE if sample else SET_NOTE,
+        keys_note=KEYS_NOTE, band_source_url=BAND_SOURCE_URL, timing_source_url=TIMING_SOURCE_URL,
+        sample=sample,
     )
 
 

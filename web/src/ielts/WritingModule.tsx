@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "../request";
 import { band, clock } from "./format";
 import { ModuleNav } from "./ModuleNav";
+import { SAMPLE_HINT, SampleBadge } from "./SampleBadge";
 import { ReportView } from "./ReportView";
 import { DISCLAIMER } from "./types";
 import { WritingModuleSit } from "./WritingModuleSit";
@@ -145,9 +146,9 @@ export function WritingModule({ pollMs = POLL_MS, autosaveMs }: WritingModulePro
     }
   }
 
-  const begin = () =>
+  const begin = (sample = false) =>
     run(async () => {
-      const created = await createWritingModule();
+      const created = await createWritingModule(sample);
       remember(created.id);
       setView({ kind: "sit", attempt: await startWritingModule(created.id) });
     });
@@ -208,6 +209,9 @@ export function WritingModule({ pollMs = POLL_MS, autosaveMs }: WritingModulePro
             <button className="ielts-primary" onClick={() => void begin()} disabled={busy}>
               {busy ? "Starting..." : "Start the 60 minute clock"}
             </button>
+            <button onClick={() => void begin(true)} disabled={busy} title={SAMPLE_HINT}>
+              Quick sample test (4 minutes)
+            </button>
           </div>
         </section>
       )}
@@ -250,7 +254,10 @@ export function WritingModule({ pollMs = POLL_MS, autosaveMs }: WritingModulePro
         <article className="ielts-report" aria-label="Writing module report">
           {view.report.writing_band !== null ? (
             <section className="ielts-hero" aria-label="Combined Writing band">
-              <p className="ielts-eyebrow">Combined Writing band (mock score)</p>
+              <p className="ielts-eyebrow">
+                {view.report.sample && <SampleBadge />}{" "}
+                {view.report.sample ? "Sample Writing band (not a real mock score)" : "Combined Writing band (mock score)"}
+              </p>
               <p className="ielts-hero-band" aria-label={`Mock Writing band ${band(view.report.writing_band)}`}>
                 {band(view.report.writing_band)}
               </p>

@@ -9,7 +9,7 @@ miss the matching headings?" from the evidence and cannot reproduce the paper.
 """
 from __future__ import annotations
 
-from services.gateway.src.gateway.ielts.digest import line, wrap
+from services.gateway.src.gateway.ielts.digest import SAMPLE_DIGEST_NOTE, line, wrap
 from services.gateway.src.gateway.ielts.models import QuestionResult, ReadingReport
 from shared.src.shared.wire import MAX_REPORT_DIGEST_CHARS
 
@@ -37,7 +37,8 @@ def _missed_lines(q: QuestionResult, prompt_limit: int, evidence_limit: int) -> 
 
 def _body(report: ReadingReport, prompt_limit: int, evidence_limit: int) -> str:
     t = report.timing
-    lines = [
+    lines = [SAMPLE_DIGEST_NOTE] if report.sample else []
+    lines += [
         f"Paper: a partial IELTS General Training Reading mock, {report.total} questions on "
         f"{len({q.passage for q in report.questions})} short passages (not a full 40-question "
         "paper). The answers were marked by program code against author-written keys that no "

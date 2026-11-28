@@ -50,6 +50,7 @@ export interface ListeningAttempt {
   raw: number | null;
   scaled_40: number | null;
   paper: { sections: Section[]; questions: ListeningQuestion[] } | null;
+  sample?: boolean;
 }
 
 export interface SectionTranscript {
@@ -74,4 +75,5 @@ export interface ListeningReport {
   band_source_url: string;
   timing_source_url: string;
   disclaimer: string;
+  sample?: boolean;
 }

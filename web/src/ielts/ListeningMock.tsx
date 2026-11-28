@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ApiError } from "../request";
 import { ModuleNav } from "./ModuleNav";
+import { SAMPLE_HINT } from "./SampleBadge";
 import { ListeningReportView } from "./ListeningReportView";
 import { ListeningSit } from "./ListeningSit";
 import {
@@ -88,11 +89,11 @@ export function ListeningMock({ autosaveMs }: ListeningMockProps) {
     };
   }, []);
 
-  async function begin() {
+  async function begin(sample = false) {
     setBusy(true);
     setNotice(null);
     try {
-      const created = await createListening();
+      const created = await createListening(sample);
       remember(created.id);
       setView({ kind: "sit", attempt: await startListening(created.id) });
     } catch (err) {
@@ -163,6 +164,9 @@ export function ListeningMock({ autosaveMs }: ListeningMockProps) {
           <div className="ielts-actions">
             <button className="ielts-primary" onClick={() => void begin()} disabled={busy}>
               {busy ? "Starting..." : `Start the ${view.info.allowed_s / 60} minutes`}
+            </button>
+            <button onClick={() => void begin(true)} disabled={busy} title={SAMPLE_HINT}>
+              Quick sample test (about 4 minutes)
             </button>
           </div>
         </div>

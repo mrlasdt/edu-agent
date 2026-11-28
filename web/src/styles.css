@@ -103,6 +103,7 @@ a.ielts-primary { display: inline-block; box-sizing: border-box; min-height: 40p
 @media (prefers-color-scheme: dark) { .ielts-primary { color: #10131f; } }
 .ielts-hint { font-size: 0.85rem; opacity: 0.75; }
 .ielts-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.ielts-sample-badge { display: inline-block; padding: 1px 8px; border: 1px solid #b45309; border-radius: 4px; background: #fef3c7; color: #78350f; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; }
 .ielts-eyebrow { margin: 0 0 4px; font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.7; }
 .ielts-error { padding: 10px 12px; border-radius: 8px; background: var(--bad-bg); color: var(--bad); }
 .ielts-chip { display: inline-block; padding: 1px 8px; border: 1px solid var(--border); border-radius: 999px; font-size: 0.78rem; white-space: nowrap; }

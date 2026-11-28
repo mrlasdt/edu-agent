@@ -166,6 +166,10 @@ _Avoid_: Truncation, memory
 A timed practice attempt shaped like part of the IELTS exam, for the General Training variant (Task 2 is the same for both variants). Always called a "mock", never an official IELTS test or result. Writing Task 2 (ADR-0014), the Writing module (a Task 1 letter plus Task 2 on one 60-minute clock, one combined band weighting Task 2 twice as much), Listening (marked in code; recordings made once at build time with text-to-speech and replayed for every attempt), Reading (marked in code, no model call) and the full mock across them exist so far.
 _Avoid_: IELTS test, official mock, IELTS simulator, IELTS-style
 
+**Sample test**:
+A quick version of any IELTS mock (Reading, Listening, Writing module or the full mock): a handful of the real items on a short clock, started from the same page, run through the same attempt, marking, band and report path, and always labelled SAMPLE. Its band is never a mock score and it is kept out of the real history. It exists so every slice can be checked end to end in about 5 minutes instead of an hour.
+_Avoid_: Demo, practice mode, short mock
+
 **Attempt**:
 One candidate's run of a mock on one question: created, started (the server fixes the deadline), autosaved, submitted, then marked. The server's clock decides the deadline and whether a submission is late; the browser only displays it.
 _Avoid_: Session (that is a tutoring conversation), submission

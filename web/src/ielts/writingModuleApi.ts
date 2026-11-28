@@ -10,8 +10,8 @@ const base = "/ielts/writing";
 
 export const writingModuleInfo = (signal?: AbortSignal) =>
   requestJson<WritingModuleInfo>(`${base}/info`, { signal });
-export const createWritingModule = () =>
-  requestJson<WritingModuleAttempt>(`${base}/attempts`, { method: "POST", json: {} });
+export const createWritingModule = (sample = false) =>
+  requestJson<WritingModuleAttempt>(`${base}/attempts`, { method: "POST", json: sample ? { sample } : {} });
 export const getWritingModule = (id: string, signal?: AbortSignal) =>
   requestJson<WritingModuleAttempt>(`${base}/attempts/${id}`, { signal });
 export const startWritingModule = (id: string) =>

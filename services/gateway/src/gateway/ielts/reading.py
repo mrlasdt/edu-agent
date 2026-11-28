@@ -26,7 +26,7 @@ import hashlib
 import json
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 
@@ -67,6 +67,20 @@ KEYS_NOTE = (
     "The answer keys are written by the project's authors and have not been checked by a human, "
     "so a True / False / Not Given or other key may be arguable. Each key shows the sentence it "
     "rests on, so you can judge for yourself."
+)
+
+# The quick sample test: one short passage and one question of each task type. Same items, keys,
+# marking and band table as the full paper, so it exercises the same path in a few minutes.
+SAMPLE_PASSAGE = "city_bees"
+SAMPLE_QUESTION_IDS = (
+    "ielts_reading_city_bees_tfng_1", "ielts_reading_city_bees_tfng_2",
+    "ielts_reading_city_bees_fill_1", "ielts_reading_city_bees_mcq_1",
+    "ielts_reading_city_bees_match_1",
+)
+SAMPLE_NOTE = (
+    "SAMPLE: a quick test of 5 questions on one passage, for checking the flow in a few minutes. "
+    "The band below scales 5 questions to a 40-mark table, so it is NOT comparable to a real mock "
+    "score. Take the full Reading mock for a real estimate."
 )
 
 TASK_LABELS = {
@@ -142,6 +156,19 @@ def get_set() -> ReadingSet:
     return load_set()
 
 
+def sample_of(paper: ReadingSet) -> ReadingSet:
+    """The quick sample test: a subset of the paper's own items, renumbered from 1."""
+    wanted = [q for q in paper.questions if q.id in SAMPLE_QUESTION_IDS]
+    questions = tuple(replace(q, number=i) for i, q in enumerate(wanted, start=1))
+    passages = tuple(p for p in paper.passages if p.id == SAMPLE_PASSAGE)
+    return ReadingSet(paper.id + "-sample", passages, questions)
+
+
+@lru_cache
+def get_sample_set() -> ReadingSet:
+    return sample_of(get_set())
+
+
 _NOT_WORD = re.compile(r"[^\w\s]")
 
 
@@ -192,7 +219,7 @@ def read_answers(text: str) -> dict[str, str]:
 
 
 def mark(
-    paper: ReadingSet, answers: dict[str, str], timing: Timing
+    paper: ReadingSet, answers: dict[str, str], timing: Timing, sample: bool = False
 ) -> ReadingReport:
     """Mark the answers (question id to answer) against the keys. Pure code, no model."""
     titles = {p.id: p.title for p in paper.passages}
@@ -218,6 +245,7 @@ def mark(
             TypeScore(task_type=t, label=TASK_LABELS.get(t, t), correct=c, total=n)
             for t, (c, n) in tallies.items()
         ],
-        questions=results, band_note=BAND_TABLE_NOTE, set_note=SET_NOTE, keys_note=KEYS_NOTE,
-        band_source_url=BAND_SOURCE_URL, timing_source_url=TIMING_SOURCE_URL,
+        questions=results, band_note=BAND_TABLE_NOTE, set_note=SAMPLE_NOTE if sample else SET_NOTE,
+        keys_note=KEYS_NOTE, band_source_url=BAND_SOURCE_URL, timing_source_url=TIMING_SOURCE_URL,
+        sample=sample,
     )
