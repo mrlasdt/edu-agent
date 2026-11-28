@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { listAttempts } from "./api";
 import { band } from "./format";
-import { getListening } from "./listeningApi";
-import { getMock } from "./mockApi";
+import { listListenings } from "./listeningApi";
+import { listMocks } from "./mockApi";
 import type { MockReport } from "./mockApi";
 import { ModuleNav } from "./ModuleNav";
-import { getReading } from "./readingApi";
-import { getWritingModule } from "./writingModuleApi";
+import { listReadings } from "./readingApi";
+import { listWritingModules } from "./writingModuleApi";
 
 type SkillKey = "listening" | "reading" | "writing-module" | "writing" | "mock";
 
@@ -103,36 +103,26 @@ const CARDS: Card[] = [
 
 type Bands = Partial<Record<SkillKey, number>>;
 
-const remembered = (key: string) => {
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-};
-
-/** The learner's latest band per skill, from attempts the existing APIs already return. */
+/** The learner's latest band per skill: the newest marked attempt in each existing list API. */
 async function loadBands(signal: AbortSignal): Promise<{ bands: Bands; mock: MockReport | null }> {
-  const quiet = <T,>(p: Promise<T>) => p.catch(() => null);
-  const readingId = remembered("ielts.reading.attempt");
-  const listeningId = remembered("ielts.listening.attempt");
-  const writingModuleId = remembered("ielts.writingmodule.attempt");
-  const mockId = remembered("ielts.fullmock.id");
-  const [writing, reading, listening, writingModule, mock] = await Promise.all([
+  const quiet = <T,>(p: Promise<T[]>) => p.catch(() => [] as T[]);
+  const [writing, reading, listening, writingModule, mocks] = await Promise.all([
     quiet(listAttempts(signal)),
-    readingId ? quiet(getReading(readingId, signal)) : null,
-    listeningId ? quiet(getListening(listeningId, signal)) : null,
-    writingModuleId ? quiet(getWritingModule(writingModuleId, signal)) : null,
-    mockId ? quiet(getMock(mockId, signal)) : null,
+    quiet(listReadings(signal)),
+    quiet(listListenings(signal)),
+    quiet(listWritingModules(signal)),
+    quiet(listMocks(signal)),
   ]);
-  const fromMock = (key: string) => mock?.modules.find((m) => m.key === key)?.band ?? undefined;
+  const mock = mocks[0] ?? null;
+  const fromMocks = (key: string) =>
+    mocks.map((m) => m.modules.find((s) => s.key === key)?.band).find((b) => b != null) ?? undefined;
   const bands: Bands = {};
-  const writingBand = writing?.find((a) => a.overall !== null)?.overall;
-  bands.writing = writingBand ?? undefined;
-  bands.reading = reading?.band ?? fromMock("reading");
-  bands.listening = listening?.band ?? fromMock("listening");
-  bands["writing-module"] = writingModule?.writing_band ?? fromMock("writing");
-  bands.mock = mock?.overall ?? undefined;
+  bands.writing = writing.find((a) => a.overall !== null)?.overall ?? undefined;
+  bands.reading = reading.find((a) => a.band !== null)?.band ?? fromMocks("reading");
+  bands.listening = listening.find((a) => a.band !== null)?.band ?? fromMocks("listening");
+  bands["writing-module"] =
+    writingModule.find((a) => a.writing_band !== null)?.writing_band ?? fromMocks("writing");
+  bands.mock = mocks.find((m) => m.overall !== null)?.overall ?? undefined;
   return { bands, mock };
 }
 
@@ -215,7 +205,7 @@ export function IeltsHome() {
                         <strong>{band(b)}</strong>
                       </>
                     ) : (
-                      <span>Not tried yet</span>
+                      <span>No band yet</span>
                     )}
                   </p>
                   <a className="home-cta" href={c.href}>

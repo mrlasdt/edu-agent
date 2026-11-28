@@ -4,7 +4,9 @@ import type { ReadingAttempt, ReadingInfo, ReadingReport } from "./readingTypes"
 const base = "/ielts/reading";
 
 export const readingInfo = (signal?: AbortSignal) => requestJson<ReadingInfo>(`${base}/info`, { signal });
-export const createReading = () => requestJson<ReadingAttempt>(`${base}/attempts`, { method: "POST" });
+export const listReadings = (signal?: AbortSignal) =>
+  requestJson<ReadingAttempt[]>(`${base}/attempts`, { signal });
+export const createReading =() => requestJson<ReadingAttempt>(`${base}/attempts`, { method: "POST" });
 export const getReading = (id: string, signal?: AbortSignal) =>
   requestJson<ReadingAttempt>(`${base}/attempts/${id}`, { signal });
 export const startReading = (id: string) =>
