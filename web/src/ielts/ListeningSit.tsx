@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../request";
 import { saveListeningAnswers, submitListening } from "./listeningApi";
 import type { ListeningAttempt, Section } from "./listeningTypes";
-import { clock } from "./format";
+import { clock, clockWarnAtS } from "./format";
 import { Field } from "./ReadingSit";
 import { SampleBadge } from "./SampleBadge";
 import { useCountdown } from "./useCountdown";
@@ -92,7 +92,7 @@ export function ListeningSit({ attempt, onSubmitted, autosaveMs = LISTENING_AUTO
   return (
     <div className="ielts-writing reading-sit listening-sit">
       <div className="ielts-bar">
-        <div className={`ielts-clock${left <= 300 ? " ielts-clock--urgent" : ""}`}>
+        <div className={`ielts-clock${left <= clockWarnAtS(attempt.sample) ? " ielts-clock--urgent" : ""}`}>
           <span className="ielts-clock-digits" role="timer" aria-label="Time left">
             {clock(left)}
           </span>

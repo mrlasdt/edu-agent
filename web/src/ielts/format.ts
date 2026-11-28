@@ -17,3 +17,7 @@ export function signed(delta: number): string {
   if (delta === 0) return "no change";
   return `${delta > 0 ? "+" : "-"}${Math.abs(delta).toFixed(1)}`;
 }
+
+export function clockWarnAtS(sample: boolean | undefined): number {
+  return sample ? 60 : 5 * 60;
+}

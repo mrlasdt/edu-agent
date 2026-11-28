@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../request";
 import { saveReadingAnswers, submitReading } from "./readingApi";
 import type { Passage, Question, ReadingAttempt } from "./readingTypes";
-import { clock } from "./format";
+import { clock, clockWarnAtS } from "./format";
 import { SampleBadge } from "./SampleBadge";
 import { useCountdown } from "./useCountdown";
 
@@ -121,7 +121,7 @@ export function ReadingSit({ attempt, onSubmitted, autosaveMs = READING_AUTOSAVE
   return (
     <div className="ielts-writing reading-sit">
       <div className="ielts-bar">
-        <div className={`ielts-clock${left <= 300 ? " ielts-clock--urgent" : ""}`}>
+        <div className={`ielts-clock${left <= clockWarnAtS(attempt.sample) ? " ielts-clock--urgent" : ""}`}>
           <span className="ielts-clock-digits" role="timer" aria-label="Time left">
             {clock(left)}
           </span>

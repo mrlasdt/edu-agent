@@ -150,6 +150,25 @@ describe("ReadingMock", () => {
     expect(screen.queryByText("SAMPLE")).not.toBeInTheDocument();
   });
 
+  it("the clock turns urgent only in the last minute of a sample but the last 5 minutes of the real test", async () => {
+    window.localStorage.setItem("ielts.reading.attempt", "a1");
+    const urgent = () => screen.getByRole("timer").parentElement!.classList.contains("ielts-clock--urgent");
+    api.getReading.mockResolvedValue(attempt({ sample: true, remaining_s: 150 }));
+    const first = render(<ReadingMock />);
+    await screen.findByRole("timer");
+    expect(urgent()).toBe(false);
+    first.unmount();
+    api.getReading.mockResolvedValue(attempt({ sample: true, remaining_s: 50 }));
+    const second = render(<ReadingMock />);
+    await screen.findByRole("timer");
+    expect(urgent()).toBe(true);
+    second.unmount();
+    api.getReading.mockResolvedValue(attempt({ remaining_s: 250 }));
+    render(<ReadingMock />);
+    await screen.findByRole("timer");
+    expect(urgent()).toBe(true);
+  });
+
   it("resumes an attempt in progress with its saved answers", async () => {
     window.localStorage.setItem("ielts.reading.attempt", "a1");
     api.getReading.mockResolvedValue(attempt({ remaining_s: 1800, answers: { q3: "A" } }));

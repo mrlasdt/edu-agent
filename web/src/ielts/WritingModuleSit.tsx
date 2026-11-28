@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../request";
-import { clock, countWords } from "./format";
+import { clock, clockWarnAtS, countWords } from "./format";
 import { SampleBadge } from "./SampleBadge";
 import { saveWritingModuleDraft, submitWritingModule } from "./writingModuleApi";
 import {
@@ -19,8 +19,6 @@ interface Props {
   autosaveMs?: number;
 }
 
-const WARN_AT_S = 5 * 60;
-const SAMPLE_WARN_AT_S = 60;
 const SAVE_MS = 10_000;
 const TASKS: { key: TaskKey; tab: string; label: string; min: number; minutes: number }[] = [
   { key: "t1", tab: "Task 1 - Letter", label: "Your letter", min: LETTER_MINIMUM_WORDS, minutes: 20 },
@@ -86,7 +84,7 @@ export function WritingModuleSit({ attempt, onSubmitted, autosaveMs = SAVE_MS }:
   const task = TASKS.find((t) => t.key === active)!;
   const view = active === "t1" ? attempt.t1 : attempt.t2;
   const words = { t1: countWords(texts.t1), t2: countWords(texts.t2) };
-  const urgent = countdown.left <= (attempt.sample ? SAMPLE_WARN_AT_S : WARN_AT_S);
+  const urgent = countdown.left <= clockWarnAtS(attempt.sample);
   const timeUp = countdown.left <= 0;
   const minOf = (t: (typeof TASKS)[number]) => (attempt.sample ? SAMPLE_MINIMUM_WORDS : t.min);
   const short = TASKS.filter((t) => words[t.key] < minOf(t));
