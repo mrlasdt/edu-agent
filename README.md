@@ -192,14 +192,14 @@ A Speaking mock at `/ielts-mock?module=speaking`: you record Part 1 (introductio
 - Words, words per minute and filler words are counted in code from the transcript and the measured duration, not by the model.
 - The questions and cue cards are original (`services/gateway/src/gateway/ielts/speaking.py`), not IELTS material. Descriptors: https://ielts.org/-/media/pdfs/speaking-band-descriptors.ashx. Format: https://ielts.org/take-a-test/test-types/ielts-academic-test/ielts-academic-format-speaking.
 - Audio is kept only until the report is stored, then deleted. It lives under `<ielts data dir>/speaking/<attempt id>/`. The attempt, band and report use the same SQLite attempt store as the other modules.
-- **Quick sample (about 2 minutes):** one short question per part, 5 seconds of preparation and 20 seconds of talking, marked by the same path and labelled as a sample. Use the "Quick sample" button on the Speaking page or in the full mock, or `?sample=true` on the API.
+- **Quick sample (about 2 minutes):** one short question per part, 5 seconds of preparation and 20 seconds of talking, marked by the same path and labelled as a sample wherever its band shows. Use the "Quick sample" button on the Speaking page or in the full mock, or `?sample=true` on the API.
 - API: `POST /ielts/speaking/attempts[?sample=true]`, `GET .../{id}`, `POST .../start`, `PUT .../{id}/parts/{1|2|3}/audio` (audio body, `X-Duration-S` header), `POST .../submit`, `POST .../regrade`, `GET .../report`, `GET /ielts/speaking/info`.
 
 ## IELTS full mock (Listening, Reading, Writing, then Speaking)
 
 A full mock at `/ielts-mock?module=mock` ("Full mock" in the module links). "Start full mock" creates a mock record, then you sit Listening, then Reading, then Writing, then Speaking. The modules are the standalone ones; the mock only links their attempts, so nothing is stored twice and the standalone pages keep working.
 
-- Each skill shows its own band. The Speaking band is shown as partial (Pronunciation is not assessed), so the overall band is marked partial too.
+- Each skill shows its own band. The Speaking band is shown as partial (Pronunciation is not assessed), so the overall band is marked partial too. If the Speaking band came from the quick sample, the overall is labelled "Sample-based ... not a real mock score". If too little speech was heard, the Speaking report is stored with no band and the module shows as partial.
 - Overall band = the mean of the assessed skill bands, rounded to the nearest half band by one shared `round_half_band` (a .25 rounds up to the next half, a .75 up to the next whole band). Example: Listening 7.0, Reading 6.0 and Writing 6.5 give 6.5. Rule: https://ielts.org/take-a-test/your-results/ielts-scoring-in-detail.
 - The report names the next module to sit, and a Writing module whose marking failed has a "Retry marking" button. The coach reads a bounded digest of the whole mock at `/?attempt=<mock id>&subject=mock` and recommends which skill to practise next.
 - API: `POST /ielts/mock`, `GET /ielts/mock`, `GET /ielts/mock/{id}`, `POST /ielts/mock/{id}/modules/{listening|reading|writing|speaking}/attempt` (`?sample=true` starts Speaking's quick sample). The modules are started in order: Listening, Reading, Writing, Speaking (a mock made before Listening existed may skip Listening).
