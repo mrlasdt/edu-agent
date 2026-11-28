@@ -158,7 +158,7 @@ export function WritingModuleSit({ attempt, onSubmitted, autosaveMs = SAVE_MS }:
           <>
             <span className="ielts-confirm">
               {short.length > 0
-                ? `Under the minimum: ${short.map((t) => `${t.key === "t1" ? "letter" : "essay"} ${words[t.key]}/${t.min}`).join(", ")}. Submit anyway?`
+                ? `Under the minimum: ${short.map((t) => `${t.key === "t1" ? "letter" : "essay"} ${words[t.key]}/${minOf(t)}`).join(", ")}. Submit anyway?`
                 : "Submit both tasks for marking? You cannot edit them afterwards."}
             </span>
             <button className="ielts-primary" onClick={() => void submit()} disabled={submitting}>
