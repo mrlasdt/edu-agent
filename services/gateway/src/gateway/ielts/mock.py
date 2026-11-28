@@ -6,8 +6,9 @@ modules are the same Listening, Reading and Writing attempts the standalone page
 here is stored: the status and band of each module are read from its attempt every time, so the
 mock can never disagree with the module page.
 
-Listening, Reading and Writing can be sat so far. Speaking is listed as "not assessed" and the
-overall band is marked partial for as long as any skill is missing.
+All four modules can be sat. Speaking's band is itself partial (Pronunciation is not assessed,
+see `speaking`), so the overall band is marked partial while any skill has no band or any band
+is partial.
 """
 from __future__ import annotations
 
@@ -20,11 +21,13 @@ from services.gateway.src.gateway.ielts.models import (
     DISCLAIMER,
     ListeningReport,
     ReadingReport,
+    SpeakingReport,
     WritingModuleReport,
 )
 from services.gateway.src.gateway.ielts_store import (
     MODULE_LISTENING,
     MODULE_READING,
+    MODULE_SPEAKING,
     MODULE_WRITING,
     Attempt,
     AttemptNotFoundError,
@@ -55,11 +58,12 @@ MODULES: tuple[tuple[ModuleKey, str, bool], ...] = (
     ("listening", "Listening", True),
     ("reading", "Reading", True),
     ("writing", "Writing", True),
-    ("speaking", "Speaking", False),
+    ("speaking", "Speaking", True),
 )
 SITTABLE_ORDER: tuple[ModuleKey, ...] = tuple(key for key, _, sittable in MODULES if sittable)
 ATTEMPT_MODULE = {
     "listening": MODULE_LISTENING, "reading": MODULE_READING, "writing": MODULE_WRITING,
+    "speaking": MODULE_SPEAKING,
 }
 LABELS: dict[str, str] = {key: label for key, label, _ in MODULES}
 # An attempt in one of these has been sat: the next module may start.
@@ -71,9 +75,11 @@ class ModuleStatus(BaseModel):
     label: str
     state: ModuleState
     band: float | None = None
+    band_partial: bool = False  # the band is real but incomplete (Speaking: no Pronunciation)
     attempt_id: str | None = None
     sittable: bool
     retryable: bool = False  # marking failed and the module's retry route will take it again
+    sample: bool = False  # the band came from a quick sample, so it is not a real mock score
     detail: str = ""
 
 
@@ -89,6 +95,7 @@ class MockReport(BaseModel):
     modules: list[ModuleStatus]
     overall: float | None  # the mean of the assessed skill bands, rounded; None before any band
     partial: bool  # true while any skill is not assessed
+    sample: bool = False  # true when a skill band in the overall came from a quick sample
     overall_note: str
     overall_source_url: str = SCORING_SOURCE_URL
     next_module: NextModule | None = None
@@ -104,6 +111,7 @@ class LoadedMock:
     listening: ListeningReport | None
     reading: ReadingReport | None
     writing: WritingModuleReport | None
+    speaking: SpeakingReport | None = None
 
 
 def load_mock(store: AttemptStore, mock: Mock) -> LoadedMock:
@@ -115,7 +123,12 @@ def load_mock(store: AttemptStore, mock: Mock) -> LoadedMock:
             attempts[key] = None
     listening = attempts.get("listening")
     reading, writing = attempts.get("reading"), attempts.get("writing")
+    speaking = attempts.get("speaking")
     return LoadedMock(
+        speaking=(
+            SpeakingReport.model_validate_json(speaking.report_json)
+            if speaking and speaking.report_json else None
+        ),
         mock=mock,
         attempts=attempts,
         listening=(
@@ -156,6 +169,11 @@ def _detail(key: str, state: ModuleState, loaded: LoadedMock, retryable: bool) -
         return f"{loaded.reading.raw} of {loaded.reading.total} correct"
     if state == "graded" and key == "writing":
         return "Task 1 letter and Task 2 essay"
+    if state == "graded" and key == "speaking" and loaded.speaking:
+        prefix = "Quick sample, not a real mock score. " if loaded.speaking.sample else ""
+        return prefix + "Partial band: Pronunciation not assessed"
+    if state == "partial" and key == "speaking":
+        return "Too little speech was heard to mark, so there is no Speaking band."
     if state == "partial":
         return "Only one task could be marked, so there is no Writing band."
     if state == "ungraded":
@@ -177,15 +195,27 @@ def module_statuses(loaded: LoadedMock) -> list[ModuleStatus]:
             loaded.listening.band if key == "listening" and loaded.listening
             else loaded.reading.band if key == "reading" and loaded.reading
             else loaded.writing.writing_band if key == "writing" and loaded.writing
+            else loaded.speaking.band if key == "speaking" and loaded.speaking
             else None
         )
         has_report = {
             "listening": loaded.listening, "reading": loaded.reading, "writing": loaded.writing,
+            "speaking": loaded.speaking,
         }[key] is not None
         state = _state_of(attempt, band, has_report)
-        retryable = bool(key == "writing" and state == "ungraded" and attempt and attempt.retryable)
+        retryable = bool(
+            key in ("writing", "speaking") and state == "ungraded" and attempt and attempt.retryable
+        )
         out.append(ModuleStatus(
             key=key, label=label, state=state, band=band if state == "graded" else None,
+            band_partial=bool(
+                state == "graded" and key == "speaking" and loaded.speaking
+                and loaded.speaking.partial
+            ),
+            sample=bool(
+                state == "graded" and key == "speaking" and loaded.speaking
+                and loaded.speaking.sample
+            ),
             attempt_id=attempt.id if attempt else None, sittable=True, retryable=retryable,
             detail=_detail(key, state, loaded, retryable),
         ))
@@ -201,23 +231,56 @@ def _names(labels: list[str]) -> str:
     return labels[0] if len(labels) == 1 else ", ".join(labels[:-1]) + " and " + labels[-1]
 
 
+NO_SPEECH_REASON = "without a band because too little speech was heard"
+NO_BAND_REASONS = (
+    "not assessed",
+    "not taken yet",
+    "being marked",
+    NO_SPEECH_REASON,
+    "without a band because marking did not finish",
+)
+
+
+def _is_no_speech(m: ModuleStatus) -> bool:
+    return m.key == "speaking" and m.state == "partial"
+
+
+def _no_band_reason(m: ModuleStatus) -> str | None:
+    if m.state == "not_assessed":
+        return NO_BAND_REASONS[0]
+    if m.state in ("not_started", "in_progress"):
+        return NO_BAND_REASONS[1]
+    if m.state == "marking":
+        return NO_BAND_REASONS[2]
+    if _is_no_speech(m):
+        return NO_SPEECH_REASON
+    if m.state in ("ungraded", "partial"):
+        return NO_BAND_REASONS[4]
+    return None
+
+
 def _missing_clauses(modules: list[ModuleStatus]) -> list[str]:
     """Why each skill without a band has none, grouped: 'Listening and Speaking not assessed'."""
-    reasons: tuple[tuple[tuple[ModuleState, ...], str], ...] = (
-        (("not_assessed",), "not assessed"),
-        (("not_started", "in_progress"), "not taken yet"),
-        (("marking",), "being marked"),
-        (("ungraded", "partial"), "without a band because marking did not finish"),
-    )
     clauses = []
-    for states, text in reasons:
-        labels = [m.label for m in modules if m.band is None and m.state in states]
+    for text in NO_BAND_REASONS:
+        labels = [m.label for m in modules if m.band is None and _no_band_reason(m) == text]
         if labels:
             clauses.append(f"{_names(labels)} {text}")
     return clauses
 
 
 def _overall_note(modules: list[ModuleStatus], overall: float | None) -> str:
+    note = _overall_core(modules, overall)
+    sampled = [m.label for m in modules if m.sample and m.band is not None]
+    if not sampled:
+        return note
+    return (
+        f"Sample-based: the {_names(sampled)} band came from the quick sample, so this overall "
+        "is not a real mock score. " + note
+    )
+
+
+def _overall_core(modules: list[ModuleStatus], overall: float | None) -> str:
     missing = [m for m in modules if m.band is None]
     if overall is None:
         return "No skill has a band yet, so there is no overall band."
@@ -225,8 +288,14 @@ def _overall_note(modules: list[ModuleStatus], overall: float | None) -> str:
         "Overall band = the mean of the assessed skill bands, rounded to the nearest half band "
         "(IELTS rounds a quarter up). It is a mock estimate, not an official result."
     )
+    partial_bands = [m for m in modules if m.band is not None and m.band_partial]
     if not missing:
-        return base
+        if not partial_bands:
+            return base
+        return (
+            f"Partial overall: the {_names([m.label for m in partial_bands])} band is itself "
+            "partial (Pronunciation is not assessed), so this overall is not a full result. " + base
+        )
     return (
         f"Partial overall: {'; '.join(_missing_clauses(modules))}, so this is the mean of "
         f"{len(modules) - len(missing)} of {len(modules)} skills. " + base
@@ -252,7 +321,7 @@ def next_module(modules: list[ModuleStatus]) -> NextModule | None:
         return None
     for key in SITTABLE_ORDER:
         m = by_key[key]
-        if m.state in ("ungraded", "partial"):
+        if m.state in ("ungraded", "partial") and not _is_no_speech(m):
             return NextModule(
                 key=key, label=m.label,
                 reason=(
@@ -279,7 +348,9 @@ def build_report(loaded: LoadedMock) -> MockReport:
     overall = overall_band(bands)
     return MockReport(
         id=loaded.mock.id, created_at=loaded.mock.created_at, modules=modules, overall=overall,
-        partial=len(bands) < len(modules), overall_note=_overall_note(modules, overall),
+        partial=len(bands) < len(modules) or any(m.band_partial for m in modules),
+        sample=any(m.sample and m.band is not None for m in modules),
+        overall_note=_overall_note(modules, overall),
         next_module=next_module(modules),
     )
 

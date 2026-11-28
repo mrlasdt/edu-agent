@@ -64,7 +64,10 @@ TEMPERATURES = {
     "ielts_coach": 0.4,
     "ielts_reading_coach": 0.4,
     "ielts_mock_coach": 0.4,
+    "ielts_speaking": 0.2,
 }
+# Speaking reads audio, so it is Gemini in every config (the others are text-only chat models).
+SPEAKING_MODEL = ("gemini", "gemini-3.5-flash-lite", ["gemini/gemini-3.5-flash"])
 MODELS = {
     DEV: {"default": ("openai", "gpt-4o-mini", []), "ielts": ("openai", "gpt-4.1-mini", [])},
     FREE: {
@@ -80,6 +83,7 @@ PROMPT_PINS = {
     "ielts_coach": {"tutor": "v2"},
     "ielts_reading_coach": {"tutor": "v1"},
     "ielts_mock_coach": {"tutor": "v1"},
+    "ielts_speaking": {"assess": "v1"},
     "ielts_grader": {"writing_t2": "v1", "writing_t1": "v1"},
     "ielts_feedback": {"writing_t2": "v2", "writing_t1": "v1"},
     "orchestrator": {"completeness": "v1", "leak_check": "v1"},
@@ -102,7 +106,9 @@ def test_each_config_resolves_to_the_same_roles_models_and_temperatures_as_befor
     assert cfg.roles.keys() == TEMPERATURES.keys()
     for name, role in cfg.roles.items():
         group = "ielts" if name in IELTS_ROLES else "default"
-        provider, model, fallbacks = MODELS[path][group]
+        provider, model, fallbacks = (
+            SPEAKING_MODEL if name == "ielts_speaking" else MODELS[path][group]
+        )
         if path == FREE and name == "quant_agent":
             fallbacks = [TUTOR_BACKUP]
         assert (role.provider, role.model, role.fallbacks) == (provider, model, fallbacks), name
@@ -128,7 +134,11 @@ def test_a_config_with_its_own_prompts_section_keeps_it(tmp_path):
 
 def test_free_config_runs_every_role_but_the_ielts_ones_on_one_free_model():
     cfg = load_model_config(FREE)
-    models = {(r.provider, r.model) for name, r in cfg.roles.items() if name not in IELTS_ROLES}
+    models = {
+        (r.provider, r.model)
+        for name, r in cfg.roles.items()
+        if name not in IELTS_ROLES | {"ielts_speaking"}
+    }
     assert len(models) == 1
     provider, model = next(iter(models))
     assert provider == "openrouter"

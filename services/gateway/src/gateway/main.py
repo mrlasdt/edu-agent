@@ -25,6 +25,7 @@ from services.gateway.src.gateway.ielts_api import router as ielts_router
 from services.gateway.src.gateway.ielts_listening_api import router as ielts_listening_router
 from services.gateway.src.gateway.ielts_mock_api import router as ielts_mock_router
 from services.gateway.src.gateway.ielts_reading_api import router as ielts_reading_router
+from services.gateway.src.gateway.ielts_speaking_api import router as ielts_speaking_router
 from services.gateway.src.gateway.ielts_writing_api import router as ielts_writing_router
 from services.gateway.src.gateway.limits import chat_limiter, feedback_limiter, ielts_limiter
 from services.gateway.src.gateway.orchestrator import Orchestrator
@@ -58,6 +59,7 @@ app.include_router(ielts_mock_router)
 app.include_router(ielts_listening_router)
 app.include_router(ielts_reading_router)
 app.include_router(ielts_writing_router)
+app.include_router(ielts_speaking_router)
 app.include_router(feedback_router)
 app.include_router(turns_router)
 

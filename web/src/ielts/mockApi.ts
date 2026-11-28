@@ -19,6 +19,10 @@ export interface ModuleStatus {
   attempt_id: string | null;
   sittable: boolean;
   retryable: boolean;
+  /** True when the band leaves a criterion out (Speaking), so it is shown as partial. */
+  band_partial?: boolean;
+  /** True when the band came from a quick sample, so it is not a real mock score. */
+  sample?: boolean;
   detail: string;
 }
 
@@ -34,6 +38,8 @@ export interface MockReport {
   modules: ModuleStatus[];
   overall: number | null;
   partial: boolean;
+  /** True when a skill band in the overall came from a quick sample. */
+  sample?: boolean;
   overall_note: string;
   overall_source_url: string;
   next_module: NextModule | null;
@@ -46,5 +52,8 @@ export const listMocks = (signal?: AbortSignal) => requestJson<MockReport[]>(bas
 export const createMock =() => requestJson<MockReport>(base, { method: "POST" });
 export const getMock = (id: string, signal?: AbortSignal) =>
   requestJson<MockReport>(`${base}/${id}`, { signal });
-export const startMockModule = (id: string, key: ModuleKey) =>
-  requestJson<MockReport>(`${base}/${id}/modules/${key}/attempt`, { method: "POST" });
+/** `sample` starts the quick sample of Speaking (one short question per part); other modules ignore it. */
+export const startMockModule = (id: string, key: ModuleKey, sample = false) =>
+  requestJson<MockReport>(`${base}/${id}/modules/${key}/attempt${sample ? "?sample=true" : ""}`, {
+    method: "POST",
+  });

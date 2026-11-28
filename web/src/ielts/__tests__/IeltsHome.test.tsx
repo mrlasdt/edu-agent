@@ -26,7 +26,8 @@ describe("IeltsHome", () => {
   it("welcomes a new learner, marks every test not tried and recommends Listening", async () => {
     render(<IeltsHome />);
     expect(await screen.findByRole("heading", { name: /Start with one test/ })).toBeInTheDocument();
-    expect(screen.getAllByText("No band yet").length).toBe(5);
+    expect(screen.getAllByText("No band yet").length).toBe(6);
+    expect(screen.getByRole("link", { name: "Start Speaking" })).toHaveAttribute("href", "/ielts-mock?module=speaking");
     for (const link of screen.getAllByRole("link", { name: "Start Listening" })) {
       expect(link).toHaveAttribute("href", "/ielts-mock?module=listening");
     }
@@ -47,7 +48,16 @@ describe("IeltsHome", () => {
     render(<IeltsHome />);
     expect(await screen.findByRole("heading", { name: /Writing test is next/ })).toBeInTheDocument();
     expect(screen.getByText("7.0")).toBeInTheDocument();
-    expect(screen.getAllByText("No band yet").length).toBe(3);
+    expect(screen.getAllByText("No band yet").length).toBe(4);
+  });
+
+  it("shows the latest Speaking band from the full mocks", async () => {
+    apis.listMocks.mockResolvedValue([
+      { overall: null, next_module: null, modules: [{ key: "speaking", band: 6.5 }] },
+    ]);
+    render(<IeltsHome />);
+    expect(await screen.findByText("6.5")).toBeInTheDocument();
+    expect(screen.getAllByText("No band yet").length).toBe(5);
   });
 });
 

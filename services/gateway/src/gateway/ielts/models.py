@@ -216,3 +216,66 @@ class WritingModuleReport(BaseModel):
     weights_source_urls: list[str]
     timing: Timing
     disclaimer: str = DISCLAIMER
+
+
+class SpeakingCriterion(BaseModel):
+    """
+    One of the four Speaking criteria. `assessed` is False for a criterion this mock cannot
+    judge (Pronunciation): it then has no band and `reason` says why, and it is shown as "not
+    assessed", never as a guessed number.
+    """
+
+    id: Literal["FC", "LR", "GRA", "P"]
+    name: str
+    assessed: bool
+    band: float | None = None
+    rationale: str = ""
+    evidence: list[str] = []  # short quotes from the transcript that the band rests on
+    reason: str = ""  # why it was not assessed
+
+
+class SpeakingPart(BaseModel):
+    """What was said in one part, with the fluency figures counted in code from the transcript."""
+
+    part: Literal[1, 2, 3]
+    title: str
+    transcript: str
+    duration_s: float  # length of the recording, as measured by the browser
+    allowed_s: int | None = None  # Part 2's long turn limit
+    words: int
+    words_per_minute: float | None = None
+    fillers: int  # "um", "uh", "er" and the like
+
+
+class SpeakingPriority(BaseModel):
+    criterion: Literal["FC", "LR", "GRA"]
+    priority: int
+    do: str
+
+
+class SpeakingReport(BaseModel):
+    """
+    The Speaking module marked from audio: a transcript and the three criteria a model can judge
+    from it. `band` is the mean of the assessed criteria and is always `partial` while
+    Pronunciation is not assessed. `status` is `no_speech` (and `band` None) when too little
+    was said to mark.
+    """
+
+    status: Literal["graded", "no_speech"]
+    module: Literal["ielts_speaking"] = "ielts_speaking"
+    set_id: str
+    sample: bool = False  # the quick sample set: a few sentences, so the band means little
+    band: float | None = None
+    partial: bool = True
+    partial_note: str
+    criteria: list[SpeakingCriterion]
+    not_assessed: list[str]  # the ids of the criteria without a band
+    parts: list[SpeakingPart]
+    strengths: list[str] = []
+    priorities: list[SpeakingPriority] = []
+    flags: list[str] = []
+    model: str = ""
+    timing: Timing
+    descriptors_source_url: str
+    format_source_url: str
+    disclaimer: str = DISCLAIMER

@@ -51,7 +51,12 @@ async def ask(router, model: str = A, **kw) -> str:
 def test_the_shipped_free_config_gives_the_ielts_model_and_the_tutor_model_a_chain_each():
     config = load_model_config("config/model_config.free.yaml")
     flint = "openrouter/recursive/flint-v1.0:free"
-    assert fallback_chains(config) == {GOOGLE: [OR_26B, OR_31B], flint: [OR_31B]}
+    speaking = "gemini/gemini-3.5-flash-lite"  # the audio marker, Gemini only
+    assert fallback_chains(config) == {
+        GOOGLE: [OR_26B, OR_31B],
+        flint: [OR_31B],
+        speaking: ["gemini/gemini-3.5-flash"],
+    }
     router = build_router(config)
     assert configured_chain(router, GOOGLE) == [GOOGLE, OR_26B, OR_31B]
     # the tutor's model: the Router keys the chain on the model, so every role on it shares it

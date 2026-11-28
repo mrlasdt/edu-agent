@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 /** The mock modules at /ielts-mock; the page has no router, so the others are `?module=...`. */
-type Current = "home" | "writing" | "writing-module" | "listening" | "reading" | "mock";
+type Current = "home" | "writing" | "writing-module" | "listening" | "reading" | "speaking" | "mock";
 
 // Plain names: "Writing test" is the timed letter + essay; "Writing practice" is one essay on a question you pick.
 const LINKS: { key: Current; label: string; href: string }[] = [
@@ -10,6 +10,7 @@ const LINKS: { key: Current; label: string; href: string }[] = [
   { key: "reading", label: "Reading", href: "/ielts-mock?module=reading" },
   { key: "writing-module", label: "Writing test", href: "/ielts-mock?module=writing-module" },
   { key: "writing", label: "Writing practice", href: "/ielts-mock" },
+  { key: "speaking", label: "Speaking", href: "/ielts-mock?module=speaking" },
   { key: "mock", label: "Full mock", href: "/ielts-mock?module=mock" },
 ];
 

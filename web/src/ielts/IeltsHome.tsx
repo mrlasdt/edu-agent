@@ -9,7 +9,7 @@ import { ModuleNav } from "./ModuleNav";
 import { listReadings } from "./readingApi";
 import { listWritingModules } from "./writingModuleApi";
 
-type SkillKey = "listening" | "reading" | "writing-module" | "writing" | "mock";
+type SkillKey = "listening" | "reading" | "writing-module" | "writing" | "speaking" | "mock";
 
 interface Card {
   key: SkillKey;
@@ -86,10 +86,24 @@ const CARDS: Card[] = [
     ),
   },
   {
+    key: "speaking",
+    name: "Speaking",
+    minutes: "Recorded",
+    blurb: "Answer the examiner's questions aloud with your microphone on.",
+    href: "/ielts-mock?module=speaking",
+    cta: "Start Speaking",
+    icon: svg(
+      <>
+        <rect x="9" y="3" width="6" height="11" rx="3" />
+        <path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" />
+      </>
+    ),
+  },
+  {
     key: "mock",
     name: "Full mock",
-    minutes: "2 h 30 min",
-    blurb: "Listening, Reading, then Writing, with one overall band at the end.",
+    minutes: "2 h 30 min+",
+    blurb: "Listening, Reading, Writing, then Speaking, with one overall band at the end.",
     href: "/ielts-mock?module=mock",
     cta: "Open the full mock",
     icon: svg(
@@ -122,6 +136,7 @@ async function loadBands(signal: AbortSignal): Promise<{ bands: Bands; mock: Moc
   bands.listening = listening.find((a) => a.band !== null)?.band ?? fromMocks("listening");
   bands["writing-module"] =
     writingModule.find((a) => a.writing_band !== null)?.writing_band ?? fromMocks("writing");
+  bands.speaking = fromMocks("speaking");
   bands.mock = mocks.find((m) => m.overall !== null)?.overall ?? undefined;
   return { bands, mock };
 }
@@ -131,14 +146,15 @@ function recommend(bands: Bands, mock: MockReport | null): { key: SkillKey; reas
   const next = mock?.next_module;
   if (next) {
     const key = next.key === "writing" ? "writing-module" : next.key;
-    if (key === "listening" || key === "reading" || key === "writing-module") {
+    if (key === "listening" || key === "reading" || key === "writing-module" || key === "speaking") {
       return { key, reason: next.reason };
     }
   }
   if (bands.listening === undefined) return { key: "listening", reason: "A good place to begin: you have no Listening band yet." };
   if (bands.reading === undefined) return { key: "reading", reason: "Next, get a Reading band so you can see how you compare." };
   if (bands["writing-module"] === undefined) return { key: "writing-module", reason: "Finish with Writing to complete your picture." };
-  const lowest = (["listening", "reading", "writing-module"] as const).reduce((a, b) =>
+  if (bands.speaking === undefined) return { key: "speaking", reason: "Last skill to try: record your Speaking answers." };
+  const lowest = (["listening", "reading", "writing-module", "speaking"] as const).reduce((a, b) =>
     (bands[a] ?? 0) <= (bands[b] ?? 0) ? a : b
   );
   return { key: lowest, reason: "This is your lowest band right now, so a retake pays off most." };
