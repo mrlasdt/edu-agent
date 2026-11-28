@@ -15,6 +15,7 @@ from services.gateway.src.gateway.ielts.models import (
     ListeningReport,
     ReadingReport,
     Report,
+    SpeakingReport,
     WritingModuleReport,
 )
 
@@ -55,6 +56,19 @@ def _writing_lines(report: WritingModuleReport) -> list[str]:
     return [*_task_lines("Task 1 letter", report.t1), *_task_lines("Task 2 essay", report.t2)]
 
 
+def _speaking_lines(report: SpeakingReport) -> list[str]:
+    if report.band is None:
+        return ["Speaking: too little speech was heard to mark."]
+    criteria = ", ".join(f"{c.id} {c.band:.1f}" for c in report.criteria if c.band is not None)
+    lines = [
+        f"Speaking detail: partial band {report.band} ({criteria}); "
+        + ", ".join(f"{c} not assessed" for c in report.not_assessed) + ".",
+    ]
+    for p in report.priorities[:2]:
+        lines.append(f"  priority {p.priority} [{p.criterion}]: {line(p.do, 220)}")
+    return lines
+
+
 def build_digest(loaded: LoadedMock, report: MockReport | None = None) -> str:
     """The digest of a mock; "" when no module has a band (there is nothing to coach from)."""
     report = report or build_report(loaded)
@@ -67,7 +81,7 @@ def build_digest(loaded: LoadedMock, report: MockReport | None = None) -> str:
             else f"- {m.label}: not assessed" if m.state == "not_assessed"
             else f"- {m.label}: no band yet ({m.state.replace('_', ' ')})"
         )
-    partial = " (PARTIAL: it leaves out the skills above that are not assessed)"
+    partial = " (PARTIAL: a skill above has no band, or its band leaves out a criterion)"
     lines.append(f"Overall band: {report.overall}{partial if report.partial else ''}.")
     lines.append(line(report.overall_note, 500))
     if report.next_module:
@@ -81,4 +95,6 @@ def build_digest(loaded: LoadedMock, report: MockReport | None = None) -> str:
         lines += ["", *_reading_lines(loaded.reading)]
     if loaded.writing:
         lines += ["", *_writing_lines(loaded.writing)]
+    if loaded.speaking:
+        lines += ["", *_speaking_lines(loaded.speaking)]
     return wrap(DIGEST_TITLE, "\n".join(lines)[:MAX_BODY_CHARS])

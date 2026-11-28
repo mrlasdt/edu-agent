@@ -19,6 +19,8 @@ export interface ModuleStatus {
   attempt_id: string | null;
   sittable: boolean;
   retryable: boolean;
+  /** True when the band leaves a criterion out (Speaking), so it is shown as partial. */
+  band_partial?: boolean;
   detail: string;
 }
 
@@ -45,5 +47,8 @@ const base = "/ielts/mock";
 export const createMock = () => requestJson<MockReport>(base, { method: "POST" });
 export const getMock = (id: string, signal?: AbortSignal) =>
   requestJson<MockReport>(`${base}/${id}`, { signal });
-export const startMockModule = (id: string, key: ModuleKey) =>
-  requestJson<MockReport>(`${base}/${id}/modules/${key}/attempt`, { method: "POST" });
+/** `sample` starts the quick sample of Speaking (one short question per part); other modules ignore it. */
+export const startMockModule = (id: string, key: ModuleKey, sample = false) =>
+  requestJson<MockReport>(`${base}/${id}/modules/${key}/attempt${sample ? "?sample=true" : ""}`, {
+    method: "POST",
+  });

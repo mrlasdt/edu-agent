@@ -10,6 +10,9 @@ import { ListeningSit } from "./ListeningSit";
 import { ReadingSit } from "./ReadingSit";
 import { getReading, startReading } from "./readingApi";
 import type { ReadingAttempt } from "./readingTypes";
+import { SpeakingSit } from "./SpeakingSit";
+import { getSpeaking, regradeSpeaking, startSpeaking } from "./speakingApi";
+import type { SpeakingAttempt } from "./speakingTypes";
 import { WritingModuleSit } from "./WritingModuleSit";
 import { getWritingModule, regradeWritingModule, startWritingModule } from "./writingModuleApi";
 import type { WritingModuleAttempt } from "./writingModuleTypes";
@@ -38,7 +41,8 @@ type View =
   | { kind: "overview"; report: MockReport }
   | { kind: "listening"; report: MockReport; attempt: ListeningAttempt }
   | { kind: "reading"; report: MockReport; attempt: ReadingAttempt }
-  | { kind: "writing"; report: MockReport; attempt: WritingModuleAttempt };
+  | { kind: "writing"; report: MockReport; attempt: WritingModuleAttempt }
+  | { kind: "speaking"; report: MockReport; attempt: SpeakingAttempt };
 
 const message = (err: unknown) => (err instanceof Error ? err.message : "Something went wrong");
 const POLL_MS = 2000;
@@ -58,7 +62,7 @@ export interface FullMockProps {
   autosaveMs?: number;
 }
 
-/** The full mock: Listening, Reading, then Writing, one combined result. The modules are the standalone ones. */
+/** The full mock: Listening, Reading, Writing, then Speaking, one combined result. The modules are the standalone ones. */
 export function FullMock({ pollMs = POLL_MS, autosaveMs }: FullMockProps) {
   const [view, setView] = useState<View>({ kind: "loading" });
   const [busy, setBusy] = useState(false);
@@ -134,12 +138,14 @@ export function FullMock({ pollMs = POLL_MS, autosaveMs }: FullMockProps) {
   }, []);
 
   /** Open a module's page: create its attempt if it has none, start it if not started, and sit it. */
-  const openModule = (report: MockReport, key: ModuleKey) =>
+  const openModule = (report: MockReport, key: ModuleKey, sample = false) =>
     run(async () => {
       let current = report;
       let status = current.modules.find((m) => m.key === key);
       if (status && !status.attempt_id) {
-        current = await startMockModule(report.id, key);
+        current = sample
+          ? await startMockModule(report.id, key, true)
+          : await startMockModule(report.id, key);
         status = current.modules.find((m) => m.key === key);
       }
       const attemptId = status?.attempt_id;
@@ -152,6 +158,10 @@ export function FullMock({ pollMs = POLL_MS, autosaveMs }: FullMockProps) {
         let attempt = await getReading(attemptId);
         if (attempt.status === "created") attempt = await startReading(attemptId);
         if (attempt.status === "in_progress") return setView({ kind: "reading", report: current, attempt });
+      } else if (key === "speaking") {
+        let attempt = await getSpeaking(attemptId);
+        if (attempt.status === "created") attempt = await startSpeaking(attemptId);
+        if (attempt.status === "in_progress") return setView({ kind: "speaking", report: current, attempt });
       } else {
         let attempt = await getWritingModule(attemptId);
         if (attempt.status === "created") attempt = await startWritingModule(attemptId);
@@ -160,9 +170,10 @@ export function FullMock({ pollMs = POLL_MS, autosaveMs }: FullMockProps) {
       await refresh(report.id);
     });
 
-  const retryMarking = (report: MockReport, attemptId: string) =>
+  const retryMarking = (report: MockReport, key: ModuleKey, attemptId: string) =>
     run(async () => {
-      await regradeWritingModule(attemptId);
+      if (key === "speaking") await regradeSpeaking(attemptId);
+      else await regradeWritingModule(attemptId);
       await refresh(report.id);
     });
 
@@ -202,15 +213,19 @@ export function FullMock({ pollMs = POLL_MS, autosaveMs }: FullMockProps) {
       )}
       {view.kind === "intro" && (
         <section className="ielts-ready" aria-label="Full mock">
-          <h2>Full mock: Listening, Reading, then Writing</h2>
+          <h2>Full mock: Listening, Reading, Writing, then Speaking</h2>
           <ul className="ielts-rules">
             <li>
               You sit the modules in order: Listening (30 minutes, with sound on), Reading (60 minutes),
-              then Writing (60 minutes).
+              Writing (60 minutes), then Speaking (recorded in the browser, with the microphone on).
             </li>
             <li>
-              Each skill gets its own band, and the program combines them into one overall band. Speaking
-              is not part of the mock yet, so the overall band is partial.
+              Each skill gets its own band, and the program combines them into one overall band. The
+              Speaking band is partial (Pronunciation is not assessed), so the overall band says so.
+            </li>
+            <li>
+              Short on time? Speaking has a quick sample (one short question per part) when you reach
+              it, so you can check the marking in a few minutes.
             </li>
             <li>When you finish, the coach can tell you which skill to practise next.</li>
           </ul>
@@ -245,12 +260,19 @@ export function FullMock({ pollMs = POLL_MS, autosaveMs }: FullMockProps) {
           onSubmitted={() => void run(() => refresh(view.report.id))}
         />
       )}
+      {view.kind === "speaking" && (
+        <SpeakingSit
+          key={view.attempt.id}
+          attempt={view.attempt}
+          onSubmitted={() => void run(() => refresh(view.report.id))}
+        />
+      )}
       {view.kind === "overview" && (
         <Overview
           report={view.report}
           busy={busy}
-          onOpen={(key) => void openModule(view.report, key)}
-          onRetry={(attemptId) => void retryMarking(view.report, attemptId)}
+          onOpen={(key, sample) => void openModule(view.report, key, sample)}
+          onRetry={(key, attemptId) => void retryMarking(view.report, key, attemptId)}
           onAnother={another}
         />
       )}
@@ -267,8 +289,8 @@ function Overview({
 }: {
   report: MockReport;
   busy: boolean;
-  onOpen: (key: ModuleKey) => void;
-  onRetry: (attemptId: string) => void;
+  onOpen: (key: ModuleKey, sample?: boolean) => void;
+  onRetry: (key: ModuleKey, attemptId: string) => void;
   onAnother: () => void;
 }) {
   const anyMarking = report.modules.some((m) => m.state === "marking");
@@ -306,16 +328,22 @@ function Overview({
             </div>
             <div className="ielts-skill-band">
               {m.band !== null ? band(m.band) : m.state === "not_assessed" ? "Not assessed" : "-"}
+              {m.band !== null && m.band_partial && <span className="ielts-hint"> partial</span>}
             </div>
             {m.sittable && (m.state === "not_started" || m.state === "in_progress") && (
               <button className="ielts-primary" onClick={() => onOpen(m.key)} disabled={busy}>
                 {m.state === "in_progress" ? `Continue ${m.label}` : `Start ${m.label}`}
               </button>
             )}
+            {m.key === "speaking" && m.sittable && m.state === "not_started" && (
+              <button onClick={() => onOpen(m.key, true)} disabled={busy}>
+                Quick sample (about 2 minutes)
+              </button>
+            )}
             {m.retryable && m.attempt_id && (
               <button
                 className="ielts-primary"
-                onClick={() => onRetry(m.attempt_id as string)}
+                onClick={() => onRetry(m.key, m.attempt_id as string)}
                 disabled={busy}
               >
                 Retry marking
@@ -326,7 +354,8 @@ function Overview({
       </ul>
       {anyMarking && (
         <p className="ielts-hint" role="status" aria-live="polite">
-          Marking your Writing. This usually takes under a minute.
+          Marking your {report.modules.filter((m) => m.state === "marking").map((m) => m.label).join(" and ")}.
+          This usually takes under a minute.
         </p>
       )}
       {next && (

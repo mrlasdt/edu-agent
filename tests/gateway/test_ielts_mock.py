@@ -1,6 +1,7 @@
 """
 The full IELTS mock: an ordered list of modules over the existing Listening, Reading and Writing
-attempts, a combined overall band computed in code (partial while Speaking is not assessed),
+attempts, a combined overall band computed in code (partial while a skill has no band or Speaking's
+band leaves out Pronunciation),
 a next-module recommendation, and the coach's digest and /chat path. A scripted completer replaces
 the marking model; the chat gates that call a model are mocked.
 """
@@ -20,6 +21,7 @@ from services.gateway.src.gateway.ielts_coach import (
     MOCK_SOLVE_MODE_NOTICE,
     MOCK_UNKNOWN_ATTEMPT_NOTICE,
 )
+from services.gateway.src.gateway.ielts_speaking_api import get_assessor, get_audio_dir
 from services.gateway.src.gateway.ielts_store import AttemptStore
 from services.gateway.src.gateway.limits import ielts_limiter
 from services.gateway.src.gateway.main import app
@@ -27,6 +29,7 @@ from shared.src.shared.budget import Ledger
 from shared.src.shared.stats import round_half_band
 from shared.src.shared.wire import MAX_REPORT_DIGEST_CHARS, GenerateRequest
 from tests.gateway.gateway_fakes import agent_replies
+from tests.gateway.speaking_fakes import SPEAKING_BAND, FakeAssessor
 from tests.gateway.test_ielts_listening import correct_except
 from tests.gateway.test_ielts_reading import wrong_on
 from tests.gateway.test_ielts_writing_module import ESSAY_FULL, LETTER, Clock, TaskAware
@@ -51,6 +54,9 @@ def client(store: AttemptStore, tmp_path: Path) -> Iterator[TestClient]:
     completer = TaskAware((6, 6, 6, 6), (7, 7, 7, 7))
     app.dependency_overrides[ielts_api.get_completer] = lambda: completer
     app.dependency_overrides[ielts_api.get_ledger] = lambda: ledger
+    assessor = FakeAssessor()
+    app.dependency_overrides[get_assessor] = lambda: assessor
+    app.dependency_overrides[get_audio_dir] = lambda: tmp_path / "speaking-audio"
     ielts_limiter().reset()
     with TestClient(app) as c:
         yield c
@@ -124,6 +130,24 @@ def sit_writing(client: TestClient, mock_id: str) -> dict:
     return client.get(f"/ielts/mock/{mock_id}").json()
 
 
+def sit_speaking(client: TestClient, mock_id: str, sample: bool = False) -> dict:
+    """Start Speaking on the mock, record the three parts and submit; marking is scripted."""
+    suffix = "?sample=true" if sample else ""
+    resp = client.post(f"/ielts/mock/{mock_id}/modules/speaking/attempt{suffix}")
+    assert resp.status_code == 201
+    attempt_id = modules_of(resp.json())["speaking"]["attempt_id"]
+    client.post(f"/ielts/speaking/attempts/{attempt_id}/start")
+    for part in (1, 2, 3):
+        up = client.put(
+            f"/ielts/speaking/attempts/{attempt_id}/parts/{part}/audio", content=b"RIFFfakeaudio",
+            headers={"content-type": "audio/wav", "x-duration-s": "20"},
+        )
+        assert up.status_code == 200
+    done = client.post(f"/ielts/speaking/attempts/{attempt_id}/submit")
+    assert done.status_code == 200
+    return client.get(f"/ielts/mock/{mock_id}").json()
+
+
 # the combined band
 
 
@@ -152,7 +176,7 @@ def test_a_new_mock_lists_the_modules_in_order_and_assesses_none(client: TestCli
     body = client.get(f"/ielts/mock/{new_mock(client)}").json()
     assert [m["key"] for m in body["modules"]] == ["listening", "reading", "writing", "speaking"]
     by_key = modules_of(body)
-    assert by_key["speaking"]["state"] == "not_assessed"
+    assert by_key["speaking"]["state"] == "not_started" and by_key["speaking"]["sittable"]
     assert by_key["listening"]["state"] == "not_started" and by_key["listening"]["sittable"]
     assert by_key["reading"]["state"] == by_key["writing"]["state"] == "not_started"
     assert body["overall"] is None and body["partial"] is True
@@ -172,9 +196,10 @@ def test_the_modules_are_sat_in_order(client: TestClient):
     assert resp.status_code == 409 and "Reading" in resp.json()["detail"]
 
 
-def test_speaking_cannot_be_started_yet(client: TestClient):
+def test_speaking_is_sat_last_and_only_after_writing(client: TestClient):
     mock_id = new_mock(client)
-    assert start(client, mock_id, "speaking").status_code == 409
+    resp = start(client, mock_id, "speaking")
+    assert resp.status_code == 409 and "Listening" in resp.json()["detail"]
 
 
 def test_a_mock_begun_before_listening_existed_can_still_add_it(
@@ -220,19 +245,38 @@ def test_listening_reading_then_writing_gives_each_band_and_a_partial_overall(cl
     final = sit_writing(client, mock_id)
     by_key = modules_of(final)
     assert by_key["writing"]["state"] == "graded" and by_key["writing"]["band"] == 6.5
-    assert by_key["speaking"]["band"] is None
+    assert by_key["speaking"]["band"] is None and by_key["speaking"]["state"] == "not_started"
     bands = [LISTENING_BAND, reading_band, 6.5]
     assert final["overall"] == round_half_band(sum(bands) / 3)
     assert final["partial"] is True
-    assert "Speaking not assessed" in final["overall_note"]
+    assert "Speaking not taken yet" in final["overall_note"]
     assert "3 of 4 skills" in final["overall_note"]
     assert final["overall_source_url"] == SCORING_SOURCE_URL
-    # everything sittable is done: the program names the lowest assessed skill
+    assert final["next_module"]["key"] == "speaking"
+
+    # Speaking joins: its band is real but partial, so the overall stays partial
+    with_speaking = sit_speaking(client, mock_id)
+    speaking = modules_of(with_speaking)["speaking"]
+    assert speaking["state"] == "graded" and speaking["band"] == SPEAKING_BAND
+    assert speaking["band_partial"] is True
+    assert "Pronunciation not assessed" in speaking["detail"]
+    assert with_speaking["overall"] == round_half_band(sum([*bands, SPEAKING_BAND]) / 4)
+    assert with_speaking["partial"] is True
+    assert "Pronunciation is not assessed" in with_speaking["overall_note"]
     lowest = min(
         ("listening", LISTENING_BAND), ("reading", reading_band), ("writing", 6.5),
-        key=lambda kv: kv[1],
+        ("speaking", SPEAKING_BAND), key=lambda kv: kv[1],
     )[0]
-    assert final["next_module"]["key"] == lowest
+    assert with_speaking["next_module"]["key"] == lowest
+
+
+def test_speaking_can_be_sat_on_the_quick_sample_through_the_mock(client: TestClient):
+    mock_id = new_mock(client)
+    sit_reading(client, mock_id)
+    sit_writing(client, mock_id)
+    started = client.post(f"/ielts/mock/{mock_id}/modules/speaking/attempt?sample=true").json()
+    attempt_id = modules_of(started)["speaking"]["attempt_id"]
+    assert client.get(f"/ielts/speaking/attempts/{attempt_id}").json()["set_id"] == "sp-sample"
 
 
 def test_the_listening_attempt_is_the_one_its_own_page_lists(client: TestClient):
@@ -248,18 +292,16 @@ def test_the_overall_note_says_why_each_missing_skill_has_no_band(client: TestCl
 
     after_listening = sit_listening(client, mock_id)
     note = after_listening["overall_note"]
-    assert "Reading and Writing not taken yet" in note and "Speaking not assessed" in note
+    assert "Reading, Writing and Speaking not taken yet" in note
     assert "1 of 4 skills" in note
 
     after_reading = sit_reading(client, mock_id)
     note = after_reading["overall_note"]
-    assert "Speaking not assessed" in note
-    assert "Writing not taken yet" in note
-    assert "Reading and Writing and Speaking" not in note
+    assert "Writing and Speaking not taken yet" in note
     assert "2 of 4 skills" in note
 
     final = sit_writing(client, mock_id)
-    assert "Speaking not assessed" in final["overall_note"]
+    assert "Speaking not taken yet" in final["overall_note"]
     assert "Writing" not in final["overall_note"].split("so this is")[0]
 
 
@@ -275,7 +317,7 @@ def test_a_failed_writing_marking_is_retryable_on_the_mocks_own_attempt(client: 
     writing = modules_of(failed)["writing"]
     assert writing["state"] == "ungraded" and writing["retryable"] is True
     assert "Retry marking" in writing["detail"]
-    assert "Retry marking" in failed["next_module"]["reason"]
+    assert "Speaking next" in failed["next_module"]["reason"]  # unfinished comes before a retry
     assert modules_of(failed)["reading"]["retryable"] is False
 
     app.dependency_overrides[ielts_api.get_completer] = working
@@ -342,7 +384,7 @@ def test_the_coach_gets_the_whole_mock_digest_with_the_partial_overall_and_next_
     assert resp.text == "Practise Writing next."
     digest = seen[0].report_digest
     assert digest and len(digest) <= MAX_REPORT_DIGEST_CHARS and "<<<REPORT" in digest
-    assert f"Listening: band {LISTENING_BAND}" in digest and "Speaking: not assessed" in digest
+    assert f"Listening: band {LISTENING_BAND}" in digest and "Speaking: no band yet" in digest
     assert "Listening detail: 30 of 40 correct" in digest
     assert "Listening by question type, weakest first:" in digest
     assert f"Overall band: {final['overall']} (PARTIAL" in digest

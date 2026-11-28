@@ -38,6 +38,10 @@ _PRICES: dict[str, tuple[float, float]] = {
     # Gemma on the captain's Google AI Studio key (free tier): no charge to the ledger
     "gemma-4-26b-a4b-it": (0.0, 0.0),
     "gemma-4-31b-it": (0.0, 0.0),
+    # Gemini audio models for IELTS Speaking: ESTIMATES (USD per million tokens), not read off a
+    # price list, kept a little high so the cap errs on the safe side. Audio counts as input tokens.
+    "gemini-3.5-flash-lite": (0.50, 2.00),
+    "gemini-3.5-flash": (1.00, 5.00),
 }
 _UNKNOWN_PRICE = (10.0, 30.0)
 

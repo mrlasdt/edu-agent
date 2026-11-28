@@ -6,6 +6,7 @@ import { FullMock } from "./ielts/FullMock";
 import { IeltsMock } from "./ielts/IeltsMock";
 import { ListeningMock } from "./ielts/ListeningMock";
 import { ReadingMock } from "./ielts/ReadingMock";
+import { SpeakingMock } from "./ielts/SpeakingMock";
 import { WritingModule } from "./ielts/WritingModule";
 import "./styles.css";
 
@@ -20,6 +21,8 @@ const mock =
     <ListeningMock />
   ) : mockModule === "reading" ? (
     <ReadingMock />
+  ) : mockModule === "speaking" ? (
+    <SpeakingMock />
   ) : mockModule === "writing-module" ? (
     <WritingModule />
   ) : (
