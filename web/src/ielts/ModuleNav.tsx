@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 /** The mock modules at /ielts-mock; the page has no router, so the others are `?module=...`. */
 type Current = "writing" | "writing-module" | "listening" | "reading" | "mock";
 
@@ -10,8 +12,15 @@ const LINKS: { key: Current; label: string; href: string }[] = [
 ];
 
 export function ModuleNav({ current }: { current: Current }) {
+  const nav = useRef<HTMLElement>(null);
+  // On a phone the strip scrolls sideways; bring the current module into view (sideways only).
+  useEffect(() => {
+    const el = nav.current;
+    const here = el?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (el && here) el.scrollLeft = here.offsetLeft - (el.clientWidth - here.offsetWidth) / 2;
+  }, [current]);
   return (
-    <nav className="ielts-chips" aria-label="Mock module">
+    <nav ref={nav} className="ielts-chips" aria-label="Mock module">
       {LINKS.map((l) => (
         <a
           key={l.key}
