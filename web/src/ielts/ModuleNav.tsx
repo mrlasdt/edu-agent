@@ -17,7 +17,10 @@ export function ModuleNav({ current }: { current: Current }) {
   useEffect(() => {
     const el = nav.current;
     const here = el?.querySelector<HTMLElement>('[aria-current="page"]');
-    if (el && here) el.scrollLeft = here.offsetLeft - (el.clientWidth - here.offsetWidth) / 2;
+    if (!el || !here) return;
+    const chip = here.getBoundingClientRect();
+    const strip = el.getBoundingClientRect();
+    el.scrollLeft += chip.left - strip.left - (strip.width - chip.width) / 2;
   }, [current]);
   return (
     <nav ref={nav} className="ielts-chips" aria-label="Mock module">
