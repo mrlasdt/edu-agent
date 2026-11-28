@@ -207,6 +207,8 @@ How to test (full flow, http://localhost:5173/ielts-mock?module=mock):
 3. Press "Start Writing" (4 minute clock). Paste at least 50 words into each task, for example the letter: `Dear Mr Hall, the lift in our building has been broken for three weeks and many residents, including elderly neighbours and parents with small children, now struggle to reach their flats. Please arrange a repair this week and tell us when it will be done. Thank you for your help with this problem. Yours sincerely, A. Tenant` and the essay: `Some people think children should learn to cook at school. I agree with this view because cooking is a basic life skill, it teaches healthy eating, and it helps young people to live independently. Schools already teach many subjects, but few are as useful every day. Therefore, I believe cooking lessons should be part of the school timetable.` Submit both tasks.
 4. Wait about a minute for marking. The overview then shows the sample overall band (partial, Speaking is not assessed) and each skill band, with the SAMPLE label.
 
+## Evals
+
 Every eval and report tool is one command of `uv run python -m evals <command>` (run it with no command to list them; add `--help` after a command for its flags). The older `python -m evals.<module>` spellings of the moved report tools still work for one more release.
 
 `evals/agent_eval/` runs the real agent and grades what it produced.

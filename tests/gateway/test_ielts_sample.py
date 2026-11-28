@@ -10,6 +10,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from services.gateway.src.gateway.ielts import listening, reading
+from services.gateway.src.gateway.ielts.models import Timing
+from services.gateway.src.gateway.ielts.reading_digest import build_digest as reading_digest
+from services.gateway.src.gateway.ielts_coach import find_report
 from services.gateway.src.gateway.ielts_store import AttemptStore, allowed_s_for
 from tests.gateway.test_ielts_mock import (  # noqa: F401 - fixtures
     client,
@@ -67,6 +70,39 @@ def test_a_sample_reading_attempt_runs_the_real_path_and_is_labelled(client: Tes
     report = client.get(f"/ielts/reading/attempts/{created['id']}/report").json()
     assert report["sample"] is True and report["total"] == 5 and report["band"] == 9.0
     assert report["set_note"].startswith("SAMPLE")
+
+
+def test_the_reading_coach_digest_says_a_sample_band_is_not_a_real_score():
+    timing = Timing(allowed_s=180, used_s=60, late=False)
+    sample_paper = reading.get_sample_set()
+    sample = reading_digest(reading.mark(sample_paper, keys_of(sample_paper), timing, sample=True))
+    assert "SAMPLE" in sample and "NOT a real mock score" in sample
+    real_paper = reading.get_set()
+    real = reading_digest(reading.mark(real_paper, keys_of(real_paper), timing))
+    assert "SAMPLE" not in real
+
+
+def test_the_writing_coach_digest_says_a_sample_band_is_not_a_real_score(
+    client: TestClient, store: AttemptStore
+):
+    ids = {}
+    for sample in (True, False):
+        created = client.post(
+            "/ielts/writing/attempts",
+            json={
+                "t1_prompt_id": "ielts_letter_prompt_1", "t2_prompt_id": "ielts_writing_prompt_1",
+                "sample": sample,
+            },
+        )
+        assert created.status_code == 201
+        aid = created.json()["id"]
+        client.post(f"/ielts/writing/attempts/{aid}/start")
+        client.post(f"/ielts/writing/attempts/{aid}/submit", json={"t1": LETTER, "t2": ESSAY_FULL})
+        found = find_report(store, aid)
+        assert found is not None
+        ids[sample] = found.digest
+    assert "SAMPLE" in ids[True] and "NOT a real mock score" in ids[True]
+    assert "SAMPLE" not in ids[False]
 
 
 def test_an_answer_to_a_question_outside_the_sample_is_dropped(client: TestClient):

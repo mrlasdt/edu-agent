@@ -33,6 +33,11 @@ DIGEST_TITLES = {
 }
 DIGEST_TITLE = DIGEST_TITLES["T2"]
 
+SAMPLE_DIGEST_NOTE = (
+    "SAMPLE: this was a quick sample test (a handful of items on a short clock, to check the "
+    "flow), not a real mock. Its band is NOT a real mock score and must not be compared with one."
+)
+
 
 def wrap(title: str, body: str) -> str:
     """The body between markers derived from its own content, under a title that says it is data."""
@@ -181,4 +186,5 @@ def build_module_digest(
         if report.writing_band is not None else
         "Combined Writing band: not given, because only one task could be marked."
     )
-    return "\n\n".join([line(band, 300), MODULE_REMARK_UNAVAILABLE, *parts])
+    head = [SAMPLE_DIGEST_NOTE] if report.sample else []
+    return "\n\n".join([*head, line(band, 300), MODULE_REMARK_UNAVAILABLE, *parts])
